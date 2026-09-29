@@ -41,6 +41,7 @@ export function App({ deps }: { deps?: Partial<SessionDeps> }) {
       recent={state.recent}
       notice={state.notice}
       hasPicker={s.hasPicker}
+      blocked={state.phase === 'confirmTooMany' || state.phase === 'chooseLang'}
       onPickFolder={s.onPickFolder}
       onDrop={s.onDrop}
       onFiles={s.onFiles}

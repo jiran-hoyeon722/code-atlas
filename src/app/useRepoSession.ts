@@ -115,6 +115,23 @@ function throttled<T>(fn: (v: T) => void, ms = 80): (v: T) => void {
   };
 }
 
+/** The language whose framework is detected, when exactly one of PHP (Laravel) / TS (React) has one. */
+async function frameworkLang(listing: Listing): Promise<Lang | undefined> {
+  const configs: Record<string, string> = {};
+  for (const e of listing.configs) {
+    try {
+      configs[e.path] = await e.file.text();
+    } catch {
+      // unreadable config: treat as absent
+    }
+  }
+  const input = { name: listing.name, files: listing.sources.map((e) => ({ path: e.path, text: '' })), configs };
+  const laravel = detect(input, 'php')?.framework === 'laravel';
+  const react = detect(input, 'ts')?.framework === 'react';
+  if (laravel === react) return undefined;
+  return laravel ? 'php' : 'ts';
+}
+
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
 
 export function useRepoSession(overrides?: Partial<SessionDeps>) {
@@ -145,6 +162,18 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
 
   useEffect(() => {
     void refreshRecent();
+    // a stray drop outside the drop zone would make the browser navigate to the file and lose the session
+    const block = (e: DragEvent) => e.preventDefault();
+    window.addEventListener('dragover', block);
+    window.addEventListener('drop', block);
+    return () => {
+      window.removeEventListener('dragover', block);
+      window.removeEventListener('drop', block);
+      runId.current++;
+      cancelAnalysis.current?.();
+      cancelAnalysis.current = null;
+      answerWith(null);
+    };
   }, []);
 
   const toLanding = (notice?: string) => {
@@ -179,6 +208,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
 
   const run = async (src: Source, mode: Mode) => {
     const id = ++runId.current;
+    answerWith(null);
     const alive = () => runId.current === id;
     const deps = d();
     const name = src.dir.name;
@@ -245,7 +275,9 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
       if (lang) counts[lang]++;
     }
     let prefer: Lang | undefined;
-    if (counts.php > 0 && counts.ts > 0) {
+    if (counts.php > 0 && counts.ts > 0) prefer = await frameworkLang(listing);
+    if (!alive()) return;
+    if (counts.php > 0 && counts.ts > 0 && !prefer) {
       const choice = await ask<Lang | null>({ phase: 'chooseLang', langCounts: counts });
       if (!alive()) return;
       if (!choice) return toLanding();
@@ -356,11 +388,11 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     await refreshRecent();
   };
 
-  const answerWith = (v: unknown) => {
+  function answerWith(v: unknown) {
     const resolve = answer.current;
     answer.current = null;
     resolve?.(v);
-  };
+  }
 
   const onCancel = () => {
     runId.current++;

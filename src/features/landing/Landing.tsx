@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent, type ReactNode, type Ref } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type ReactNode, type Ref } from 'react';
 import type { CacheSummary } from '../../storage/cache';
 import './landing.css';
 
@@ -13,6 +13,8 @@ export interface LandingProps {
   notice?: string;
   /** false when `showDirectoryPicker` is missing: the button opens the hidden folder input instead */
   hasPicker?: boolean;
+  /** a dialog (passed as children) is open: the page behind it is inert and ignores drops */
+  blocked?: boolean;
   children?: ReactNode;
 }
 
@@ -50,7 +52,7 @@ export function FolderInput({ onFiles, inputRef, testId }: { onFiles(files: File
 }
 
 export function Landing({
-  recent, onPickFolder, onDrop, onFiles, onOpenRecent, onDeleteRecent, onClearAll, notice, hasPicker = hasNativePicker(), children,
+  recent, onPickFolder, onDrop, onFiles, onOpenRecent, onDeleteRecent, onClearAll, notice, hasPicker = hasNativePicker(), blocked = false, children,
 }: LandingProps) {
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
@@ -60,12 +62,13 @@ export function Landing({
 
   const onDragEnter = (e: DragEvent) => {
     e.preventDefault();
+    if (blocked) return;
     depth.current++;
     setOver(true);
   };
   const onDragOver = (e: DragEvent) => {
     e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    if (e.dataTransfer) e.dataTransfer.dropEffect = blocked ? 'none' : 'copy';
   };
   const onDragLeave = () => {
     depth.current = Math.max(0, depth.current - 1);
@@ -75,11 +78,12 @@ export function Landing({
     e.preventDefault();
     depth.current = 0;
     setOver(false);
-    if (e.dataTransfer?.items) onDrop(e.dataTransfer.items);
+    if (!blocked && e.dataTransfer?.items) onDrop(e.dataTransfer.items);
   };
 
   return (
     <div className="ca-land" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDropZone}>
+      <div className="ca-land-body" inert={blocked}>
       <header className="ca-land-head">
         <h1>Code Atlas</h1>
       </header>
@@ -120,6 +124,7 @@ export function Landing({
           </section>
         )}
       </main>
+      </div>
       {children}
     </div>
   );
@@ -133,9 +138,16 @@ export interface ChoiceDialogProps {
 }
 
 export function ChoiceDialog({ title, choices, initial, onChoose }: ChoiceDialogProps) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (el && !el.contains(document.activeElement)) (el.querySelector<HTMLElement>('button.primary') ?? el).focus();
+  }, []);
   return (
     <div className="ca-land-backdrop">
       <div
+        ref={box}
+        tabIndex={-1}
         className="ca-land-dialog"
         role="dialog"
         aria-modal="true"

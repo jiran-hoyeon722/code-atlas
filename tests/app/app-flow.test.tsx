@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { Architecture } from '../../src/engine/architecture';
 import type { Progress } from '../../src/engine/analyze';
@@ -349,4 +349,93 @@ test('folder input picks a folder when showDirectoryPicker is missing', async ()
   expect(runs[0].input.name).toBe('web');
   await finish(runs[0]);
   expect(await screen.findByText('viewer:web:ts')).toBeTruthy();
+});
+
+test('laravel folder with front-end js opens as php without asking', async () => {
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  drop(items(dirHandle('shop', {
+    'composer.json': '{"require":{"laravel/framework":"^11.0"}}',
+    'vite.config.js': 'export default {}',
+    app: { 'User.php': '<?php' },
+    resources: { js: { 'app.ts': '', 'b.ts': '' } },
+  })));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(runs[0].prefer).toBe('php');
+});
+
+test('react folder with stray php files opens as ts without asking', async () => {
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  drop(items(dirHandle('web', {
+    'package.json': '{"dependencies":{"react":"^19.0.0"}}',
+    src: { 'main.tsx': '' },
+    api: { 'a.php': '<?php', 'b.php': '<?php' },
+  })));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(runs[0].prefer).toBe('ts');
+});
+
+test('folder with both laravel and react still asks', async () => {
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  drop(items(dirHandle('full', {
+    'composer.json': '{"require":{"laravel/framework":"^11.0"}}',
+    'package.json': '{"devDependencies":{"react":"^19.0.0"}}',
+    app: { 'User.php': '<?php' },
+    resources: { js: { 'App.tsx': '' } },
+  })));
+  const dialog = await screen.findByRole('dialog', { name: '이 폴더에는 PHP 와 TypeScript 가 함께 있어요. 어느 쪽으로 볼까요?' });
+  expect(runs).toHaveLength(0);
+  fireEvent.click(within(dialog).getByRole('button', { name: /PHP/ }));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(runs[0].prefer).toBe('php');
+});
+
+test('while the language dialog is open the landing is inert and ignores drops', async () => {
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  drop(items(dirHandle('mixed', { app: { 'A.php': '<?php' }, 'x.ts': '' })));
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog.contains(document.activeElement)).toBe(true);
+  expect(zone().closest('[inert]')).not.toBeNull();
+  expect(dialog.closest('[inert]')).toBeNull();
+  const dropping = fireEvent.drop(zone(), { dataTransfer: { items: items(dirHandle('other', tsRepo)), types: ['Files'] } });
+  expect(dropping).toBe(false);
+  await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+  expect(screen.getByRole('dialog')).toBe(dialog);
+  fireEvent.click(within(dialog).getByRole('button', { name: /TypeScript/ }));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(runs[0].input.name).toBe('mixed');
+  expect(runs[0].prefer).toBe('ts');
+});
+
+test('unmounting during analysis cancels the worker', async () => {
+  const { deps, runs } = fakes();
+  const { unmount } = render(<App deps={deps} />);
+  drop(items(dirHandle('demo-repo', tsRepo)));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  unmount();
+  expect(runs[0].cancel).toHaveBeenCalledTimes(1);
+});
+
+test('stray drops anywhere are prevented while the app is mounted', async () => {
+  const { deps, runs } = fakes();
+  const { unmount } = render(<App deps={deps} />);
+  drop(items(dirHandle('demo-repo', tsRepo)));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  await finish(runs[0]);
+  await screen.findByText('viewer:demo-repo:ts');
+  const ev = createEvent.drop(document);
+  fireEvent(document, ev);
+  expect(ev.defaultPrevented).toBe(true);
+  const over = createEvent.dragOver(document);
+  fireEvent(document, over);
+  expect(over.defaultPrevented).toBe(true);
+  unmount();
+  const after = createEvent.drop(document);
+  fireEvent(document, after);
+  expect(after.defaultPrevented).toBe(false);
 });
