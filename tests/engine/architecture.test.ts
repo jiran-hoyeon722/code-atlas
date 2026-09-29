@@ -78,3 +78,16 @@ describe('buildArchitecture', () => {
     expect(r.nodes.map((n) => n.role)).toEqual([0, 2]);
   });
 });
+
+describe('buildArchitecture output isolation', () => {
+  test('mutating returned roles does not touch the preset', () => {
+    const p: Preset = { layers, roles: preset.roles.map((r) => ({ ...r, patterns: [...r.patterns] })) };
+    const out = buildArchitecture(ex([]), det, p, 'demo', now);
+    expect(out.roles).not.toBe(p.roles);
+    out.roles[0].name = 'changed';
+    out.roles[0].patterns.push('x');
+    out.roles.push({ name: 'Z', layer: 3, patterns: [], description: '' });
+    expect(p.roles.map((r) => r.name)).toEqual(['A', 'B', 'C']);
+    expect(p.roles[0].patterns).toEqual(['a']);
+  });
+});

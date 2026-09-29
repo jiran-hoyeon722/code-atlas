@@ -112,7 +112,7 @@ export function buildArchitecture(ex: Extraction, detection: Detection, preset: 
     sourceDir: detection.sourceDir,
     generatedAt: now.toISOString(),
     layers: preset.layers,
-    roles: preset.roles,
+    roles: preset.roles.map((r) => ({ ...r, patterns: [...r.patterns] })),
     nodes,
     edges: edges.map((e) => [e.from, e.to, e.weight, e.kinds, isUpward(e)]),
     failed: ex.failed,
