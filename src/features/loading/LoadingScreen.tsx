@@ -41,8 +41,9 @@ export function LoadingScreen({ name, framework, sourceDir, roles, step, onCance
   useEffect(() => {
     if (step.phase !== 'parse' && step.phase !== 'read') return;
     if (step.phase === 'parse' && step.done > lastDone.current) {
+      const color = colors[step.role] ?? '#8b93a3';
+      for (let n = lastDone.current; n < step.done; n++) cityApi.current?.add(color);
       lastDone.current = step.done;
-      cityApi.current?.add(colors[step.role] ?? '#8b93a3');
     }
     const list = samples.current;
     if (!list.length || list[list.length - 1].done !== step.done) {
@@ -53,7 +54,7 @@ export function LoadingScreen({ name, framework, sourceDir, roles, step, onCance
 
   const active = ACTIVE[step.phase];
   const counted = step.phase === 'read' || step.phase === 'parse' ? step : null;
-  const ratio = counted && counted.total > 0 ? counted.done / counted.total : step.phase === 'link' || step.phase === 'metrics' ? 1 : 0;
+  const ratio = counted ? (counted.total > 0 ? Math.min(1, Math.max(0, counted.done / counted.total)) : 0) : step.phase === 'link' || step.phase === 'metrics' ? 1 : 0;
   const pct = Math.round(ratio * 100);
   const eta = step.phase === 'parse' || step.phase === 'read' ? estimateRemaining(samples.current, step.total) : null;
   const meta = [framework, sourceDir].filter(Boolean).join(' · ');

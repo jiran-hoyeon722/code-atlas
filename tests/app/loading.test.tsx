@@ -75,3 +75,25 @@ test('mini city mounts once, adds per new parse event, disposes on unmount', () 
   unmount();
   expect(dispose).toHaveBeenCalledTimes(1);
 });
+
+test('progress is clamped to 0..100', () => {
+  const { container } = view({ phase: 'read', done: 12, total: 10 });
+  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
+  expect((container.querySelector('.cc-load-bar > i') as HTMLElement).style.width).toBe('100%');
+});
+
+test('total 0 gives 0%', () => {
+  view({ phase: 'read', done: 0, total: 0 });
+  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0');
+});
+
+test('a jump in done adds one building per unit; repeats add nothing', () => {
+  const p = (done: number): LoadStep => ({ phase: 'parse', done, total: 9, path: 'a', role: 1 });
+  const { rerender } = view(p(1));
+  const re = (s: LoadStep) => rerender(<LoadingScreen name="demo" framework="Laravel" sourceDir="app" roles={roles} step={s} onCancel={() => {}} />);
+  expect(add).toHaveBeenCalledTimes(1);
+  re(p(4));
+  expect(add).toHaveBeenCalledTimes(4);
+  re(p(4));
+  expect(add).toHaveBeenCalledTimes(4);
+});
