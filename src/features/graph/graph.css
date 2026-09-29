@@ -1,0 +1,79 @@
+.cc-graph {
+    --bg: #0d0e12;
+    --panel: rgba(22, 24, 30, .86);
+    --panel-solid: #16181e;
+    --text: #eceef3;
+    --muted: #9aa0ad;
+    --faint: #5c6270;
+    --border: rgba(255, 255, 255, .09);
+    --accent: #7c93f5;
+    --danger: #ff5c5c;
+    color-scheme: dark;
+    position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif; -webkit-font-smoothing: antialiased;
+}
+.cc-graph *, .cc-graph *::before, .cc-graph *::after { box-sizing: border-box; }
+.cc-graph button, .cc-graph input, .cc-graph select { font: inherit; color: inherit; }
+.cc-graph .cg-canvas { position: absolute; inset: 0; }
+.cc-graph .glass { background: var(--panel); backdrop-filter: blur(14px); border: 1px solid var(--border); border-radius: 14px; }
+
+.cc-graph .cg-top { position: absolute; top: 14px; left: 14px; z-index: 10; width: 340px; padding: 14px; }
+.cc-graph .cg-top h1 { font-size: 15px; margin: 0; letter-spacing: -.01em; }
+.cc-graph .cg-top .meta { color: var(--muted); font-size: 12px; margin: 2px 0 10px; }
+.cc-graph .search { position: relative; }
+.cc-graph .search input { width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255, 255, 255, .05); }
+.cc-graph .search input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); border-color: transparent; }
+.cc-graph .cg-results { position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: var(--panel-solid); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: none; max-height: 360px; overflow-y: auto; }
+.cc-graph .cg-results.open { display: block; }
+.cc-graph .cg-results button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 12px; cursor: pointer; }
+.cc-graph .cg-results button.active, .cc-graph .cg-results button:hover { background: rgba(255, 255, 255, .07); }
+.cc-graph .cg-results small { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-graph .opts { display: grid; gap: 6px; margin-top: 10px; color: var(--muted); }
+.cc-graph .opts label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.cc-graph .opts input { accent-color: var(--accent); }
+.cc-graph .links { display: flex; gap: 10px; margin-top: 10px; font-size: 12px; }
+.cc-graph .links button { color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
+
+.cc-graph .cg-legend { position: absolute; left: 14px; bottom: 14px; z-index: 10; width: 340px; padding: 12px 14px; max-height: calc(100% - 330px); overflow-y: auto; }
+.cc-graph .cg-legend h2 { font-size: 12px; margin: 0 0 6px; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; }
+.cc-graph .cg-legend h2 button { border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 11px; padding: 0; }
+.cc-graph .layer { margin-bottom: 8px; }
+.cc-graph .layer-name { font-size: 11px; color: var(--faint); margin: 4px 0 2px; }
+.cc-graph .roles { display: flex; flex-wrap: wrap; gap: 4px; }
+.cc-graph .role { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255, 255, 255, .03); cursor: pointer; font-size: 12px; }
+.cc-graph .role i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.cc-graph .role small { color: var(--muted); }
+.cc-graph .role.off { opacity: .35; }
+.cc-graph .role.off i { background: var(--faint) !important; }
+.cc-graph .hint { color: var(--faint); font-size: 11px; margin-top: 6px; }
+
+.cc-graph .cg-panel { position: absolute; top: 14px; right: 14px; bottom: 14px; z-index: 10; width: 380px; padding: 16px 18px; overflow-y: auto; transform: translateX(calc(100% + 20px)); transition: transform .22s ease; }
+.cc-graph .cg-panel.open { transform: none; }
+.cc-graph .cg-panel .close { position: absolute; top: 10px; right: 10px; border: 1px solid var(--border); background: none; border-radius: 8px; padding: 2px 9px; cursor: pointer; color: var(--muted); }
+.cc-graph .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 1px 9px; border-radius: 999px; background: color-mix(in srgb, var(--c) 20%, transparent); color: var(--c); }
+.cc-graph .cg-panel h3 { font-size: 19px; margin: 8px 0 2px; word-break: break-all; letter-spacing: -.01em; }
+.cc-graph .path { color: var(--muted); font: 11px ui-monospace, Menlo, monospace; word-break: break-all; }
+.cc-graph .desc { color: var(--muted); margin: 8px 0 10px; }
+.cc-graph .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0 12px; }
+.cc-graph .metric { border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; }
+.cc-graph .metric b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; }
+.cc-graph .metric span { color: var(--muted); font-size: 10.5px; }
+.cc-graph .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.cc-graph .actions a, .cc-graph .actions button { border: 1px solid var(--border); background: rgba(255, 255, 255, .04); border-radius: 8px; padding: 4px 10px; font-size: 12px; text-decoration: none; cursor: pointer; }
+.cc-graph .sec { margin-top: 16px; }
+.cc-graph .sec h4 { margin: 0 0 6px; font-size: 12px; display: flex; justify-content: space-between; color: var(--muted); font-weight: 600; }
+.cc-graph .item { display: flex; width: 100%; align-items: center; gap: 8px; border: 0; background: none; text-align: left; padding: 5px 6px; border-radius: 8px; cursor: pointer; }
+.cc-graph .item:hover { background: rgba(255, 255, 255, .06); }
+.cc-graph .item i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.cc-graph .item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-graph .item small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.cc-graph .up { color: var(--danger); font-size: 10px; font-weight: 700; margin-left: 4px; }
+.cc-graph .more { color: var(--faint); font-size: 11px; padding: 2px 6px; }
+
+.cc-graph .scene-tooltip { font: 12px/1.45 -apple-system, "Apple SD Gothic Neo", sans-serif !important; background: var(--panel-solid) !important; border: 1px solid var(--border); border-radius: 8px !important; padding: 6px 10px !important; }
+
+@media (max-width: 760px) {
+    .cc-graph .cg-top, .cc-graph .cg-legend { width: calc(100% - 28px); }
+    .cc-graph .cg-legend { max-height: 30%; }
+    .cc-graph .cg-panel { left: 14px; width: auto; top: auto; height: 60%; }
+}
