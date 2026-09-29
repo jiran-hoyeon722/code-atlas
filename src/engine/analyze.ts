@@ -19,13 +19,18 @@ export class UnsupportedRepoError extends Error {
   }
 }
 
+export interface AnalyzeOptions {
+  onProgress?: (p: Progress) => void;
+  now?: Date;
+  prefer?: Lang;
+}
+
 export function analyze(
   input: RepoInput,
   parsers: Parsers,
-  onProgress?: (p: Progress) => void,
-  now: Date = new Date(),
-  prefer?: Lang,
+  options: AnalyzeOptions = {},
 ): Architecture {
+  const { onProgress, now = new Date(), prefer } = options;
   const detection = detect(input, prefer);
   if (!detection) throw new UnsupportedRepoError();
 
@@ -42,11 +47,11 @@ export function analyze(
     onProgress?.({ phase: 'parse', done: ++done, total, path, role: r === -1 ? lastRole : r });
   };
 
+  const onLink = () => onProgress?.({ phase: 'link' });
   const extraction = detection.lang === 'php'
-    ? extractPhpProject(input, detection, parsers, onFile)
-    : extractTsProject(input, detection, parsers, onFile);
+    ? extractPhpProject(input, detection, parsers, onFile, onLink)
+    : extractTsProject(input, detection, parsers, onFile, onLink);
 
-  onProgress?.({ phase: 'link' });
   onProgress?.({ phase: 'metrics' });
   return buildArchitecture(extraction, detection, preset, input.name, now);
 }

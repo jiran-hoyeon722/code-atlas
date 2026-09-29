@@ -14,6 +14,7 @@ export function extractPhpProject(
   detection: Detection,
   parsers: Parsers,
   onFile?: (path: string) => void,
+  onLink?: () => void,
 ): Extraction {
   const srcPrefix = detection.sourceDir ? `${detection.sourceDir}/` : '';
   const providersPrefix = `${srcPrefix}Providers/`;
@@ -54,6 +55,8 @@ export function extractPhpProject(
     });
     onFile?.(file.path);
   }
+
+  onLink?.();
 
   // PHP class names are case-insensitive; exact spelling wins when both exist.
   const fileOf = (fqcn: string) => exact.get(fqcn) ?? lower.get(fqcn.toLowerCase());

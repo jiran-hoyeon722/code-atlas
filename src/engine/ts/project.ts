@@ -39,6 +39,7 @@ export function extractTsProject(
   detection: Detection,
   parsers: Parsers,
   onFile?: (path: string) => void,
+  onLink?: () => void,
 ): Extraction {
   const sources = sourcesFor(detection, input.files);
   const known = new Set(sources.map((f) => f.path));
@@ -94,5 +95,6 @@ export function extractTsProject(
     onFile?.(file.path);
   }
 
+  onLink?.();
   return { nodes, edges: [...edges.values()], routeRefs, failed, unresolved };
 }
