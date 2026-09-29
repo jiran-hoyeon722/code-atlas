@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
-import { loadParsers, nodeLocate, type Parsers } from '../../src/engine/parsers';
+import { loadParsers, type Parsers } from '../../src/engine/parsers';
+import { nodeLocate } from '../../src/engine/node';
 import { detect } from '../../src/engine/detect';
 import { isConfigPath, isSourcePath } from '../../src/engine/collect';
 import { extractTsFile } from '../../src/engine/ts/extract';

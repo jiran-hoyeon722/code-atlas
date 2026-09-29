@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from 'vitest';
 import type { Node } from 'web-tree-sitter';
-import { loadParsers, nodeLocate, type Parsers } from '../../src/engine/parsers';
+import { loadParsers, type Parsers } from '../../src/engine/parsers';
+import { nodeLocate } from '../../src/engine/node';
 import { resolveClassName, scopeAt } from '../../src/engine/php/names';
 
 let parsers: Parsers;

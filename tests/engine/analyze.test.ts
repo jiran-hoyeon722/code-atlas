@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
-import { loadParsers, nodeLocate, type Parsers } from '../../src/engine/parsers';
+import { loadParsers, type Parsers } from '../../src/engine/parsers';
+import { nodeLocate } from '../../src/engine/node';
 import { isSourcePath, isConfigPath } from '../../src/engine/collect';
 import { analyze, UnsupportedRepoError, type Progress } from '../../src/engine/analyze';
 import type { RepoInput } from '../../src/engine/types';

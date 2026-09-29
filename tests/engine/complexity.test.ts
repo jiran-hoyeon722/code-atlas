@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
-import { loadParsers, nodeLocate } from '../../src/engine/parsers';
+import { loadParsers } from '../../src/engine/parsers';
+import { nodeLocate } from '../../src/engine/node';
 import { measure } from '../../src/engine/complexity';
 
 test('php method complexity', async () => {

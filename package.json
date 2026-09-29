@@ -5,7 +5,8 @@
     "description": "JS/TS dependency extractor for code-atlas",
     "scripts": {
         "test": "vitest run",
-        "compare": "tsx scripts/compare.ts"
+        "compare": "tsx scripts/compare.ts",
+        "typecheck:engine": "tsc -p tsconfig.engine.json --noEmit"
     },
     "dependencies": {
         "dependency-cruiser": "^17.0.0",
@@ -16,6 +17,7 @@
     },
     "devDependencies": {
         "@types/node": "^22",
+        "esbuild": "^0.28.2",
         "tsx": "^4",
         "vitest": "^5"
     }

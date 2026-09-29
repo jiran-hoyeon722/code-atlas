@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
-import { loadParsers, nodeLocate, type Parsers } from '../../src/engine/parsers';
+import { loadParsers, type Parsers } from '../../src/engine/parsers';
+import { nodeLocate } from '../../src/engine/node';
 import { detect, type Detection } from '../../src/engine/detect';
 import { extractPhpFile } from '../../src/engine/php/extract';
 import { extractPhpProject } from '../../src/engine/php/project';
