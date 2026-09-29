@@ -1,0 +1,35 @@
+.cc-load {
+  position: relative; display: flex; width: 100%; height: 100%; overflow: hidden; color: #e6e9ef;
+  background: radial-gradient(ellipse at 60% 40%, #1a2340 0%, #0b0f17 70%);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.cc-load *, .cc-load *::before, .cc-load *::after { box-sizing: border-box; }
+.cc-load-panel {
+  position: relative; z-index: 1; flex: 0 0 340px; align-self: center; margin: 0 0 0 48px; padding: 24px;
+  background: rgba(22, 28, 40, .72); border: 1px solid rgba(255, 255, 255, .08); border-radius: 12px;
+  backdrop-filter: blur(12px);
+}
+.cc-load-title { margin: 0; font-size: 18px; font-weight: 600; }
+.cc-load-meta { margin: 2px 0 18px; color: #8b93a3; }
+.cc-load-steps { list-style: none; margin: 0 0 18px; padding: 0; }
+.cc-load-steps li { display: flex; align-items: center; gap: 10px; padding: 6px 0; color: #8b93a3; }
+.cc-load-steps li[data-state="done"] .cc-load-mark { color: #8ce99a; }
+.cc-load-steps li[data-state="current"] { color: #e6e9ef; }
+.cc-load-steps li[data-state="current"] .cc-load-mark { color: #4c6ef5; }
+.cc-load-label { flex: 1; }
+.cc-load-count { color: #8b93a3; font-variant-numeric: tabular-nums; }
+.cc-load-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.cc-load-bar > i { display: block; height: 100%; background: #4c6ef5; transition: width .2s ease; }
+.cc-load-path {
+  margin: 12px 0 0; min-height: 1.5em; color: #8b93a3; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cc-load-eta { margin: 2px 0 16px; min-height: 1.5em; color: #8b93a3; }
+.cc-load-cancel {
+  padding: 7px 16px; color: #e6e9ef; background: transparent; border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 8px; font: inherit; cursor: pointer;
+}
+.cc-load-cancel:hover { border-color: #4c6ef5; }
+.cc-load-cancel:focus-visible { outline: 2px solid #4c6ef5; outline-offset: 2px; }
+.cc-load-city { position: absolute; inset: 0 0 0 300px; }
