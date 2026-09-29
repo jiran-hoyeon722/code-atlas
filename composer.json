@@ -1,0 +1,11 @@
+{
+    "name": "code-atlas/tools",
+    "description": "PHP dependency extractor for code-atlas",
+    "require": {
+        "php": "^8.2",
+        "nikic/php-parser": "^5.7"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

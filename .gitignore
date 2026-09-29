@@ -1,0 +1,7 @@
+# Generated per-repository output contains internal structure and source copies — never commit it.
+/site/*
+!/site/index.html
+/.work/
+/.cache/
+/vendor/
+.DS_Store

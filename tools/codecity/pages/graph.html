@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>의존성 그래프</title>
+<style>
+:root {
+    --bg: #0d0e12;
+    --panel: rgba(22, 24, 30, .86);
+    --panel-solid: #16181e;
+    --text: #eceef3;
+    --muted: #9aa0ad;
+    --faint: #5c6270;
+    --border: rgba(255, 255, 255, .09);
+    --accent: #7c93f5;
+    --danger: #ff5c5c;
+    color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
+body { font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif; -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+#graph { position: fixed; inset: 0; }
+.glass { background: var(--panel); backdrop-filter: blur(14px); border: 1px solid var(--border); border-radius: 14px; }
+
+#top { position: fixed; top: 14px; left: 14px; z-index: 10; width: 340px; padding: 14px; }
+#top h1 { font-size: 15px; margin: 0; letter-spacing: -.01em; }
+#top .meta { color: var(--muted); font-size: 12px; margin: 2px 0 10px; }
+.search { position: relative; }
+.search input { width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255, 255, 255, .05); }
+.search input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); border-color: transparent; }
+#results { position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: var(--panel-solid); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: none; max-height: 360px; overflow-y: auto; }
+#results.open { display: block; }
+#results button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 12px; cursor: pointer; }
+#results button.active, #results button:hover { background: rgba(255, 255, 255, .07); }
+#results small { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opts { display: grid; gap: 6px; margin-top: 10px; color: var(--muted); }
+.opts label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.opts input { accent-color: var(--accent); }
+.links { display: flex; gap: 10px; margin-top: 10px; font-size: 12px; }
+.links a { color: var(--accent); text-decoration: none; }
+
+#legend { position: fixed; left: 14px; bottom: 14px; z-index: 10; width: 340px; padding: 12px 14px; max-height: calc(100vh - 330px); overflow-y: auto; }
+#legend h2 { font-size: 12px; margin: 0 0 6px; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; }
+#legend h2 button { border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 11px; padding: 0; }
+.layer { margin-bottom: 8px; }
+.layer-name { font-size: 11px; color: var(--faint); margin: 4px 0 2px; }
+.roles { display: flex; flex-wrap: wrap; gap: 4px; }
+.role { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255, 255, 255, .03); cursor: pointer; font-size: 12px; }
+.role i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.role small { color: var(--muted); }
+.role.off { opacity: .35; }
+.role.off i { background: var(--faint) !important; }
+.hint { color: var(--faint); font-size: 11px; margin-top: 6px; }
+
+#panel { position: fixed; top: 14px; right: 14px; bottom: 14px; z-index: 10; width: 380px; padding: 16px 18px; overflow-y: auto; transform: translateX(calc(100% + 20px)); transition: transform .22s ease; }
+#panel.open { transform: none; }
+#panel .close { position: absolute; top: 10px; right: 10px; border: 1px solid var(--border); background: none; border-radius: 8px; padding: 2px 9px; cursor: pointer; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 1px 9px; border-radius: 999px; background: color-mix(in srgb, var(--c) 20%, transparent); color: var(--c); }
+#panel h3 { font-size: 19px; margin: 8px 0 2px; word-break: break-all; letter-spacing: -.01em; }
+.path { color: var(--muted); font: 11px ui-monospace, Menlo, monospace; word-break: break-all; }
+.desc { color: var(--muted); margin: 8px 0 10px; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0 12px; }
+.metric { border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; }
+.metric b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; }
+.metric span { color: var(--muted); font-size: 10.5px; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.actions a, .actions button { border: 1px solid var(--border); background: rgba(255, 255, 255, .04); border-radius: 8px; padding: 4px 10px; font-size: 12px; text-decoration: none; cursor: pointer; }
+.sec { margin-top: 16px; }
+.sec h4 { margin: 0 0 6px; font-size: 12px; display: flex; justify-content: space-between; color: var(--muted); font-weight: 600; }
+.item { display: flex; width: 100%; align-items: center; gap: 8px; border: 0; background: none; text-align: left; padding: 5px 6px; border-radius: 8px; cursor: pointer; }
+.item:hover { background: rgba(255, 255, 255, .06); }
+.item i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.up { color: var(--danger); font-size: 10px; font-weight: 700; margin-left: 4px; }
+.more { color: var(--faint); font-size: 11px; padding: 2px 6px; }
+
+.scene-tooltip { font: 12px/1.45 -apple-system, "Apple SD Gothic Neo", sans-serif !important; background: var(--panel-solid) !important; border: 1px solid var(--border); border-radius: 8px !important; padding: 6px 10px !important; }
+#loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--muted); z-index: 5; }
+
+@media (max-width: 760px) {
+    #top, #legend { width: calc(100vw - 28px); }
+    #legend { max-height: 30vh; }
+    #panel { left: 14px; width: auto; top: auto; height: 60vh; }
+}
+</style>
+</head>
+<body>
+<div id="loading">그래프를 불러오는 중…</div>
+<div id="graph"></div>
+
+<div id="top" class="glass">
+    <h1 id="title">의존성 그래프</h1>
+    <div class="meta" id="meta"></div>
+    <div class="search">
+        <input id="q" type="search" placeholder="파일·클래스 검색  ( / )" autocomplete="off">
+        <div id="results"></div>
+    </div>
+    <div class="opts">
+        <label><input type="checkbox" id="opt-structure" checked> 계층·역할별로 모으기</label>
+        <label><input type="checkbox" id="opt-neighbors"> 선택한 파일의 이웃만 보기</label>
+        <label><input type="checkbox" id="opt-up"> 역방향 의존만 빨갛게 강조</label>
+    </div>
+    <div class="links">
+        <a href="explorer.html">아키텍처 탐색기 ↗</a>
+        <a id="city" href="/codecharta/">코드 시티 ↗</a>
+        <a href="../">레포 목록</a>
+    </div>
+</div>
+
+<div id="legend" class="glass">
+    <h2>역할 (클릭해서 켜고 끄기) <button id="all">전체 켜기</button></h2>
+    <div id="roles"></div>
+    <div class="hint">점 크기 = fan-in(나를 쓰는 파일 수) · 위층일수록 진입점, 아래층일수록 기반 · 드래그 회전, 스크롤 확대</div>
+</div>
+
+<aside id="panel" class="glass"><button class="close" id="close">닫기</button><div id="panel-body"></div></aside>
+
+<script src="https://cdn.jsdelivr.net/npm/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
+<script>
+const ROLE_COLORS = {
+    Controller: '#4c6ef5', Middleware: '#748ffc', Request: '#91a7ff', Resource: '#339af0', Console: '#1c7ed6', WebSocket: '#74c0fc', Provider: '#5c7cfa',
+    Action: '#12b886', Service: '#ff922b', Job: '#20c997', Listener: '#63e6be', Observer: '#0ca678', Mail: '#96f2d7',
+    Repository: '#9775fa', Gateway: '#cc5de8', Domain: '#e599f7', Model: '#be4bdb', Event: '#f783ac',
+    Data: '#868e96', Enum: '#a9e34b', Exception: '#ffd43b', Support: '#adb5bd',
+};
+const KIND_LABEL = {
+    inject: '생성자 주입', type: '타입 힌트', 'static-call': '정적 호출', new: 'new 생성', const: '상수·enum',
+    'class-ref': '::class', trait: '트레이트', catch: 'catch', instanceof: 'instanceof', extends: '상속',
+    implements: '구현', attribute: '어트리뷰트', triggers: '이벤트→리스너', binds: '바인딩', other: '기타',
+};
+const LAYER_Y = [260, 90, -90, -260];
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (n) => Number(n).toLocaleString('ko-KR');
+
+let A, Graph;
+const hidden = new Set();
+const state = { selected: null, hover: null, neighborsOnly: false, upOnly: false };
+const highlightNodes = new Set();
+const highlightLinks = new Set();
+
+fetch('architecture.json').then((r) => r.json()).then(init).catch((e) => { $('#loading').textContent = `architecture.json 을 불러오지 못했어요: ${e.message}`; });
+
+function init(data) {
+    A = data;
+    A.roles.forEach((r, i) => { ROLE_COLORS[r.name] ??= `hsl(${(i * 137) % 360} 55% 62%)`; });
+    const roleColor = (role) => ROLE_COLORS[A.roles[role].name] ?? '#adb5bd';
+    const anchors = anchorPositions();
+    const nodes = A.nodes.map((n, i) => ({
+        ...n, id: i,
+        name: n.path.split('/').pop().replace(/\.[^./]+$/, ''),
+        layer: A.roles[n.role].layer,
+        color: roleColor(n.role),
+        neighbors: new Set(), links: [],
+        x: anchors[n.role].x + (Math.random() - .5) * 60,
+        y: anchors[n.role].y + (Math.random() - .5) * 30,
+        z: anchors[n.role].z + (Math.random() - .5) * 60,
+    }));
+    const links = A.edges.map(([f, t, w, kinds, up]) => {
+        const strong = !!up && ((nodes[f].layer >= 2 && nodes[t].layer <= 1) || nodes[t].layer === 0);
+        const link = { source: f, target: t, w, kinds, up: !!up, strong };
+        nodes[f].neighbors.add(t); nodes[t].neighbors.add(f);
+        nodes[f].links.push(link); nodes[t].links.push(link);
+        return link;
+    });
+    A.graphNodes = nodes;
+
+    $('#meta').textContent = `파일 ${fmt(nodes.length)}개 · 참조 ${fmt(links.length)}쌍 · ${new Date(A.generatedAt).toLocaleDateString('ko-KR')}`;
+    document.title = `${A.title} 의존성 그래프`;
+    $('#title').textContent = document.title;
+    $('#city').href = '/codecharta/?' + new URLSearchParams({ file: `../${A.name}/architecture.cc.json`, area: 'rloc', height: 'fan_in', color: 'instability', edge: 'code_dependency' });
+
+    const endId = (end) => (typeof end === 'object' ? end.id : end);
+    const visibleNode = (n) => {
+        if (hidden.has(n.role)) return false;
+        if (state.neighborsOnly && state.selected) return n.id === state.selected.id || state.selected.neighbors.has(n.id);
+        return true;
+    };
+    const linkColor = (l) => {
+        if (highlightLinks.size) {
+            if (!highlightLinks.has(l)) return 'rgba(255,255,255,0.03)';
+            return l.up ? (l.strong ? '#ff5c5c' : '#ffa94d') : 'rgba(255,255,255,0.75)';
+        }
+        if (state.upOnly) return l.strong ? '#ff5c5c' : l.up ? 'rgba(255,169,77,0.55)' : 'rgba(255,255,255,0.03)';
+        return l.strong ? 'rgba(255,92,92,0.8)' : 'rgba(170,180,200,0.12)';
+    };
+
+    Graph = ForceGraph3D({ controlType: 'orbit' })($('#graph'))
+        .backgroundColor(getComputedStyle(document.documentElement).getPropertyValue('--bg').trim())
+        .graphData({ nodes, links })
+        .nodeId('id')
+        .nodeVal((n) => 1 + Math.sqrt(n.fanIn) * 1.6)
+        .nodeRelSize(2.6)
+        .nodeResolution(10)
+        .nodeOpacity(0.92)
+        .nodeColor((n) => {
+            if (highlightNodes.size && !highlightNodes.has(n)) return 'rgba(120,125,140,0.18)';
+            if (state.upOnly && !highlightNodes.size && !(n.links.some((l) => l.up))) return 'rgba(120,125,140,0.25)';
+            return n.color;
+        })
+        .nodeLabel((n) => `<b>${esc(n.name)}</b> <span style="color:${n.color}">${esc(A.roles[n.role].name)}</span><br><span style="color:#9aa0ad">fan-in ${n.fanIn} · fan-out ${n.fanOut} · 중심도 ${n.centrality.toFixed(1)}</span>`)
+        .nodeVisibility(visibleNode)
+        .linkVisibility((l) => visibleNode(l.source) && visibleNode(l.target) && (!state.upOnly || l.up || highlightLinks.has(l)))
+        .linkColor(linkColor)
+        .linkWidth((l) => (highlightLinks.has(l) ? 1.2 : l.strong ? 0.6 : 0))
+        .linkDirectionalParticles((l) => (highlightLinks.has(l) ? 2 : 0))
+        .linkDirectionalParticleWidth(2)
+        .linkDirectionalParticleSpeed(0.006)
+        .linkDirectionalParticleColor((l) => (l.up ? '#ff5c5c' : '#ffffff'))
+        .onNodeHover((n) => { $('#graph').style.cursor = n ? 'pointer' : ''; if (!state.selected) highlight(n); })
+        .onNodeClick((n) => select(n, true))
+        .onBackgroundClick(() => select(null))
+        .cooldownTicks(260)
+        .warmupTicks(40);
+
+    Graph.d3Force('charge').strength(-18).distanceMax(220);
+    Graph.d3Force('link').distance(34).strength((l) => (l.source.role === l.target.role ? 0.08 : 0.012));
+    Graph.d3Force('structure', structureForce(anchors, 0.06));
+    Graph.cameraPosition({ x: 0, y: 120, z: 1250 });
+    setTimeout(() => $('#loading').remove(), 600);
+    const linked = nodes.find((n) => n.path === decodeURIComponent(location.hash.replace(/^#file=/, '')));
+    if (linked) Graph.onEngineStop(() => { if (!state.selected) select(linked, true); });
+
+    function refresh() {
+        Graph.nodeColor(Graph.nodeColor()).linkColor(Graph.linkColor()).linkWidth(Graph.linkWidth())
+            .linkDirectionalParticles(Graph.linkDirectionalParticles()).nodeVisibility(Graph.nodeVisibility()).linkVisibility(Graph.linkVisibility());
+    }
+    function highlight(n) {
+        highlightNodes.clear(); highlightLinks.clear();
+        if (n) {
+            highlightNodes.add(n);
+            n.links.forEach((l) => { highlightLinks.add(l); highlightNodes.add(l.source); highlightNodes.add(l.target); });
+        }
+        state.hover = n;
+        refresh();
+    }
+    function select(n, fly) {
+        state.selected = n;
+        highlight(n);
+        if (!n) { $('#panel').classList.remove('open'); return; }
+        renderPanel(n);
+        if (fly) {
+            const distance = 280;
+            const ratio = 1 + distance / Math.max(1, Math.hypot(n.x, n.y, n.z));
+            Graph.cameraPosition({ x: n.x * ratio, y: n.y * ratio, z: n.z * ratio }, n, 900);
+        }
+    }
+    window.selectNode = (id) => select(nodes[id], true);
+
+    function renderPanel(n) {
+        const role = A.roles[n.role];
+        const list = (items, side, label) => {
+            const sorted = [...items].sort((a, b) => (b.strong - a.strong) || (b.w - a.w));
+            return `<div class="sec"><h4><span>${label}</span><span>${sorted.length}</span></h4>${sorted.slice(0, 40).map((l) => {
+                const o = l[side];
+                const k = Object.keys(l.kinds).map((x) => KIND_LABEL[x] ?? x).join(' · ');
+                return `<button class="item" onclick="selectNode(${o.id})"><i style="background:${o.color}"></i><span>${esc(o.name)}${l.strong ? '<b class="up">역방향</b>' : ''}</span><small>${esc(k)}</small></button>`;
+            }).join('') || '<div class="more">없음</div>'}${sorted.length > 40 ? `<div class="more">외 ${sorted.length - 40}개 — 탐색기에서 전체 보기</div>` : ''}</div>`;
+        };
+        const incoming = n.links.filter((l) => endId(l.target) === n.id);
+        const outgoing = n.links.filter((l) => endId(l.source) === n.id);
+        $('#panel-body').innerHTML = `
+            <span class="chip" style="--c:${n.color}">${esc(role.name)} · ${esc(A.layers[n.layer].label)}</span>
+            <h3>${esc(n.name)}</h3>
+            <div class="path">${esc(n.path)}</div>
+            <p class="desc">${esc(role.description)}</p>
+            <div class="metrics">
+                <div class="metric"><b>${fmt(n.fanIn)}</b><span>fan-in</span></div>
+                <div class="metric"><b>${fmt(n.fanOut)}</b><span>fan-out</span></div>
+                <div class="metric"><b>${n.centrality.toFixed(1)}×</b><span>중심도</span></div>
+                <div class="metric"><b>${n.instability.toFixed(2)}</b><span>불안정도</span></div>
+            </div>
+            <div class="actions">
+                <a href="vscode://file${esc(A.repo)}/${esc(n.path)}">VS Code 에서 열기</a>
+                <a href="explorer.html#file=${encodeURIComponent(n.path)}" target="_blank" rel="noopener">탐색기에서 보기 ↗</a>
+            </div>
+            ${list(incoming, 'source', '← 나를 쓰는 곳')}
+            ${list(outgoing, 'target', '내가 쓰는 것 →')}`;
+        $('#panel').classList.add('open');
+    }
+
+    renderLegend(refresh);
+    setupSearch(nodes, select);
+    $('#close').addEventListener('click', () => select(null));
+    $('#opt-structure').addEventListener('change', (e) => {
+        Graph.d3Force('structure', e.target.checked ? structureForce(anchors, 0.06) : null);
+        Graph.d3ReheatSimulation();
+    });
+    $('#opt-neighbors').addEventListener('change', (e) => { state.neighborsOnly = e.target.checked; refresh(); });
+    $('#opt-up').addEventListener('change', (e) => { state.upOnly = e.target.checked; refresh(); });
+    window.addEventListener('keydown', (e) => {
+        if (e.key === '/' && document.activeElement !== $('#q')) { e.preventDefault(); $('#q').focus(); }
+        if (e.key === 'Escape' && document.activeElement !== $('#q')) select(null);
+    });
+    window.addEventListener('resize', () => Graph.width(innerWidth).height(innerHeight));
+}
+
+// Each role gets an anchor: layers stack vertically, roles spread on a ring inside their layer.
+function anchorPositions() {
+    const anchors = [];
+    A.layers.forEach((layer, li) => {
+        const roles = A.roles.map((r, i) => i).filter((i) => A.roles[i].layer === li);
+        const radius = 110 + roles.length * 30;
+        roles.forEach((ri, k) => {
+            const angle = (k / roles.length) * Math.PI * 2 + li * 0.6;
+            anchors[ri] = { x: Math.cos(angle) * radius, y: LAYER_Y[li], z: Math.sin(angle) * radius };
+        });
+    });
+    return anchors;
+}
+
+function structureForce(anchors, strength) {
+    let nodes = [];
+    const force = (alpha) => {
+        for (const n of nodes) {
+            const t = anchors[n.role];
+            n.vx += (t.x - n.x) * strength * alpha;
+            n.vy += (t.y - n.y) * strength * 2.5 * alpha;
+            n.vz += (t.z - n.z) * strength * alpha;
+        }
+    };
+    force.initialize = (ns) => { nodes = ns; };
+    return force;
+}
+
+function renderLegend(refresh) {
+    const counts = A.roles.map(() => 0);
+    A.nodes.forEach((n) => counts[n.role]++);
+    $('#roles').innerHTML = A.layers.map((layer, li) => `
+        <div class="layer"><div class="layer-name">${esc(layer.label)} — ${esc(layer.hint)}</div><div class="roles">
+        ${A.roles.map((r, i) => ({ r, i })).filter(({ r }) => r.layer === li).map(({ r, i }) =>
+            `<button class="role" data-role="${i}" title="${esc(r.description)}"><i style="background:${ROLE_COLORS[r.name]}"></i>${esc(r.name)} <small>${counts[i]}</small></button>`).join('')}
+        </div></div>`).join('');
+    const sync = () => document.querySelectorAll('.role').forEach((b) => b.classList.toggle('off', hidden.has(+b.dataset.role)));
+    $('#roles').addEventListener('click', (e) => {
+        const b = e.target.closest('.role');
+        if (!b) return;
+        const role = +b.dataset.role;
+        hidden.has(role) ? hidden.delete(role) : hidden.add(role);
+        sync(); refresh();
+    });
+    $('#all').addEventListener('click', () => { hidden.clear(); sync(); refresh(); });
+}
+
+function setupSearch(nodes, select) {
+    const input = $('#q'), box = $('#results');
+    let items = [], active = 0;
+    const draw = () => {
+        box.innerHTML = items.map((n, k) => `<button class="${k === active ? 'active' : ''}" data-id="${n.id}"><span style="color:${n.color}">●</span> ${esc(n.name)}<small>${esc(n.path)}</small></button>`).join('');
+        box.classList.toggle('open', items.length > 0);
+    };
+    const pick = (n) => { select(n, true); items = []; draw(); input.blur(); };
+    input.addEventListener('input', () => {
+        const q = input.value.trim().toLowerCase();
+        active = 0;
+        items = q ? nodes.filter((n) => n.path.toLowerCase().includes(q))
+            .sort((a, b) => (b.name.toLowerCase().startsWith(q) - a.name.toLowerCase().startsWith(q)) || b.fanIn - a.fanIn).slice(0, 12) : [];
+        draw();
+    });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') { active = Math.min(items.length - 1, active + 1); draw(); e.preventDefault(); }
+        if (e.key === 'ArrowUp') { active = Math.max(0, active - 1); draw(); e.preventDefault(); }
+        if (e.key === 'Enter' && items[active]) pick(items[active]);
+        if (e.key === 'Escape') { items = []; draw(); input.blur(); }
+    });
+    box.addEventListener('mousedown', (e) => {
+        const b = e.target.closest('button');
+        if (b) { e.preventDefault(); pick(nodes[+b.dataset.id]); }
+    });
+    input.addEventListener('blur', () => setTimeout(() => box.classList.remove('open'), 100));
+}
+</script>
+</body>
+</html>

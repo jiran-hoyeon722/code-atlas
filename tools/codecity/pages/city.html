@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>의존성 도시</title>
+<style>
+:root {
+    --bg: #0e1015;
+    --panel: rgba(22, 24, 30, .86);
+    --panel-solid: #16181e;
+    --text: #eceef3;
+    --muted: #9aa0ad;
+    --faint: #5c6270;
+    --border: rgba(255, 255, 255, .09);
+    --accent: #7c93f5;
+    --danger: #ff5c5c;
+    --in: #4dabf7;
+    --out: #ffa94d;
+    color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
+body { font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif; -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+canvas { display: block; }
+.glass { background: var(--panel); backdrop-filter: blur(14px); border: 1px solid var(--border); border-radius: 14px; }
+
+#top { position: fixed; top: 14px; left: 14px; z-index: 10; width: 340px; padding: 14px; }
+#top h1 { font-size: 15px; margin: 0; }
+#top .meta { color: var(--muted); font-size: 12px; margin: 2px 0 10px; }
+.search { position: relative; }
+.search input { width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255, 255, 255, .05); }
+.search input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); border-color: transparent; }
+#results { position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: var(--panel-solid); border: 1px solid var(--border); border-radius: 10px; display: none; max-height: 360px; overflow-y: auto; z-index: 2; }
+#results.open { display: block; }
+#results button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 12px; cursor: pointer; }
+#results button.active, #results button:hover { background: rgba(255, 255, 255, .07); }
+#results small { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); }
+.row select { width: 100%; background: rgba(255, 255, 255, .05); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; }
+.row select option { background: var(--panel-solid); }
+#scale { margin-top: 8px; font-size: 11px; color: var(--muted); }
+#scale .ramp { height: 6px; border-radius: 3px; margin: 3px 0 2px; }
+#scale .ends { display: flex; justify-content: space-between; }
+.links { display: flex; gap: 10px; margin-top: 10px; font-size: 12px; }
+.links a { color: var(--accent); text-decoration: none; }
+
+#legend { position: fixed; left: 14px; bottom: 14px; z-index: 10; width: 340px; padding: 12px 14px; max-height: calc(100vh - 360px); overflow-y: auto; }
+#legend h2 { font-size: 12px; margin: 0 0 6px; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; }
+#legend h2 button { border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 11px; padding: 0; }
+.layer-name { font-size: 11px; color: var(--faint); margin: 6px 0 3px; }
+.roles { display: flex; flex-wrap: wrap; gap: 4px; }
+.role { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255, 255, 255, .03); cursor: pointer; font-size: 12px; }
+.role i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.role small { color: var(--muted); }
+.role.off { opacity: .35; }
+.hint { color: var(--faint); font-size: 11px; margin-top: 8px; }
+.hint b { font-weight: 600; }
+
+#panel { position: fixed; top: 14px; right: 14px; bottom: 14px; z-index: 10; width: 380px; padding: 16px 18px; overflow-y: auto; transform: translateX(calc(100% + 20px)); transition: transform .22s ease; }
+#panel.open { transform: none; }
+#panel .close { position: absolute; top: 10px; right: 10px; border: 1px solid var(--border); background: none; border-radius: 8px; padding: 2px 9px; cursor: pointer; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; padding: 1px 9px; border-radius: 999px; background: color-mix(in srgb, var(--c) 20%, transparent); color: var(--c); }
+#panel h3 { font-size: 19px; margin: 8px 0 2px; word-break: break-all; }
+.path { color: var(--muted); font: 11px ui-monospace, Menlo, monospace; word-break: break-all; }
+.desc { color: var(--muted); margin: 8px 0 10px; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0 12px; }
+.metric { border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; }
+.metric b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; }
+.metric span { color: var(--muted); font-size: 10.5px; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.actions a, .actions button { border: 1px solid var(--border); background: rgba(255, 255, 255, .04); border-radius: 8px; padding: 4px 10px; font-size: 12px; text-decoration: none; }
+.sec { margin-top: 16px; }
+.sec h4 { margin: 0 0 6px; font-size: 12px; display: flex; justify-content: space-between; font-weight: 600; }
+.sec h4 .dot { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.item { display: flex; width: 100%; align-items: center; gap: 8px; border: 0; background: none; text-align: left; padding: 5px 6px; border-radius: 8px; cursor: pointer; }
+.item:hover { background: rgba(255, 255, 255, .06); }
+.item i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.up { color: var(--danger); font-size: 10px; font-weight: 700; margin-left: 4px; }
+.more { color: var(--faint); font-size: 11px; padding: 2px 6px; }
+
+#code { position: fixed; top: 14px; bottom: 14px; left: 14px; z-index: 15; width: min(820px, calc(100vw - 424px)); display: none; flex-direction: column; overflow: hidden; background: rgba(13, 15, 20, .96); }
+#code.open { display: flex; }
+.code-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.code-head .title { flex: 1; min-width: 0; }
+.code-head b { font-size: 15px; }
+.code-head .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-head button, .code-head a { border: 1px solid var(--border); background: rgba(255, 255, 255, .04); border-radius: 8px; padding: 4px 10px; font-size: 12px; text-decoration: none; cursor: pointer; white-space: nowrap; }
+.code-note { padding: 6px 16px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--border); }
+.code-note .ref { cursor: default; }
+.code-body { flex: 1; overflow: auto; display: flex; font: 12px/1.6 ui-monospace, "SF Mono", Menlo, monospace; }
+.code-body pre { margin: 0; padding: 12px 0; }
+.gutter { position: sticky; left: 0; padding: 12px 10px 12px 16px !important; text-align: right; color: var(--faint); background: rgba(13, 15, 20, .98); user-select: none; border-right: 1px solid var(--border); }
+.source { padding: 12px 20px !important; background: none !important; tab-size: 4; }
+.source code.hljs { background: none; padding: 0; overflow: visible; }
+.ref { color: #ffc978; text-decoration: underline dotted rgba(255, 201, 120, .6); text-underline-offset: 3px; cursor: pointer; }
+.ref:hover { background: rgba(255, 201, 120, .15); border-radius: 3px; }
+@media (max-width: 760px) { #code { width: auto; right: 14px; } }
+#tip { position: fixed; z-index: 20; pointer-events: none; display: none; background: var(--panel-solid); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 12px; max-width: 320px; }
+#tip small { color: var(--muted); display: block; }
+#loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--muted); z-index: 30; background: var(--bg); }
+
+@media (max-width: 760px) {
+    #top, #legend { width: calc(100vw - 28px); }
+    #legend { max-height: 26vh; }
+    #panel { left: 14px; width: auto; top: auto; height: 60vh; }
+}
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.10.0/styles/github-dark.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.10.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.10.0/languages/php.min.js"></script>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="loading">도시를 짓는 중…</div>
+
+<div id="top" class="glass">
+    <h1 id="title">의존성 도시</h1>
+    <div class="meta" id="meta"></div>
+    <div class="search">
+        <input id="q" type="search" placeholder="파일·클래스 검색  ( / )" autocomplete="off">
+        <div id="results"></div>
+    </div>
+    <label class="row">높이
+        <select id="height">
+            <option value="fanIn">fan-in — 나를 쓰는 파일 수</option>
+            <option value="fanOut">fan-out — 내가 쓰는 파일 수</option>
+            <option value="centrality">중심도 (PageRank)</option>
+            <option value="routeRefs">라우트 참조 수</option>
+            <option value="commits">최근 6개월 커밋</option>
+            <option value="maxComplexity">함수 최대 복잡도</option>
+            <option value="lines">줄 수</option>
+        </select>
+    </label>
+    <label class="row">색
+        <select id="color">
+            <option value="role">역할</option>
+            <option value="instability">불안정도 (기반 ↔ 말단)</option>
+            <option value="upward">역방향 의존 보유</option>
+            <option value="maxComplexity">함수 최대 복잡도</option>
+        </select>
+    </label>
+    <div id="scale"></div>
+    <div class="links">
+        <a href="explorer.html">아키텍처 탐색기 ↗</a>
+        <a href="graph.html">3D 그래프 ↗</a>
+        <a href="../">레포 목록</a>
+    </div>
+</div>
+
+<div id="legend" class="glass">
+    <h2>구역 = 역할 (클릭해서 켜고 끄기) <button id="all">전체 켜기</button></h2>
+    <div id="roles"></div>
+    <div class="hint">앞줄부터 <b>진입점 → 애플리케이션 → 도메인·인프라 → 기반</b> 순서로 도로가 나뉘어요. 건물을 클릭하면 참조선이 떠요 — <b style="color:var(--in)">파랑</b> 나를 쓰는 곳, <b style="color:var(--out)">주황</b> 내가 쓰는 것, <b style="color:var(--danger)">빨강</b> 역방향. 점선이 흐르는 방향이 참조 방향이에요.</div>
+</div>
+
+<section id="code" class="glass" aria-label="소스 코드">
+    <div class="code-head">
+        <div class="title"><b id="code-name"></b><div class="path" id="code-path"></div></div>
+        <a id="code-vscode" href="#">VS Code 에서 열기</a>
+        <button id="code-close">닫기</button>
+    </div>
+    <div class="code-note">밑줄 친 <span class="ref">클래스 이름</span>을 클릭하면 그 건물로 이동하고 코드도 따라 열려요.</div>
+    <div class="code-body"><pre class="gutter" id="code-gutter"></pre><pre class="source"><code class="hljs language-php" id="code-src"></code></pre></div>
+</section>
+
+<aside id="panel" class="glass"><button class="close" id="close">닫기</button><div id="panel-body"></div></aside>
+<div id="tip"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const ROLE_COLORS = {
+    Controller: '#4c6ef5', Middleware: '#748ffc', Request: '#91a7ff', Resource: '#339af0', Console: '#1c7ed6', WebSocket: '#74c0fc', Provider: '#5c7cfa',
+    Action: '#12b886', Service: '#ff922b', Job: '#20c997', Listener: '#63e6be', Observer: '#0ca678', Mail: '#96f2d7',
+    Repository: '#9775fa', Gateway: '#cc5de8', Domain: '#e599f7', Model: '#be4bdb', Event: '#f783ac',
+    Data: '#8a929c', Enum: '#a9e34b', Exception: '#ffd43b', Support: '#b8bfc7',
+};
+const LAYER_TINT = ['#4c6ef5', '#12b886', '#9775fa', '#8a929c'];
+const KIND_LABEL = {
+    inject: '생성자 주입', type: '타입 힌트', 'static-call': '정적 호출', new: 'new 생성', const: '상수·enum',
+    'class-ref': '::class', trait: '트레이트', catch: 'catch', instanceof: 'instanceof', extends: '상속',
+    implements: '구현', attribute: '어트리뷰트', triggers: '이벤트→리스너', binds: '바인딩', other: '기타',
+};
+const CELL = 4, ROAD = 8, AVENUE = 22, MAX_HEIGHT = 70;
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (n) => Number(n).toLocaleString('ko-KR');
+
+const A = await fetch('architecture.json').then((r) => r.json());
+document.title = `${A.title} 의존성 도시`;
+$('#title').textContent = document.title;
+A.roles.forEach((r, i) => { ROLE_COLORS[r.name] ??= `hsl(${(i * 137) % 360} 55% 62%)`; });
+const nodes = A.nodes.map((n, i) => ({
+    ...n, i,
+    name: n.path.split('/').pop().replace(/\.[^./]+$/, ''),
+    layer: A.roles[n.role].layer,
+    color: new THREE.Color(ROLE_COLORS[A.roles[n.role].name] ?? '#b8bfc7'),
+    css: ROLE_COLORS[A.roles[n.role].name] ?? '#b8bfc7',
+    incoming: [], outgoing: [], neighbors: new Set(), upStrong: 0, upWeak: 0,
+}));
+A.edges.forEach(([f, t, w, kinds, up]) => {
+    const strong = !!up && ((nodes[f].layer >= 2 && nodes[t].layer <= 1) || nodes[t].layer === 0);
+    const e = { f, t, w, kinds, up: !!up, strong };
+    nodes[f].outgoing.push(e); nodes[t].incoming.push(e);
+    nodes[f].neighbors.add(t); nodes[t].neighbors.add(f);
+    if (e.up) strong ? nodes[f].upStrong++ : nodes[f].upWeak++;
+});
+$('#meta').textContent = `건물 ${fmt(nodes.length)}채 · 참조 ${fmt(A.edges.length)}쌍 · ${new Date(A.generatedAt).toLocaleDateString('ko-KR')}`;
+
+// ---- layout: one row (street) per layer, one square district per role, files in path order ----
+const byRole = A.roles.map(() => []);
+nodes.forEach((n) => byRole[n.role].push(n));
+byRole.forEach((list) => list.sort((a, b) => a.path.localeCompare(b.path)));
+const districts = [];
+const rows = [];
+let zCursor = 0;
+A.layers.forEach((layer, li) => {
+    const roles = A.roles.map((r, i) => i).filter((i) => A.roles[i].layer === li);
+    const sides = roles.map((ri) => Math.max(1, Math.ceil(Math.sqrt(byRole[ri].length))));
+    const depth = Math.max(...roles.map((ri, k) => Math.ceil(byRole[ri].length / sides[k]))) * CELL;
+    const width = sides.reduce((s, v) => s + v * CELL, 0) + ROAD * (roles.length - 1);
+    let x = -width / 2;
+    roles.forEach((ri, k) => {
+        const side = sides[k];
+        const d = { ri, x, z: zCursor, w: side * CELL, d: Math.ceil(byRole[ri].length / side) * CELL };
+        byRole[ri].forEach((n, j) => {
+            n.cx = x + (j % side) * CELL + CELL / 2;
+            n.cz = zCursor + Math.floor(j / side) * CELL + CELL / 2;
+        });
+        districts.push(d);
+        x += side * CELL + ROAD;
+    });
+    rows.push({ li, z: zCursor, depth, width });
+    zCursor += depth + AVENUE;
+});
+const totalDepth = zCursor - AVENUE;
+const flipZ = (z) => totalDepth / 2 - z;
+nodes.forEach((n) => { n.cz = flipZ(n.cz); });
+districts.forEach((d) => { d.cz = flipZ(d.z + d.d / 2); d.front = flipZ(d.z); });
+rows.forEach((r) => { r.front = flipZ(r.z); r.cz = flipZ(r.z + r.depth / 2); });
+const citySize = Math.max(...rows.map((r) => r.width), totalDepth);
+
+// ---- scene ----
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+
+const bg = new THREE.Color('#0e1015');
+const scene = new THREE.Scene();
+scene.background = bg;
+scene.fog = new THREE.Fog(bg, citySize * 1.1, citySize * 3.2);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 1, citySize * 8);
+camera.position.set(-citySize * 0.3, citySize * 0.62, citySize * 1.02);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.47;
+controls.target.set(citySize * 0.06, 0, citySize * 0.08);
+
+scene.add(new THREE.HemisphereLight('#c9d4ff', '#1a1c22', 1.1));
+const sun = new THREE.DirectionalLight('#ffffff', 1.6);
+sun.position.set(-citySize * 0.4, citySize * 0.9, citySize * 0.5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+Object.assign(sun.shadow.camera, { left: -citySize * 0.7, right: citySize * 0.7, top: citySize * 0.7, bottom: -citySize * 0.7, far: citySize * 3 });
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(citySize * 6, citySize * 6), new THREE.MeshStandardMaterial({ color: '#15171d', roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+rows.forEach((r) => {
+    const avenue = new THREE.Mesh(new THREE.PlaneGeometry(r.width + 40, r.depth + 10), new THREE.MeshStandardMaterial({ color: LAYER_TINT[r.li], transparent: true, opacity: 0.07, roughness: 1 }));
+    avenue.rotation.x = -Math.PI / 2;
+    avenue.position.set(0, 0.05, r.cz);
+    scene.add(avenue);
+});
+districts.forEach((d) => {
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(d.w + 1.5, 0.5, d.d + 1.5), new THREE.MeshStandardMaterial({ color: new THREE.Color(ROLE_COLORS[A.roles[d.ri].name]).multiplyScalar(0.28), roughness: 0.9 }));
+    plate.position.set(d.x + d.w / 2, 0.25, d.cz);
+    plate.receiveShadow = true;
+    scene.add(plate);
+});
+
+function label(text, sub, color, scale) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const nameFont = '600 96px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    const subFont = '500 60px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.font = nameFont;
+    const nameWidth = ctx.measureText(text).width;
+    ctx.font = subFont;
+    const subWidth = sub ? ctx.measureText(sub).width + 28 : 0;
+    canvas.width = Math.ceil(90 + nameWidth + subWidth + 40);
+    canvas.height = 150;
+    ctx.fillStyle = 'rgba(14,16,21,0.82)';
+    ctx.beginPath();
+    ctx.roundRect(0, 0, canvas.width, canvas.height, 40);
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(62, 75, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.textBaseline = 'middle';
+    ctx.font = nameFont;
+    ctx.fillStyle = '#f1f3f8';
+    ctx.fillText(text, 100, 78);
+    if (sub) {
+        ctx.font = subFont;
+        ctx.fillStyle = 'rgba(190,196,208,.85)';
+        ctx.fillText(sub, 128 + nameWidth, 80);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 8;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+    sprite.scale.set(scale * canvas.width / canvas.height, scale, 1);
+    sprite.center.set(0, 0);
+    sprite.renderOrder = 2;
+    return sprite;
+}
+districts.forEach((d) => {
+    const role = A.roles[d.ri];
+    const s = label(role.name, `${byRole[d.ri].length}개`, ROLE_COLORS[role.name], Math.max(4, Math.min(7, d.w / 5)));
+    s.position.set(d.x, 0.6, d.front + 3);
+    scene.add(s);
+});
+rows.forEach((r) => {
+    const s = label(A.layers[r.li].label, A.layers[r.li].hint, LAYER_TINT[r.li], 11);
+    s.position.set(r.width / 2 + 10, 0.6, r.front - r.depth / 2);
+    scene.add(s);
+});
+
+// ---- buildings (one instanced mesh) ----
+const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
+boxGeometry.translate(0, 0.5, 0);
+const buildings = new THREE.InstancedMesh(boxGeometry, new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.08 }), nodes.length);
+buildings.castShadow = true;
+buildings.receiveShadow = true;
+scene.add(buildings);
+
+const hoverBox = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeometry), new THREE.LineBasicMaterial({ color: '#ffffff' }));
+hoverBox.visible = false;
+scene.add(hoverBox);
+const selectBox = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeometry), new THREE.LineBasicMaterial({ color: '#ffffff' }));
+selectBox.visible = false;
+scene.add(selectBox);
+
+const state = { height: 'fanIn', color: 'role', selected: null, hidden: new Set() };
+const matrix = new THREE.Matrix4();
+const quaternion = new THREE.Quaternion();
+const gray = new THREE.Color('#2a2d35');
+const tmp = new THREE.Color();
+
+function footprint(n) { return Math.min(3.4, Math.max(1.3, 0.9 + Math.sqrt(n.lines) / 10)); }
+
+function applyHeights() {
+    const max = Math.max(1, ...nodes.map((n) => n[state.height]));
+    nodes.forEach((n) => {
+        const visible = !state.hidden.has(n.role);
+        n.h = 0.8 + (MAX_HEIGHT - 0.8) * Math.sqrt(Math.max(0, n[state.height])) / Math.sqrt(max);
+        const fp = visible ? footprint(n) : 0.0001;
+        matrix.compose(new THREE.Vector3(n.cx, 0.5, n.cz), quaternion, new THREE.Vector3(fp, visible ? n.h : 0.0001, fp));
+        buildings.setMatrixAt(n.i, matrix);
+    });
+    buildings.instanceMatrix.needsUpdate = true;
+    buildings.computeBoundingSphere();
+    if (state.selected) drawArcs(state.selected);
+    placeBox(selectBox, state.selected);
+}
+
+const ramp = (t) => tmp.setHSL((1 - Math.max(0, Math.min(1, t))) * 0.62, 0.78, 0.55).clone();
+const SCALES = {
+    instability: ['0 기반(안정)', '1 말단'],
+    maxComplexity: ['단순', '복잡 (60+)'],
+};
+function baseColor(n) {
+    switch (state.color) {
+        case 'instability': return n.fanIn + n.fanOut ? ramp(n.instability) : gray.clone();
+        case 'upward': return n.upStrong ? new THREE.Color('#ff5c5c') : n.upWeak ? new THREE.Color('#ffa94d') : new THREE.Color('#3a3f4a');
+        case 'maxComplexity': return ramp(n.maxComplexity / 60);
+        default: return n.color.clone();
+    }
+}
+function applyColors() {
+    const sel = state.selected;
+    nodes.forEach((n) => {
+        const c = baseColor(n);
+        if (sel && n !== sel && !sel.neighbors.has(n.i)) c.lerp(gray, 0.88);
+        buildings.setColorAt(n.i, c);
+    });
+    buildings.instanceColor.needsUpdate = true;
+    const scale = SCALES[state.color];
+    $('#scale').innerHTML = scale
+        ? `<div class="ramp" style="background:linear-gradient(90deg,hsl(223 78% 55%),hsl(112 78% 55%),hsl(56 78% 55%),hsl(0 78% 55%))"></div><div class="ends"><span>${scale[0]}</span><span>${scale[1]}</span></div>`
+        : state.color === 'upward' ? '<span style="color:#ff5c5c">■</span> 강한 역방향 보유 &nbsp; <span style="color:#ffa94d">■</span> 약한 역방향만 보유' : '';
+}
+
+function placeBox(box, n) {
+    box.visible = !!n && !state.hidden.has(n.role);
+    if (!box.visible) return;
+    const fp = footprint(n) + 0.35;
+    box.position.set(n.cx, 0.5, n.cz);
+    box.scale.set(fp, n.h + 0.3, fp);
+}
+
+// ---- dependency arcs for the selected building ----
+const arcs = new THREE.Group();
+scene.add(arcs);
+const dashOffset = { value: 0 };
+// LineDashedMaterial has no dash offset; inject one so dashes flow from the referencing file to the referenced one
+function flowingDash(color, opacity) {
+    const material = new THREE.LineDashedMaterial({ color, dashSize: 2.2, gapSize: 1.4, transparent: true, opacity });
+    material.onBeforeCompile = (shader) => {
+        shader.uniforms.dashOffset = dashOffset;
+        shader.fragmentShader = shader.fragmentShader
+            .replace('uniform float dashSize;', 'uniform float dashSize;\nuniform float dashOffset;')
+            .replace('mod( vLineDistance, totalSize )', 'mod( vLineDistance - dashOffset, totalSize )');
+    };
+    return material;
+}
+const arcMaterials = {
+    in: flowingDash('#4dabf7', 0.9),
+    out: flowingDash('#ffa94d', 0.9),
+    up: flowingDash('#ff5c5c', 1),
+};
+function drawArcs(n) {
+    arcs.children.forEach((line) => line.geometry.dispose());
+    arcs.clear();
+    if (!n) return;
+    const add = (from, to, material) => {
+        if (state.hidden.has(from.role) || state.hidden.has(to.role)) return;
+        const a = new THREE.Vector3(from.cx, from.h + 0.6, from.cz);
+        const b = new THREE.Vector3(to.cx, to.h + 0.6, to.cz);
+        const lift = Math.max(a.y, b.y) + 12 + a.distanceTo(b) * 0.28;
+        const mid = a.clone().lerp(b, 0.5).setY(lift);
+        const geometry = new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(a, mid, b).getPoints(48));
+        const line = new THREE.Line(geometry, material);
+        line.computeLineDistances();
+        arcs.add(line);
+    };
+    n.incoming.forEach((e) => add(nodes[e.f], n, e.strong ? arcMaterials.up : arcMaterials.in));
+    n.outgoing.forEach((e) => add(n, nodes[e.t], e.strong ? arcMaterials.up : arcMaterials.out));
+}
+
+// ---- selection, camera flight, panel ----
+let flight = null;
+function flyTo(n) {
+    const target = new THREE.Vector3(n.cx, n.h / 2, n.cz);
+    const direction = camera.position.clone().sub(controls.target).normalize();
+    const distance = Math.max(110, n.h * 2.4 + 60);
+    flight = {
+        start: performance.now(), duration: 900,
+        fromPos: camera.position.clone(), toPos: target.clone().add(direction.multiplyScalar(distance)),
+        fromTarget: controls.target.clone(), toTarget: target,
+    };
+}
+
+function select(n, fly = false) {
+    state.selected = n;
+    applyColors();
+    drawArcs(n);
+    placeBox(selectBox, n);
+    if (!n) { $('#panel').classList.remove('open'); return; }
+    renderPanel(n);
+    if (fly) flyTo(n);
+}
+window.selectNode = (i) => select(nodes[i], true);
+
+function renderPanel(n) {
+    const role = A.roles[n.role];
+    const list = (edges, side, label, color) => {
+        const sorted = [...edges].sort((a, b) => (b.strong - a.strong) || (b.w - a.w));
+        return `<div class="sec"><h4><span><span class="dot" style="background:${color}"></span>${label}</span><span>${sorted.length}</span></h4>${sorted.slice(0, 40).map((e) => {
+            const o = nodes[e[side]];
+            const kinds = Object.keys(e.kinds).map((k) => KIND_LABEL[k] ?? k).join(' · ');
+            return `<button class="item" onclick="selectNode(${o.i})"><i style="background:${o.css}"></i><span>${esc(o.name)}${e.strong ? '<b class="up">역방향</b>' : ''}</span><small>${esc(kinds)}</small></button>`;
+        }).join('') || '<div class="more">없음</div>'}${sorted.length > 40 ? `<div class="more">외 ${sorted.length - 40}개 — 탐색기에서 전체 보기</div>` : ''}</div>`;
+    };
+    $('#panel-body').innerHTML = `
+        <span class="chip" style="--c:${n.css}">${esc(role.name)} · ${esc(A.layers[n.layer].label)}</span>
+        <h3>${esc(n.name)}</h3>
+        <div class="path">${esc(n.path)}</div>
+        <p class="desc">${esc(role.description)}</p>
+        <div class="metrics">
+            <div class="metric"><b>${fmt(n.fanIn)}</b><span>fan-in</span></div>
+            <div class="metric"><b>${fmt(n.fanOut)}</b><span>fan-out</span></div>
+            <div class="metric"><b>${n.centrality.toFixed(1)}×</b><span>중심도</span></div>
+            <div class="metric"><b>${n.instability.toFixed(2)}</b><span>불안정도</span></div>
+            <div class="metric"><b>${fmt(n.routeRefs)}</b><span>라우트 참조</span></div>
+            <div class="metric"><b>${fmt(n.commits)}</b><span>최근 커밋</span></div>
+            <div class="metric"><b>${fmt(n.maxComplexity)}</b><span>함수 최대 복잡도</span></div>
+            <div class="metric"><b>${fmt(n.lines)}</b><span>줄 수</span></div>
+        </div>
+        <div class="actions">
+            <button onclick="openCode(${n.i})">코드 보기</button>
+            <a href="vscode://file${esc(A.repo)}/${esc(n.path)}">VS Code 에서 열기</a>
+            <a href="explorer.html#file=${encodeURIComponent(n.path)}" target="_blank" rel="noopener">탐색기에서 보기 ↗</a>
+        </div>
+        ${list(n.incoming, 'f', '나를 쓰는 곳', 'var(--in)')}
+        ${list(n.outgoing, 't', '내가 쓰는 것', 'var(--out)')}`;
+    $('#panel').classList.add('open');
+}
+
+// ---- source viewer ----
+let codeRequest = 0;
+async function openCode(i) {
+    const n = nodes[i];
+    const request = ++codeRequest;
+    $('#code').classList.add('open');
+    $('#code-name').textContent = n.name;
+    $('#code-path').textContent = `${n.path} · ${fmt(n.lines)}줄`;
+    $('#code-vscode').href = `vscode://file${A.repo}/${n.path}`;
+    $('#code-src').textContent = '불러오는 중…';
+    $('#code-gutter').textContent = '';
+    let source;
+    try {
+        const response = await fetch('src/' + n.path.split('/').map(encodeURIComponent).join('/'));
+        if (!response.ok) throw new Error(response.status);
+        source = await response.text();
+    } catch (e) {
+        $('#code-src').textContent = `소스를 불러오지 못했어요 (${e.message}). tools/codecity/serve.sh 로 서버를 띄우면 ${A.sourceDir}/ 가 연결돼요.`;
+        return;
+    }
+    if (request !== codeRequest) return;
+    const code = $('#code-src');
+    code.innerHTML = hljs.highlight(source, { language: hljs.getLanguage(A.language) ? A.language : 'plaintext' }).value;
+    $('#code-gutter').textContent = source.split('\n').map((_, k) => k + 1).join('\n');
+    linkReferences(code, n);
+    $('.code-body').scrollTop = 0;
+}
+window.openCode = openCode;
+
+// Wraps the short class names this file references so they jump to that building.
+function linkReferences(root, n) {
+    const targets = new Map();
+    n.outgoing.forEach((e) => {
+        const target = nodes[e.t];
+        if (!targets.has(target.name)) targets.set(target.name, target);
+    });
+    if (!targets.size) return;
+    const pattern = new RegExp(`\\b(${[...targets.keys()].sort((a, b) => b.length - a.length).map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'g');
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    textNodes.forEach((text) => {
+        const value = text.nodeValue;
+        pattern.lastIndex = 0;
+        if (!pattern.test(value)) return;
+        const fragment = document.createDocumentFragment();
+        let last = 0;
+        value.replace(pattern, (match, name, offset) => {
+            fragment.append(value.slice(last, offset));
+            const link = document.createElement('span');
+            link.className = 'ref';
+            link.dataset.i = targets.get(name).i;
+            link.title = targets.get(name).path;
+            link.textContent = match;
+            fragment.append(link);
+            last = offset + match.length;
+            return match;
+        });
+        fragment.append(value.slice(last));
+        text.replaceWith(fragment);
+    });
+}
+$('#code-src').addEventListener('click', (e) => {
+    const link = e.target.closest('.ref');
+    if (!link) return;
+    select(nodes[+link.dataset.i], true);
+    openCode(+link.dataset.i);
+});
+$('#code-close').addEventListener('click', () => $('#code').classList.remove('open'));
+
+// ---- picking ----
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let hovered = null, downAt = null;
+function pick(ev) {
+    pointer.set((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObject(buildings)[0];
+    return hit ? nodes[hit.instanceId] : null;
+}
+renderer.domElement.addEventListener('pointermove', (ev) => {
+    const n = pick(ev);
+    hovered = n;
+    placeBox(hoverBox, n);
+    renderer.domElement.style.cursor = n ? 'pointer' : '';
+    const tip = $('#tip');
+    if (!n) { tip.style.display = 'none'; return; }
+    tip.innerHTML = `<b>${esc(n.name)}</b> <span style="color:${n.css}">${esc(A.roles[n.role].name)}</span><small>fan-in ${n.fanIn} · fan-out ${n.fanOut} · 중심도 ${n.centrality.toFixed(1)}</small><small>${esc(n.path)}</small>`;
+    tip.style.display = 'block';
+    tip.style.left = Math.min(ev.clientX + 14, innerWidth - tip.offsetWidth - 8) + 'px';
+    tip.style.top = ev.clientY + 16 + 'px';
+});
+renderer.domElement.addEventListener('pointerleave', () => { $('#tip').style.display = 'none'; hoverBox.visible = false; });
+renderer.domElement.addEventListener('pointerdown', (ev) => { downAt = [ev.clientX, ev.clientY]; });
+renderer.domElement.addEventListener('pointerup', (ev) => {
+    if (!downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 5) return;
+    const n = pick(ev);
+    select(n, false);
+});
+renderer.domElement.addEventListener('dblclick', (ev) => { const n = pick(ev); if (n) select(n, true); });
+
+// ---- ui ----
+$('#height').addEventListener('change', (e) => { state.height = e.target.value; applyHeights(); });
+$('#color').addEventListener('change', (e) => { state.color = e.target.value; applyColors(); });
+$('#close').addEventListener('click', () => select(null));
+
+const counts = A.roles.map((r, i) => byRole[i].length);
+$('#roles').innerHTML = A.layers.map((layer, li) => `
+    <div class="layer-name">${esc(layer.label)}</div><div class="roles">
+    ${A.roles.map((r, i) => ({ r, i })).filter(({ r }) => r.layer === li).map(({ r, i }) =>
+        `<button class="role" data-role="${i}" title="${esc(r.description)}"><i style="background:${ROLE_COLORS[r.name]}"></i>${esc(r.name)} <small>${counts[i]}</small></button>`).join('')}
+    </div>`).join('');
+const syncRoles = () => document.querySelectorAll('.role').forEach((b) => b.classList.toggle('off', state.hidden.has(+b.dataset.role)));
+$('#roles').addEventListener('click', (e) => {
+    const b = e.target.closest('.role');
+    if (!b) return;
+    const role = +b.dataset.role;
+    state.hidden.has(role) ? state.hidden.delete(role) : state.hidden.add(role);
+    syncRoles(); applyHeights();
+});
+$('#all').addEventListener('click', () => { state.hidden.clear(); syncRoles(); applyHeights(); });
+
+(function setupSearch() {
+    const input = $('#q'), box = $('#results');
+    let items = [], active = 0;
+    const draw = () => {
+        box.innerHTML = items.map((n, k) => `<button class="${k === active ? 'active' : ''}" data-i="${n.i}"><span style="color:${n.css}">■</span> ${esc(n.name)}<small>${esc(n.path)}</small></button>`).join('');
+        box.classList.toggle('open', items.length > 0);
+    };
+    const choose = (n) => { select(n, true); items = []; draw(); input.blur(); };
+    input.addEventListener('input', () => {
+        const q = input.value.trim().toLowerCase();
+        active = 0;
+        items = q ? nodes.filter((n) => n.path.toLowerCase().includes(q))
+            .sort((a, b) => (b.name.toLowerCase().startsWith(q) - a.name.toLowerCase().startsWith(q)) || b.fanIn - a.fanIn).slice(0, 12) : [];
+        draw();
+    });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') { active = Math.min(items.length - 1, active + 1); draw(); e.preventDefault(); }
+        if (e.key === 'ArrowUp') { active = Math.max(0, active - 1); draw(); e.preventDefault(); }
+        if (e.key === 'Enter' && items[active]) choose(items[active]);
+        if (e.key === 'Escape') { items = []; draw(); input.blur(); }
+    });
+    box.addEventListener('mousedown', (e) => {
+        const b = e.target.closest('button');
+        if (b) { e.preventDefault(); choose(nodes[+b.dataset.i]); }
+    });
+    input.addEventListener('blur', () => setTimeout(() => box.classList.remove('open'), 100));
+    addEventListener('keydown', (e) => {
+        if (e.key === '/' && document.activeElement !== input) { e.preventDefault(); input.focus(); }
+        if (e.key === 'Escape' && document.activeElement !== input) {
+            if ($('#code').classList.contains('open')) $('#code').classList.remove('open'); else select(null);
+        }
+    });
+})();
+
+addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+});
+
+applyHeights();
+applyColors();
+const hashParams = new URLSearchParams(location.hash.slice(1));
+const linked = nodes.find((n) => n.path === hashParams.get('file'));
+if (linked) {
+    select(linked, true);
+    if (hashParams.has('code')) openCode(linked.i);
+}
+$('#loading').remove();
+
+let last = performance.now();
+renderer.setAnimationLoop((now) => {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    dashOffset.value += dt * 7;
+    if (flight) {
+        const t = Math.min(1, (now - flight.start) / flight.duration);
+        const k = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        camera.position.lerpVectors(flight.fromPos, flight.toPos, k);
+        controls.target.lerpVectors(flight.fromTarget, flight.toTarget, k);
+        if (t === 1) flight = null;
+    }
+    controls.update();
+    renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
