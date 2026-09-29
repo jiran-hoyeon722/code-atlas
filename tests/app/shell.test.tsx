@@ -17,6 +17,7 @@ const h = vi.hoisted(() => {
   };
   return {
     webgl: true,
+    cityGate: Promise.resolve() as Promise<void>,
     envs: {} as Record<string, unknown>,
     city: make('city'),
     graph: make('graph'),
@@ -24,7 +25,10 @@ const h = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../src/features/city/mountCity', () => ({ mountCity: h.city.mount }));
+vi.mock('../../src/features/city/mountCity', async () => {
+  await h.cityGate;
+  return { mountCity: h.city.mount };
+});
 vi.mock('../../src/features/graph/mountGraph', () => ({ mountGraph: h.graph.mount }));
 vi.mock('../../src/features/explorer/mountExplorer', () => ({ mountExplorer: h.explorer.mount }));
 vi.mock('../../src/features/shell/webgl', () => ({ hasWebGL: () => h.webgl }));
@@ -172,6 +176,29 @@ describe('ViewerShell', () => {
     expect(await envOf('city').readSource('src/a.ts')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '폴더 다시 연결' }));
     expect(p.onReconnect).toHaveBeenCalledTimes(1);
+  });
+
+  test('a slow view import resolving after a tab switch never mounts over the new tab', async () => {
+    let release!: () => void;
+    h.cityGate = new Promise<void>((r) => { release = r; });
+    vi.resetModules();
+    const { ViewerShell: Fresh } = await import('../../src/features/shell/ViewerShell');
+    render(<Fresh {...props()} />);
+    expect(screen.getByText('불러오는 중…')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: '탐색기' }));
+    await screen.findByText('view:explorer');
+    await act(async () => {
+      release();
+      await h.cityGate;
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(h.city.mount).not.toHaveBeenCalled();
+    expect(h.explorer.mount).toHaveBeenCalledTimes(1);
+    expect(h.explorer.dispose).not.toHaveBeenCalled();
+    expect(screen.getByText('view:explorer')).toBeTruthy();
+    expect(screen.queryByText('불러오는 중…')).toBeNull();
+    expect(location.hash).toBe('#explorer');
+    h.cityGate = Promise.resolve();
   });
 
   test('cc.json download creates a blob named after the repo', async () => {
