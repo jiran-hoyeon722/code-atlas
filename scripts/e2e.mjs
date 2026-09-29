@@ -10,9 +10,11 @@ const OUT = resolve(ROOT, 'test-results/e2e');
 const REACT = resolve(ROOT, 'tests/fixtures/react-mini');
 const LARAVEL = resolve(ROOT, 'tests/fixtures/laravel-mini');
 
+let preview = null;
 const results = [];
 const external = [];
 const consoleErrors = [];
+const cspEvents = [];
 const notes = [];
 
 function run(cmd, args) {
@@ -27,6 +29,7 @@ async function startPreview() {
   let log = '';
   p.stdout.on('data', (d) => (log += d));
   p.stderr.on('data', (d) => (log += d));
+  preview = p;
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     if (p.exitCode !== null) throw new Error(`vite preview exited early:\n${log}`);
@@ -37,6 +40,7 @@ async function startPreview() {
     }
     await new Promise((r) => setTimeout(r, 200));
   }
+  stopPreview(p);
   throw new Error(`vite preview did not start:\n${log}`);
 }
 
@@ -72,7 +76,9 @@ const shot = (page, name) => page.screenshot({ path: resolve(OUT, name) });
 function initScript() {
   window.__csp = [];
   document.addEventListener('securitypolicyviolation', (e) => {
-    window.__csp.push({ directive: e.violatedDirective, blocked: e.blockedURI, source: e.sourceFile, line: e.lineNumber });
+    const v = { directive: e.violatedDirective, blocked: e.blockedURI, source: e.sourceFile, line: e.lineNumber };
+    window.__csp.push(v);
+    window.__reportCsp?.(v);
   });
   window.__loading = { seen: false, reading: false };
   const check = () => {
@@ -88,10 +94,6 @@ async function waitForCity(page) {
   await page.waitForSelector('.ca-shell [role=tab][aria-selected=true]:has-text("도시")', { timeout: 60_000 });
   await page.waitForSelector('.ca-shell-mount canvas', { timeout: 30_000 });
   await page.waitForTimeout(3000);
-}
-
-async function cspViolations(page) {
-  return page.evaluate(() => window.__csp);
 }
 
 async function openFolder(page, dir, loadingShot) {
@@ -116,7 +118,6 @@ async function openFolder(page, dir, loadingShot) {
   return { captured: !!miniCity, miniCity, ...(await page.evaluate(() => window.__loading)) };
 }
 
-let preview = null;
 // hard upper bound so a hung browser or server can never stall the run
 const watchdog = setTimeout(() => {
   console.error('e2e watchdog: exceeded 8 minutes, aborting');
@@ -125,14 +126,23 @@ const watchdog = setTimeout(() => {
 }, 8 * 60_000);
 watchdog.unref();
 
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, () => {
+    stopPreview(preview);
+    process.exit(130);
+  });
+}
+
 async function main() {
   await mkdir(OUT, { recursive: true });
   console.log('build');
   await run('npm', ['run', 'build']);
-  preview = await startPreview();
-  const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  await startPreview();
+  let browser = null;
   try {
+    browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await context.exposeBinding('__reportCsp', (_source, v) => cspEvents.push(v));
     await context.addInitScript(initScript);
     const page = await context.newPage();
     page.on('request', (r) => {
@@ -229,11 +239,10 @@ async function main() {
       assert(consoleErrors.length === 0, consoleErrors.join('\n'));
     });
     await step('no CSP violations', async () => {
-      const v = await cspViolations(page);
-      assert(v.length === 0, JSON.stringify(v, null, 2));
+      assert(cspEvents.length === 0, JSON.stringify(cspEvents, null, 2));
     });
   } finally {
-    await browser.close();
+    await browser?.close().catch(() => {});
     stopPreview(preview);
   }
 }
