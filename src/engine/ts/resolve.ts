@@ -36,32 +36,53 @@ function normalize(path: string): string | null {
 const dirname = (p: string): string => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
 const join = (dir: string, rel: string): string | null => normalize(dir ? `${dir}/${rel}` : rel);
 
-/** Strips // and /* *\/ comments and trailing commas, leaving string literals untouched. */
-function stripJsonc(text: string): string {
-  let out = '';
+/** Copies `text` while calling `onOther` for each char outside string literals; strings are kept verbatim. */
+function scan(text: string, onOther: (i: number) => number, emit: (s: string) => void): void {
   let i = 0;
   while (i < text.length) {
-    const c = text[i];
-    if (c === '"') {
+    if (text[i] === '"') {
       let j = i + 1;
       while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
-      out += text.slice(i, j + 1);
+      emit(text.slice(i, j + 1));
       i = j + 1;
-    } else if (c === '/' && text[i + 1] === '/') {
-      while (i < text.length && text[i] !== '\n') i++;
-    } else if (c === '/' && text[i + 1] === '*') {
-      const end = text.indexOf('*/', i + 2);
-      i = end < 0 ? text.length : end + 2;
-    } else if (c === ',') {
-      let j = i + 1;
-      while (j < text.length && /\s/.test(text[j])) j++;
-      if (text[j] !== '}' && text[j] !== ']') out += c;
-      i++;
-    } else {
-      out += c;
-      i++;
-    }
+    } else i = onOther(i);
   }
+}
+
+/** Strips comments, then trailing commas (second pass so comments between comma and bracket are handled). */
+function stripJsonc(text: string): string {
+  let noComments = '';
+  scan(
+    text,
+    (i) => {
+      if (text[i] === '/' && text[i + 1] === '/') {
+        while (i < text.length && text[i] !== '\n') i++;
+        return i;
+      }
+      if (text[i] === '/' && text[i + 1] === '*') {
+        const end = text.indexOf('*/', i + 2);
+        noComments += ' ';
+        return end < 0 ? text.length : end + 2;
+      }
+      noComments += text[i];
+      return i + 1;
+    },
+    (s) => (noComments += s),
+  );
+  let out = '';
+  scan(
+    noComments,
+    (i) => {
+      if (noComments[i] === ',') {
+        let j = i + 1;
+        while (j < noComments.length && /\s/.test(noComments[j])) j++;
+        if (noComments[j] === '}' || noComments[j] === ']') return i + 1;
+      }
+      out += noComments[i];
+      return i + 1;
+    },
+    (s) => (out += s),
+  );
   return out;
 }
 

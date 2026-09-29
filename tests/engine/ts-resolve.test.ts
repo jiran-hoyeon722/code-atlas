@@ -86,6 +86,13 @@ describe('ts resolve', () => {
     expect(rr('src/b.tsx', '@/lib/util')).toBe('src/lib/util.ts');
   });
 
+  test('trailing comma followed by a comment is stripped', () => {
+    const line = mk({ 'tsconfig.json': '{"compilerOptions":{"paths":{"@/*":["src/*"], // note\n }}}' });
+    expect(line('src/b.tsx', '@/a')).toBe('src/a.ts');
+    const block = mk({ 'tsconfig.json': '{"compilerOptions":{"paths":{"@/*":["src/*"], /* c */ }}}' });
+    expect(block('src/b.tsx', '@/a')).toBe('src/a.ts');
+  });
+
   test('invalid json config is ignored', () => {
     const rr = mk({ 'tsconfig.json': '{not json' });
     expect(rr('src/b.tsx', './a')).toBe('src/a.ts');
