@@ -20,6 +20,8 @@ code-atlas 는 **소스코드 기반 3D 시각자료를 만드는 프로그램**
 4. 테스트 예제는 직접 만든 가짜 코드만 쓴다.
 5. 실제 레포와의 대조는 경로를 인자로 받는 로컬 스크립트로만 하고, 결과·기준 수치는 git 제외 폴더(`.local/`)에 둔다.
 6. 외부 리소스는 빌드에 번들한다(런타임 CDN 로드 금지). 분석 중인 페이지가 제3자 서버에 요청을 보내지 않게 하기 위함.
+7. CSP 로 외부 전송을 강제로 막는다: `default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; worker-src 'self' blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'`. 실수로 전송 코드가 들어가도 브라우저가 차단한다.
+8. 분석 대상의 코드·파일 이름은 신뢰하지 않는다. DOM 에 넣을 때 항상 escape 하고(`innerHTML` 에는 highlight.js 결과나 escape 된 문자열만), 파일 내용을 실행하지 않는다.
 
 ## 3. 범위
 
@@ -126,7 +128,20 @@ code-atlas 는 **소스코드 기반 3D 시각자료를 만드는 프로그램**
 - 화면 확인: 헤드리스 Chrome(WebGL 은 swiftshader, CDP 로 대기 후 캡처)으로 첫 화면·로딩·도시·그래프·탐색기 스크린샷, 콘솔 오류 없음.
 - 보고: "확인한 것 / 직접 눌러 봐야 하는 것"을 나눈다.
 
-## 8. 배포
+## 8. 위험과 진행 순서
+
+| 위험 | 대응 |
+|---|---|
+| web-tree-sitter 런타임과 PHP·TSX 문법 WASM 의 버전 호환 | 0단계 검증에서 Worker 로드부터 확인. 미리 빌드된 문법이 맞지 않으면 docker 로 문법 WASM 을 직접 빌드 |
+| PHP 이름 해석(`use` 별칭, 그룹 use, 상대 이름)과 참조 종류 판별 재현 | 간선 단위 대조 스크립트로 차이를 줄이고, 남는 차이는 원인을 `.local/` 보고서에 기록 |
+| 기존 페이지 약 2,000줄의 React 이전 중 모양 변화 | 로직은 모듈로 그대로 옮기고, 같은 데이터로 기존 페이지와 새 화면 스크린샷을 나란히 비교 |
+| TS 경로 해석 한계(모노레포 워크스페이스, `exports`) | 1차는 상대경로·tsconfig 별칭까지. 해석 못 한 import 수를 화면에 표시 |
+| 폴더 선택 창 자동 테스트 불가 | 숨은 `<input webkitdirectory>` 경로를 두어 Playwright `setInputFiles` 로 E2E |
+| 매우 큰 레포의 메모리 | 20,000 파일 경고 |
+
+진행 순서: **0단계 검증**(PHP·TSX 문법 Worker 로드 → PHP·TS 참조 추출 → 실제 레포 대조; 통과 못 하면 PHP 만 JS PHP 파서로 바꾸는 식으로 방향 전환) → 엔진 → 화면 이전 → 첫 화면·로딩 → 캐시 → 배포.
+
+## 9. 배포
 
 - GitHub Actions 로 빌드한 정적 파일만 GitHub Pages 에 배포.
 - 푸시 전 정리: 기존 로컬 커밋에 들어 있는 레포별 설정(`repos/*.json`)을 이력에서 제거하고, 기존 docker 파이프라인(`tools/codecity`, `site/`, `composer.*`, dependency-cruiser)은 대조 검증이 끝난 뒤 삭제한다. 각각 실행 전에 사용자 확인.
