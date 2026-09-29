@@ -41,6 +41,26 @@ function importKind(stmt: Node): ImportKind {
   return clause && allSpecifiersTypeOnly(clause) ? 'type-import' : 'import';
 }
 
+const TYPE_CONTEXT = new Set([
+  'type_annotation', 'opting_type_annotation', 'omitting_type_annotation', 'type_arguments', 'type_parameters',
+  'type_alias_declaration', 'interface_declaration', 'object_type', 'type_query', 'generic_type', 'union_type',
+  'intersection_type', 'array_type', 'tuple_type', 'function_type', 'constraint', 'default_type',
+]);
+
+/**
+ * `import('./x').T` used as a type. The grammar parses it as a call, and `import('./x').T[]` even as an ERROR,
+ * so rely on the surroundings: a type ancestor, or a member access on the promise that is never called.
+ */
+function isTypePositionImport(call: Node): boolean {
+  const parent = call.parent;
+  if (parent?.type === 'member_expression' && parent.childForFieldName('object')?.id === call.id) {
+    const grand = parent.parent;
+    if (!(grand?.type === 'call_expression' && grand.childForFieldName('function')?.id === parent.id)) return true;
+  }
+  for (let n = parent; n; n = n.parent) if (TYPE_CONTEXT.has(n.type)) return true;
+  return false;
+}
+
 export function extractTsFile(parser: Parser, file: SourceFile): TsFileResult {
   const lines = file.text.split('\n').length;
   const tree = parser.parse(file.text);
@@ -64,7 +84,7 @@ export function extractTsFile(parser: Parser, file: SourceFile): TsFileResult {
         const args = node.childForFieldName('arguments');
         const spec = literal(args?.namedChildren[0] ?? null);
         if (spec !== null && fn) {
-          if (fn.type === 'import') imports.push({ specifier: spec, kind: 'dynamic-import' });
+          if (fn.type === 'import') imports.push({ specifier: spec, kind: isTypePositionImport(node) ? 'type-import' : 'dynamic-import' });
           else if (fn.type === 'identifier' && fn.text === 'require') imports.push({ specifier: spec, kind: 'require' });
         }
       }

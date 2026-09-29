@@ -64,6 +64,31 @@ test('other import shapes', () => {
   ]);
 });
 
+test('import() in type positions is a type import', () => {
+  const src = [
+    "type Shape = { size: Map<string, import('./size').Size>; tint?: import('./tint').Tint | null };",
+    "interface Box { list: (x: import('./list').Item) => void }",
+    "const later = import('./later');",
+    "import('./then').then((m) => m.run());",
+    "const v = await import('./awaited');",
+  ].join('\n');
+  const r = extractTsFile(parsers.tsx, { path: 'x.ts', text: src });
+  expect(r.imports).toEqual([
+    { specifier: './size', kind: 'type-import' },
+    { specifier: './tint', kind: 'type-import' },
+    { specifier: './list', kind: 'type-import' },
+    { specifier: './later', kind: 'dynamic-import' },
+    { specifier: './then', kind: 'dynamic-import' },
+    { specifier: './awaited', kind: 'dynamic-import' },
+  ]);
+});
+
+test('import() type followed by [] still counts as a type import', () => {
+  const src = "export interface Store {\n  rows: import('./row').Row[]\n  pick: (r: import('./row').Row | null) => void\n}\n";
+  const r = extractTsFile(parsers.tsx, { path: 'x.ts', text: src });
+  expect(r.imports.map((i) => i.kind)).toEqual(['type-import', 'type-import']);
+});
+
 test('lines and complexity', () => {
   const r = extractTsFile(parsers.tsx, { path: 'x.ts', text: 'function f(a){\n if(a){}\n}\n' });
   expect(r).toMatchObject({ lines: 4, functions: 1, complexity: 2, maxComplexity: 2 });
@@ -101,6 +126,15 @@ test('route refs', () => {
 test('unresolved counts only local specifiers', () => {
   // './missing' counts; 'react', 'jotai' and './styles.css' (asset) do not.
   expect(result.unresolved).toBe(1);
+});
+
+test('asset imports with a query or hash are not unresolved', () => {
+  const input: RepoInput = {
+    name: 'q',
+    files: [{ path: 'src/a.ts', text: "import Logo from './logo.svg?react'; import u from './pic.png?url'; import f from './font.woff2#x'; import m from './gone';" }],
+    configs: { 'package.json': '{"dependencies":{"react":"1"}}' },
+  };
+  expect(extractTsProject(input, detect(input)!, parsers).unresolved).toBe(1);
 });
 
 test('syntax error recorded', () => {
