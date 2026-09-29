@@ -12,6 +12,16 @@ function fromFile(name: string, get: () => Promise<File>, meta?: File): FsFile {
   };
 }
 
+// A file whose stat fails is still listed (size 0); its text() rejects so loadRepo skips it.
+async function statFile(name: string, get: () => Promise<File>): Promise<FsFile> {
+  try {
+    const f = await get();
+    return fromFile(name, async () => f, f);
+  } catch (e) {
+    return fromFile(name, () => Promise.reject(e));
+  }
+}
+
 export function fromDirectoryHandle(h: FileSystemDirectoryHandle): FsDir {
   return {
     name: h.name,
@@ -24,8 +34,7 @@ export function fromDirectoryHandle(h: FileSystemDirectoryHandle): FsDir {
           yield fromDirectoryHandle(c as FileSystemDirectoryHandle);
         } else {
           const fh = c as FileSystemFileHandle;
-          const f = await fh.getFile();
-          yield fromFile(fh.name, async () => f, f);
+          yield await statFile(fh.name, () => fh.getFile());
         }
       }
     },
@@ -50,8 +59,7 @@ export function fromEntry(e: FileSystemDirectoryEntry): FsDir {
             yield fromEntry(c as FileSystemDirectoryEntry);
           } else {
             const fe = c as FileSystemFileEntry;
-            const f = await new Promise<File>((ok, err) => fe.file(ok, err));
-            yield fromFile(fe.name, async () => f, f);
+            yield await statFile(fe.name, () => new Promise<File>((ok, err) => fe.file(ok, err)));
           }
         }
       }

@@ -100,6 +100,21 @@ describe('adapters', () => {
     expect(await l.sources[0].file.text()).toBe('hi');
   });
 
+  test('a file whose getFile/file throws does not abort listing', async () => {
+    const boom = { kind: 'file', name: 'bad.ts', getFile: async () => { throw new Error('denied'); } };
+    const ok = { kind: 'file', name: 'ok.ts', getFile: async () => new File(['1'], 'ok.ts') };
+    const h = { kind: 'directory', name: 'p', async *values() { yield boom; yield ok; } };
+    const l = await listRepo(fromDirectoryHandle(h as never));
+    expect(l.sources.map((e) => e.path)).toEqual(['bad.ts', 'ok.ts']);
+    const r = await loadRepo(l);
+    expect(r.files.map((f) => f.path)).toEqual(['ok.ts']);
+
+    const badEntry = { name: 'bad.ts', isFile: true, isDirectory: false, file: (_: unknown, err: (e: Error) => void) => err(new Error('x')) };
+    const dir = { name: 'r', isFile: false, isDirectory: true, createReader: () => { let d = false; return { readEntries: (cb: (e: unknown[]) => void) => { cb(d ? [] : [badEntry]); d = true; } }; } };
+    const l2 = await listRepo(fromEntry(dir as never));
+    expect(l2.sources).toHaveLength(1);
+  });
+
   test('fromFileList builds tree from webkitRelativePath', async () => {
     const f = (p: string) => {
       const file = new File(['c'], p.split('/').pop()!);
