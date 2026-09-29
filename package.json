@@ -1,9 +1,22 @@
 {
     "name": "code-atlas-tools",
     "private": true,
+    "type": "module",
     "description": "JS/TS dependency extractor for code-atlas",
+    "scripts": {
+        "test": "vitest run",
+        "compare": "tsx scripts/compare.ts"
+    },
     "dependencies": {
         "dependency-cruiser": "^17.0.0",
-        "typescript": "^5.9.0"
+        "tree-sitter-php": "0.24.2",
+        "tree-sitter-typescript": "0.23.2",
+        "typescript": "^5.9.0",
+        "web-tree-sitter": "0.27.0"
+    },
+    "devDependencies": {
+        "@types/node": "^22",
+        "tsx": "^4",
+        "vitest": "^5"
     }
 }
