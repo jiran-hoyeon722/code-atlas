@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
-import { loadParsers, nodeLocate } from '../../src/engine/parsers';
+import { loadParsers } from '../../src/engine/parsers';
+import { nodeLocate } from '../../src/engine/node';
 
 test('parses PHP and TSX without syntax errors', async () => {
   const p = await loadParsers(nodeLocate);

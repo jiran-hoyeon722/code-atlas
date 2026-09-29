@@ -58,6 +58,14 @@ describe('ts resolve', () => {
     expect(rr('src/b.tsx', '~/a')).toBe('src/a.ts');
   });
 
+  test('child paths resolve against inherited baseUrl', () => {
+    const rr = mk({
+      'tsconfig.json': '{"extends":"./tsconfig.base.json","compilerOptions":{"paths":{"@/*":["*"]}}}',
+      'tsconfig.base.json': '{ "compilerOptions": { "baseUrl": "./src" } }',
+    });
+    expect(rr('src/b.tsx', '@/lib/util')).toBe('src/lib/util.ts');
+  });
+
   test('jsconfig used when no tsconfig', () => {
     const rr = mk({ 'jsconfig.json': '{"compilerOptions":{"paths":{"~/*":["src/*"]}}}' });
     expect(rr('src/b.tsx', '~/a')).toBe('src/a.ts');

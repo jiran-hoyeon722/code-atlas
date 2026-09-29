@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
-import { loadParsers, nodeLocate } from '../../src/engine/parsers';
+import { loadParsers } from '../../src/engine/parsers';
+import { nodeLocate } from '../../src/engine/node';
 import { measure } from '../../src/engine/complexity';
 
 test('php method complexity', async () => {
@@ -31,3 +32,9 @@ test('ts operators, switch, catch, loops', async () => {
   const src = 'class C { m(a){ for(const k in a){} for(const v of a){} for(;;){} while(a){} do{}while(a); switch(a){case 1: break; default: break;} try{}catch(e){} return (a && a) || (a ?? a); } }';
   expect(measure(tsx.parse(src)!.rootNode, 'ts')).toEqual({ functions: 1, complexity: 11, maxComplexity: 11 });
 });
+
+test('max complexity survives a huge number of functions', async () => {
+  const { tsx } = await loadParsers(nodeLocate);
+  const t = tsx.parse(Array.from({ length: 130_000 }, (_, i) => `function f${i}(){}`).join('\n'))!;
+  expect(measure(t.rootNode, 'ts')).toEqual({ functions: 130_000, complexity: 130_000, maxComplexity: 1 });
+}, 60_000);

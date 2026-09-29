@@ -27,3 +27,29 @@ test('gitignore name-only and ** globs', () => {
   expect(ig('docs/x/y/z.tmp', false)).toBe(true);
   expect(ig('other/z.tmp', false)).toBe(false);
 });
+test('gitignore **/ prefix matches at any depth including the root', () => {
+  const ig = parseGitignore('**/x\n');
+  expect(ig('x', true)).toBe(true);
+  expect(ig('a/b/x', false)).toBe(true);
+  expect(ig('a/xy', false)).toBe(false);
+});
+test('gitignore pattern with a middle slash is anchored to the root', () => {
+  const ig = parseGitignore('a/b\n');
+  expect(ig('a/b', true)).toBe(true);
+  expect(ig('c/a/b', true)).toBe(false);
+  expect(ig('a/bc', true)).toBe(false);
+});
+test('gitignore CRLF line endings', () => {
+  const ig = parseGitignore('tmp\r\nlogs/\r\n*.gen.ts\r\n');
+  expect(ig('a/tmp', true)).toBe(true);
+  expect(ig('logs', true)).toBe(true);
+  expect(ig('src/x.gen.ts', false)).toBe(true);
+  expect(ig('src/x.ts', false)).toBe(false);
+});
+test('gitignore glob matching stays linear on pathological patterns', () => {
+  const ig = parseGitignore('*a*a*a*a*a*a*a*a*a*a*b\n');
+  const start = performance.now();
+  expect(ig('a'.repeat(40), false)).toBe(false);
+  expect(performance.now() - start).toBeLessThan(50);
+  expect(ig('xaaaaaaaaaab', false)).toBe(true);
+});

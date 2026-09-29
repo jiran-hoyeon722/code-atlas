@@ -1,4 +1,3 @@
-import { createRequire } from 'node:module';
 import { Parser, Language } from 'web-tree-sitter';
 
 export type WasmFile = 'web-tree-sitter.wasm' | 'tree-sitter-php.wasm' | 'tree-sitter-tsx.wasm';
@@ -6,16 +5,6 @@ export type WasmFile = 'web-tree-sitter.wasm' | 'tree-sitter-php.wasm' | 'tree-s
 export interface Parsers {
   php: Parser;
   tsx: Parser;
-}
-
-const PACKAGE_OF: Record<WasmFile, string> = {
-  'web-tree-sitter.wasm': 'web-tree-sitter',
-  'tree-sitter-php.wasm': 'tree-sitter-php',
-  'tree-sitter-tsx.wasm': 'tree-sitter-typescript',
-};
-
-export function nodeLocate(file: WasmFile): string {
-  return createRequire(import.meta.url).resolve(`${PACKAGE_OF[file]}/${file}`);
 }
 
 let cached: Promise<Parsers> | null = null;

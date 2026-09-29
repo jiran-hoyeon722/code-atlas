@@ -1,13 +1,11 @@
 import type { Detection } from '../detect';
-import { isSourcePath } from '../collect';
+import { sourcesFor } from '../sources';
 import type { Parsers } from '../parsers';
 import type { Edge, Extraction, FileNode, RepoInput } from '../types';
 import { extractTsFile } from './extract';
 import { createTsResolver } from './resolve';
 
 const ASSET_EXT = /\.(css|scss|sass|less|svg|png|jpe?g|gif|webp|ico|json|woff2?|ttf|md|html)$/i;
-
-const isGenerated = (path: string): boolean => /\.gen\.tsx?$/.test(path);
 
 function moduleKind(path: string): string {
   if (/\.d\.[cm]?ts$/.test(path)) return 'types';
@@ -42,11 +40,7 @@ export function extractTsProject(
   parsers: Parsers,
   onFile?: (path: string) => void,
 ): Extraction {
-  const dir = detection.sourceDir;
-  const inSource = (p: string) => dir === '' || p.startsWith(dir + '/');
-  const sources = input.files
-    .filter((f) => isSourcePath(f.path) === 'ts' && inSource(f.path) && !isGenerated(f.path))
-    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const sources = sourcesFor(detection, input.files);
   const known = new Set(sources.map((f) => f.path));
   // Resolve against every input file so generated/asset targets resolve and are then dropped, not "unresolved".
   const resolve = createTsResolver(new Set(input.files.map((f) => f.path)), input.configs);

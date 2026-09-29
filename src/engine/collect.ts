@@ -1,4 +1,5 @@
 import type { Lang } from './types';
+import { compileGlob, type GlobSyntax } from './glob';
 
 export const SKIP_DIRS: ReadonlySet<string> = new Set([
   'node_modules', 'vendor', '.git', 'dist', 'build', '.next', 'storage', 'coverage',
@@ -27,23 +28,10 @@ export function isConfigPath(path: string): boolean {
     || /^tsconfig.*\.json$/.test(base);
 }
 
-function globToRegex(glob: string): string {
-  let out = '';
-  for (let i = 0; i < glob.length; i++) {
-    const c = glob[i];
-    if (c === '*') {
-      if (glob[i + 1] === '*') {
-        i++;
-        if (glob[i + 1] === '/') { i++; out += '(?:.*/)?'; } else out += '.*';
-      } else out += '[^/]*';
-    } else if (c === '?') out += '[^/]';
-    else out += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  }
-  return out;
-}
+const GITIGNORE: GlobSyntax = { question: true, bareDoubleStar: 'any' };
 
 export function parseGitignore(text: string): (path: string, isDir: boolean) => boolean {
-  const rules: { re: RegExp; dirOnly: boolean }[] = [];
+  const rules: { match: (path: string) => boolean; dirOnly: boolean }[] = [];
   for (let line of text.split(/\r?\n/)) {
     line = line.trim();
     if (!line || line.startsWith('#') || line.startsWith('!')) continue;
@@ -52,8 +40,7 @@ export function parseGitignore(text: string): (path: string, isDir: boolean) => 
     const anchored = line.includes('/');
     if (line.startsWith('/')) line = line.slice(1);
     if (!line) continue;
-    const body = globToRegex(line);
-    rules.push({ re: new RegExp(anchored ? `^${body}$` : `^(?:.*/)?${body}$`), dirOnly });
+    rules.push({ match: compileGlob(anchored ? line : `**/${line}`, GITIGNORE), dirOnly });
   }
-  return (path, isDir) => rules.some((r) => (!r.dirOnly || isDir) && r.re.test(path));
+  return (path, isDir) => rules.some((r) => (!r.dirOnly || isDir) && r.match(path));
 }

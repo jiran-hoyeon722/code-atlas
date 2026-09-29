@@ -26,6 +26,25 @@ describe('compileRoles', () => {
   });
 });
 
+describe('compileRoles pathological patterns', () => {
+  test('matching stays linear', () => {
+    const m = compileRoles([role('P', 1, ['*a*a*a*a*a*a*a*a*a*a*b']), role('X', 3, [''])]);
+    const start = performance.now();
+    expect(m('a'.repeat(40))).toBe(1);
+    expect(performance.now() - start).toBeLessThan(50);
+    expect(m('xaaaaaaaaaab')).toBe(0);
+  });
+
+  test('consecutive star runs behave like one', () => {
+    const m = compileRoles([role('S', 1, ['a/***/z']), role('D', 1, ['b/**/**/z']), role('X', 3, [''])]);
+    expect(m('a/q/z')).toBe(0);
+    expect(m('a/q/r/z')).toBe(0);
+    expect(m('a/qz')).toBe(2);
+    expect(m('b/z')).toBe(1);
+    expect(m('b/q/r/z')).toBe(1);
+  });
+});
+
 describe('presetFor', () => {
   const laravel: Detection = { lang: 'php', framework: 'laravel', sourceDir: 'app', routeDirs: ['routes'] };
   const react: Detection = { lang: 'ts', framework: 'react', sourceDir: 'src', routeDirs: [] };
@@ -56,6 +75,15 @@ describe('presetFor', () => {
     expect(layerOf('weird/x.ts')).toBe(3);
     expect(p.layers[1].label).toBe('화면·기능');
     expect(p.roles[p.roles.length - 1].patterns).toEqual(['']);
+  });
+
+  test('default preset treats glob characters in folder names literally', () => {
+    const d: Detection = { lang: 'ts', framework: null, sourceDir: '', routeDirs: [] };
+    const p = presetFor(d, ['a*b/x.ts', 'axxb/y.ts']);
+    const m = compileRoles(p.roles);
+    expect(p.roles.map((r) => r.name)).toEqual(['a*b', 'axxb', '기타']);
+    expect(m('a*b/x.ts')).toBe(0);
+    expect(m('axxb/y.ts')).toBe(1);
   });
 
   test('default preset makes one role per first-level folder', () => {

@@ -2,7 +2,8 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { analyze } from '../src/engine/analyze';
 import { isConfigPath, isSourcePath, parseGitignore, shouldSkipDir } from '../src/engine/collect';
-import { loadParsers, nodeLocate } from '../src/engine/parsers';
+import { loadParsers } from '../src/engine/parsers';
+import { nodeLocate } from '../src/engine/node';
 import type { RepoInput } from '../src/engine/types';
 
 interface BaselineEdge {

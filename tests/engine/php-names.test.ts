@@ -1,7 +1,9 @@
 import { beforeAll, describe, expect, test } from 'vitest';
 import type { Node } from 'web-tree-sitter';
-import { loadParsers, nodeLocate, type Parsers } from '../../src/engine/parsers';
+import { loadParsers, type Parsers } from '../../src/engine/parsers';
+import { nodeLocate } from '../../src/engine/node';
 import { resolveClassName, scopeAt } from '../../src/engine/php/names';
+import { extractPhpFile } from '../../src/engine/php/extract';
 
 let parsers: Parsers;
 beforeAll(async () => {
@@ -80,4 +82,26 @@ describe('scope building', () => {
     expect(resolveClassName('Y', scopeOf(code, 'InA'))).toBe('X\\Y');
     expect(resolveClassName('Y', scopeOf(code, 'InB'))).toBe('B\\Y');
   });
+});
+
+describe('scopeAt performance', () => {
+  const bigFile = (n: number) => {
+    const body = Array.from({ length: n }, (_, i) => `$v${i} = new Thing${i % 7}();`).join('\n');
+    return { path: 'big.php', text: `<?php\nuse Lib\\Thing0;\n${body}\n` };
+  };
+
+  test('3,000-statement unnamespaced file extracts quickly', () => {
+    const start = performance.now();
+    const facts = extractPhpFile(parsers.php, bigFile(3000), false);
+    expect(performance.now() - start).toBeLessThan(500);
+    expect(facts.refs.filter((r) => r.fqcn === 'Lib\\Thing0')).toHaveLength(429);
+    expect(facts.refs.some((r) => r.fqcn === 'Thing1')).toBe(true);
+  });
+
+  // 3,000 statements fit in 500ms even when quadratic; 12,000 separates O(n²) (~5s) from linear (~0.3s).
+  test('12,000-statement unnamespaced file stays linear', () => {
+    const start = performance.now();
+    extractPhpFile(parsers.php, bigFile(12000), false);
+    expect(performance.now() - start).toBeLessThan(1500);
+  }, 30_000);
 });

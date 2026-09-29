@@ -1,6 +1,7 @@
 import type { Parsers } from '../parsers';
 import type { Detection } from '../detect';
 import type { Edge, Extraction, FileNode, RefKind, RepoInput, SourceFile } from '../types';
+import { sourcesFor } from '../sources';
 import { extractPhpFile, type PhpFacts } from './extract';
 
 const isPhp = (path: string) => path.endsWith('.php');
@@ -16,7 +17,7 @@ export function extractPhpProject(
 ): Extraction {
   const srcPrefix = detection.sourceDir ? `${detection.sourceDir}/` : '';
   const providersPrefix = `${srcPrefix}Providers/`;
-  const appFiles = input.files.filter((f) => isPhp(f.path) && f.path.startsWith(srcPrefix)).sort(byPath);
+  const appFiles = sourcesFor(detection, input.files);
 
   const nodes: FileNode[] = [];
   const failed: Extraction['failed'] = [];
@@ -25,7 +26,15 @@ export function extractPhpProject(
   const lower = new Map<string, string>();
 
   for (const file of appFiles) {
-    const f = extractPhpFile(parsers.php, file, file.path.startsWith(providersPrefix));
+    let f: PhpFacts;
+    try {
+      f = extractPhpFile(parsers.php, file, file.path.startsWith(providersPrefix));
+    } catch {
+      failed.push({ path: file.path, reason: 'read' });
+      nodes.push({ id: file.path, name: baseName(file.path), kind: 'script', lines: file.text.split('\n').length, functions: 0, complexity: 0, maxComplexity: 0 });
+      onFile?.(file.path);
+      continue;
+    }
     facts.set(file.path, f);
     if (f.hasError) failed.push({ path: file.path, reason: 'syntax' });
     // Later files win on duplicate class names, like deps.php's plain map assignment.
@@ -82,7 +91,14 @@ export function extractPhpProject(
     .filter((f) => isPhp(f.path) && routePrefixes.some((p) => f.path.startsWith(p)))
     .sort(byPath);
   for (const file of routeFiles) {
-    for (const r of extractPhpFile(parsers.php, file, false).refs) {
+    let refs: PhpFacts['refs'];
+    try {
+      refs = extractPhpFile(parsers.php, file, false).refs;
+    } catch {
+      failed.push({ path: file.path, reason: 'read' });
+      continue;
+    }
+    for (const r of refs) {
       const target = fileOf(r.fqcn);
       if (!target) continue;
       const perRoute = (routeRefs[target] ??= {});
