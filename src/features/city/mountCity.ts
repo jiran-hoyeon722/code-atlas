@@ -8,6 +8,7 @@ import { esc } from '../escape';
 import { LAYER_TINT, roleColors } from '../palette';
 import { highlight } from '../code-viewer/highlight';
 import { layoutCity } from './layout';
+import { createSelectionReporter } from './selection';
 
 const KIND_LABEL: Record<string, string> = {
   inject: '생성자 주입', type: '타입 힌트', 'static-call': '정적 호출', new: 'new 생성', const: '상수·enum',
@@ -361,6 +362,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     };
   }
 
+  const reporter = createSelectionReporter((sel) => env.onSelect(sel));
   let codePath: string | null = null;
   const codeOpen = () => $('code').classList.contains('open');
   function select(n: CityNode | null, fly = false) {
@@ -368,7 +370,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     applyColors();
     drawArcs(n);
     placeBox(selectBox, n);
-    env.onSelect(n ? { file: n.path, ...(codeOpen() && codePath === n.path ? { code: true } : {}) } : {});
+    reporter.report(n ? { file: n.path, ...(codeOpen() && codePath === n.path ? { code: true } : {}) } : {});
     if (!n) { $('panel').classList.remove('open'); return; }
     renderPanel(n);
     if (fly) flyTo(n);
@@ -429,7 +431,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     const request = ++codeRequest;
     $('code').classList.add('open');
     codePath = n.path;
-    env.onSelect({ file: n.path, code: true });
+    reporter.report({ file: n.path, code: true });
     $('code-name').textContent = n.name;
     $('code-path').textContent = `${n.path} · ${fmt(n.lines)}줄`;
     $('code-vscode').innerHTML = vscodeAction(n.path);
@@ -458,7 +460,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     $('code').classList.remove('open');
     codePath = null;
     codeRequest++;
-    env.onSelect(state.selected ? { file: state.selected.path } : {});
+    reporter.report(state.selected ? { file: state.selected.path } : {});
   }
 
   // Wraps the short class names this file references so they jump to that building.
@@ -497,8 +499,11 @@ export const mountCity: MountViewer = (root, arch, env) => {
   listen($('code-src'), 'click', (ev) => {
     const link = (ev.target as HTMLElement).closest<HTMLElement>('.ref');
     if (!link) return;
-    select(nodes[+link.dataset.i!], true);
-    void openCode(+link.dataset.i!);
+    const i = +link.dataset.i!;
+    reporter.batch(() => {
+      select(nodes[i], true);
+      void openCode(i);
+    });
   });
   listen($('code-vscode'), 'click', (ev) => {
     if ((ev.target as HTMLElement).closest('[data-vscode-setup]')) env.requestVscodeSetup();
@@ -612,8 +617,10 @@ export const mountCity: MountViewer = (root, arch, env) => {
   applyColors();
   const linked = nodes.find((n) => n.path === env.selection.file);
   if (linked) {
-    select(linked, true);
-    if (env.selection.code) void openCode(linked.i);
+    reporter.restore(() => {
+      select(linked, true);
+      if (env.selection.code) void openCode(linked.i);
+    });
   }
 
   let last = performance.now();
