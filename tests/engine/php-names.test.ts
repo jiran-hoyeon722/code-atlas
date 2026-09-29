@@ -90,18 +90,29 @@ describe('scopeAt performance', () => {
     return { path: 'big.php', text: `<?php\nuse Lib\\Thing0;\n${body}\n` };
   };
 
-  test('3,000-statement unnamespaced file extracts quickly', () => {
-    const start = performance.now();
+  test('3,000-statement unnamespaced file extracts correctly', () => {
     const facts = extractPhpFile(parsers.php, bigFile(3000), false);
-    expect(performance.now() - start).toBeLessThan(500);
     expect(facts.refs.filter((r) => r.fqcn === 'Lib\\Thing0')).toHaveLength(429);
     expect(facts.refs.some((r) => r.fqcn === 'Thing1')).toBe(true);
-  });
+  }, 30_000);
 
-  // 3,000 statements fit in 500ms even when quadratic; 12,000 separates O(n²) (~5s) from linear (~0.3s).
-  test('12,000-statement unnamespaced file stays linear', () => {
-    const start = performance.now();
-    extractPhpFile(parsers.php, bigFile(12000), false);
-    expect(performance.now() - start).toBeLessThan(1500);
+  // Absolute thresholds flake under machine load, so assert growth instead: 4x the input must cost
+  // well under 16x (quadratic) the time. The 30s test timeout is only a hang guard.
+  test('extraction time grows ~linearly with file size', () => {
+    const small = bigFile(3000);
+    const large = bigFile(12000);
+    const minMs = (file: { path: string; text: string }) => {
+      let best = Infinity;
+      for (let i = 0; i < 3; i++) {
+        const start = performance.now();
+        extractPhpFile(parsers.php, file, false);
+        best = Math.min(best, performance.now() - start);
+      }
+      return best;
+    };
+    extractPhpFile(parsers.php, small, false); // warm-up
+    const t3k = minMs(small);
+    const t12k = minMs(large);
+    expect(t12k / t3k).toBeLessThan(8);
   }, 30_000);
 });
