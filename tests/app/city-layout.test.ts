@@ -50,7 +50,7 @@ test('one building per node, inside bounds, no overlaps', () => {
 
 test('blocks ordered by layer rows (entry row first)', () => {
   const { blocks } = layoutCity(a);
-  expect(blocks.length).toBe(a.roles.length);
+  expect(blocks.length).toBe(new Set(a.nodes.map((n) => n.role)).size);
   const layers = blocks.map((b) => a.roles[b.role].layer);
   expect(layers).toEqual([...layers].sort((x, y) => x - y));
   expect(new Set(layers).size).toBeGreaterThan(1);
@@ -62,6 +62,13 @@ test('blocks ordered by layer rows (entry row first)', () => {
       if (ls < lt) expect(s.z - s.d / 2).toBeGreaterThan(front(t));
     }
   }
+});
+
+test('roles without files get no block', () => {
+  const { blocks } = layoutCity(a);
+  const used = new Set(a.nodes.map((n) => n.role));
+  expect(used.size).toBeLessThan(a.roles.length);
+  expect(blocks.map((b) => b.role).sort((x, y) => x - y)).toEqual([...used].sort((x, y) => x - y));
 });
 
 test('layout is deterministic', () => {

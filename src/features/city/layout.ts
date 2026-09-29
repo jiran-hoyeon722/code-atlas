@@ -14,7 +14,7 @@ export interface CityLayout {
 
 export const footprint = (lines: number) => Math.min(3.4, Math.max(1.3, 0.9 + Math.sqrt(lines) / 10));
 
-// One row (street) per layer, one square district per role, files in path order; x/z are centres, entry row at +z.
+// One row (street) per non-empty layer, one square district per non-empty role, files in path order; x/z are centres, entry row at +z.
 export function layoutCity(arch: Architecture): CityLayout {
   const byRole: number[][] = arch.roles.map(() => []);
   arch.nodes.forEach((n, i) => byRole[n.role].push(i));
@@ -25,7 +25,7 @@ export function layoutCity(arch: Architecture): CityLayout {
   let zCursor = 0;
   let maxWidth = 0;
   arch.layers.forEach((_, li) => {
-    const roles = arch.roles.map((_, i) => i).filter((i) => arch.roles[i].layer === li);
+    const roles = arch.roles.map((_, i) => i).filter((i) => arch.roles[i].layer === li && byRole[i].length > 0);
     if (!roles.length) return;
     const sides = roles.map((ri) => Math.max(1, Math.ceil(Math.sqrt(byRole[ri].length))));
     const depth = Math.max(...roles.map((ri, k) => Math.ceil(byRole[ri].length / sides[k]))) * CELL;

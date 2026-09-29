@@ -7,8 +7,9 @@ import type { MountViewer } from '../viewer-env';
 import { esc } from '../escape';
 import { LAYER_TINT, roleColors } from '../palette';
 import { highlight } from '../code-viewer/highlight';
-import { layoutCity } from './layout';
+import { ROAD, layoutCity } from './layout';
 import { createSelectionReporter } from './selection';
+import { MAX_HEIGHT, SMALL_CITY, homeView } from './homeView';
 
 const KIND_LABEL: Record<string, string> = {
   inject: '생성자 주입', type: '타입 힌트', 'static-call': '정적 호출', new: 'new 생성', const: '상수·enum',
@@ -16,7 +17,6 @@ const KIND_LABEL: Record<string, string> = {
   implements: '구현', attribute: '어트리뷰트', triggers: '이벤트→리스너', binds: '바인딩', other: '기타',
   import: 'import', 'type-import': '타입 import', 'dynamic-import': '동적 import', 're-export': '재export', require: 'require',
 };
-const MAX_HEIGHT = 70;
 const fmt = (n: number) => Number(n).toLocaleString('ko-KR');
 
 type HeightKey = 'fanIn' | 'fanOut' | 'centrality' | 'routeRefs' | 'functions' | 'maxComplexity' | 'lines';
@@ -139,6 +139,8 @@ export const mountCity: MountViewer = (root, arch, env) => {
     return [{ li, front, depth, width, cz: front - depth / 2 }];
   });
   const citySize = Math.max(layout.bounds.w, layout.bounds.d);
+  // below this size today's fixed label sizes dwarf the districts, so labels are fitted to their block/row
+  const small = citySize < SMALL_CITY;
 
   // ---- scene ----
   const size = () => ({ w: Math.max(1, root.clientWidth), h: Math.max(1, root.clientHeight) });
@@ -152,14 +154,11 @@ export const mountCity: MountViewer = (root, arch, env) => {
   const bg = new THREE.Color('#0e1015');
   const scene = new THREE.Scene();
   scene.background = bg;
-  scene.fog = new THREE.Fog(bg, citySize * 1.1, citySize * 3.2);
 
   const camera = new THREE.PerspectiveCamera(45, size().w / size().h, 1, citySize * 8);
-  camera.position.set(-citySize * 0.3, citySize * 0.62, citySize * 1.02);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.maxPolarAngle = Math.PI * 0.47;
-  controls.target.set(citySize * 0.06, 0, citySize * 0.08);
 
   scene.add(new THREE.HemisphereLight('#c9d4ff', '#1a1c22', 1.1));
   const sun = new THREE.DirectionalLight('#ffffff', 1.6);
@@ -189,7 +188,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     scene.add(plate);
   });
 
-  function label(text: string, sub: string, color: string, scale: number) {
+  function label(text: string, sub: string, color: string, scale: number, maxWidth = Infinity) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d')!;
     const nameFont = '600 96px -apple-system, "Apple SD Gothic Neo", sans-serif';
@@ -221,22 +220,33 @@ export const mountCity: MountViewer = (root, arch, env) => {
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = 8;
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
-    sprite.scale.set((scale * canvas.width) / canvas.height, scale, 1);
+    const height = Math.min(scale, (maxWidth * canvas.height) / canvas.width);
+    sprite.scale.set((height * canvas.width) / canvas.height, height, 1);
     sprite.center.set(0, 0);
     sprite.renderOrder = 2;
     return sprite;
   }
+  let labelRight = layout.bounds.w / 2;
   layout.blocks.forEach((d) => {
     const role = arch.roles[d.role];
-    const s = label(role.name, `${counts[d.role]}개`, palette[d.role], Math.max(4, Math.min(7, d.w / 5)));
+    const s = label(role.name, `${counts[d.role]}개`, palette[d.role], Math.max(4, Math.min(7, d.w / 5)), small ? d.w + ROAD : Infinity);
     s.position.set(d.x - d.w / 2, 0.6, d.z + d.d / 2 + 3);
     scene.add(s);
   });
   rows.forEach((r) => {
-    const s = label(arch.layers[r.li].label, arch.layers[r.li].hint, LAYER_TINT[r.li], 11);
+    const s = label(arch.layers[r.li].label, arch.layers[r.li].hint, LAYER_TINT[r.li], small ? Math.max(3, citySize / 12) : 11, small ? Math.max(r.width, citySize * 0.6) : Infinity);
     s.position.set(r.width / 2 + 10, 0.6, r.front - r.depth / 2);
+    labelRight = Math.max(labelRight, s.position.x + s.scale.x);
     scene.add(s);
   });
+
+  const view = homeView(layout.bounds, labelRight, size().w / size().h);
+  const homeDistance = view.distance;
+  camera.position.copy(view.position);
+  camera.far = view.far;
+  camera.updateProjectionMatrix();
+  controls.target.copy(view.target);
+  scene.fog = new THREE.Fog(bg, view.fogNear, view.fogFar);
 
   // ---- buildings (one instanced mesh) ----
   const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -354,7 +364,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
   function flyTo(n: CityNode) {
     const target = new THREE.Vector3(n.cx, n.h / 2, n.cz);
     const direction = camera.position.clone().sub(controls.target).normalize();
-    const distance = Math.max(110, n.h * 2.4 + 60);
+    const distance = Math.min(homeDistance, Math.max(110, n.h * 2.4 + 60));
     flight = {
       start: performance.now(), duration: 900,
       fromPos: camera.position.clone(), toPos: target.clone().add(direction.multiplyScalar(distance)),

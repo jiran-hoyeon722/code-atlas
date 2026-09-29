@@ -2,7 +2,7 @@ import ForceGraph3D from '3d-force-graph';
 import type { Architecture } from '../../engine/architecture';
 import { esc } from '../escape';
 import type { MountViewer } from '../viewer-env';
-import { graphData, type GraphLink, type GraphNode } from './data';
+import { graphData, nodeRelSize, type GraphLink, type GraphNode } from './data';
 import './graph.css';
 
 const KIND_LABEL: Record<string, string> = {
@@ -150,7 +150,7 @@ export const mountGraph: MountViewer = (root, arch, env) => {
     .graphData({ nodes, links } as never)
     .nodeId('id')
     .nodeVal(((n: N) => n.val) as never)
-    .nodeRelSize(2.6)
+    .nodeRelSize(nodeRelSize(nodes.length))
     .nodeResolution(10)
     .nodeOpacity(0.92)
     .nodeColor(((n: N) => {
@@ -184,7 +184,14 @@ export const mountGraph: MountViewer = (root, arch, env) => {
   Graph.cameraPosition({ x: 0, y: 120, z: 1250 });
 
   const linked = env.selection.file ? nodes.find((n) => n.path === env.selection.file) : undefined;
-  if (linked) Graph.onEngineStop(() => { if (!state.selected) select(linked, true); });
+  let settled = false;
+  Graph.onEngineStop(() => {
+    if (settled) return;
+    settled = true;
+    wrap.dataset.settled = '';
+    if (linked && !state.selected) select(linked, true);
+    else if (!state.selected) Graph.zoomToFit(600, 60);
+  });
 
   function refresh() {
     Graph.nodeColor(Graph.nodeColor()).linkColor(Graph.linkColor()).linkWidth(Graph.linkWidth())

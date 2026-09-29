@@ -39,8 +39,8 @@ test('parse phase: still 코드 읽기, progress bar ratio and path', () => {
   const { container } = view({ phase: 'parse', done: 5, total: 20, path: 'app/Http/<b>X</b>.php', role: 0 });
   expect(states()).toEqual(['done', 'current', 'waiting', 'waiting']);
   expect(screen.getByText('5 / 20')).toBeTruthy();
-  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('25');
-  expect((container.querySelector('.cc-load-bar > i') as HTMLElement).style.width).toBe('25%');
+  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('38');
+  expect((container.querySelector('.cc-load-bar > i') as HTMLElement).style.width).toBe('38%');
   expect(screen.getByText('app/Http/<b>X</b>.php')).toBeTruthy();
   expect(container.querySelector('.cc-load-path b')).toBeNull();
 });
@@ -76,10 +76,29 @@ test('mini city mounts once, adds per new parse event, disposes on unmount', () 
   expect(dispose).toHaveBeenCalledTimes(1);
 });
 
-test('progress is clamped to 0..100', () => {
+test('progress is clamped to the phase span', () => {
   const { container } = view({ phase: 'read', done: 12, total: 10 });
-  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
-  expect((container.querySelector('.cc-load-bar > i') as HTMLElement).style.width).toBe('100%');
+  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('20');
+  expect((container.querySelector('.cc-load-bar > i') as HTMLElement).style.width).toBe('20%');
+});
+
+test('the bar never goes back between phases', () => {
+  const steps: LoadStep[] = [
+    { phase: 'list', found: 10 },
+    { phase: 'read', done: 5, total: 10 },
+    { phase: 'read', done: 10, total: 10 },
+    { phase: 'parse', done: 1, total: 10, path: 'a', role: 0 },
+    { phase: 'parse', done: 10, total: 10, path: 'a', role: 0 },
+    { phase: 'link' },
+    { phase: 'metrics' },
+  ];
+  const { rerender } = view(steps[0]);
+  const pcts = steps.map((s) => {
+    rerender(<LoadingScreen name="demo" framework={null} sourceDir="" roles={roles} step={s} onCancel={() => {}} />);
+    return Number(screen.getByRole('progressbar').getAttribute('aria-valuenow'));
+  });
+  expect(pcts).toEqual([...pcts].sort((a, b) => a - b));
+  expect(pcts[2]).toBeGreaterThan(0);
 });
 
 test('total 0 gives 0%', () => {

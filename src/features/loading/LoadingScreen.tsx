@@ -23,6 +23,8 @@ export interface LoadingScreenProps {
 
 const LABELS = ['파일 찾기', '코드 읽기', '참조 연결', '도시 짓기'];
 const ACTIVE = { list: 0, read: 1, parse: 1, link: 2, metrics: 3 } as const;
+// one bar for the whole run: reading files is quick I/O, parsing is most of the wait
+const SPAN = { list: [0, 0], read: [0, 0.2], parse: [0.2, 0.9], link: [0.9, 0.9], metrics: [0.95, 0.95] } as const;
 const MARK = { done: '✓', current: '●', waiting: '○' } as const;
 
 export function LoadingScreen({ name, framework, sourceDir, roles, step, onCancel }: LoadingScreenProps) {
@@ -54,7 +56,8 @@ export function LoadingScreen({ name, framework, sourceDir, roles, step, onCance
 
   const active = ACTIVE[step.phase];
   const counted = step.phase === 'read' || step.phase === 'parse' ? step : null;
-  const ratio = counted ? (counted.total > 0 ? Math.min(1, Math.max(0, counted.done / counted.total)) : 0) : step.phase === 'link' || step.phase === 'metrics' ? 1 : 0;
+  const part = counted && counted.total > 0 ? Math.min(1, Math.max(0, counted.done / counted.total)) : 0;
+  const ratio = SPAN[step.phase][0] + (SPAN[step.phase][1] - SPAN[step.phase][0]) * part;
   const pct = Math.round(ratio * 100);
   const eta = step.phase === 'parse' || step.phase === 'read' ? estimateRemaining(samples.current, step.total) : null;
   const meta = [framework, sourceDir].filter(Boolean).join(' · ');

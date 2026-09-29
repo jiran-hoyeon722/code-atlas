@@ -2,6 +2,9 @@ import type { Architecture } from '../../engine/architecture';
 import type { Edge } from '../../engine/types';
 import { roleColors } from '../palette';
 
+// anchors spread the graph over the same few hundred units at any size, so small graphs need bigger dots to read after zoom-to-fit
+export const nodeRelSize = (count: number) => 2.6 * Math.min(3, Math.max(1, Math.sqrt(150 / Math.max(1, count))));
+
 export interface GraphNode {
   id: number;
   path: string;
