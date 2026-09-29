@@ -81,6 +81,6 @@ export function measure(root: Node, lang: Lang): Complexity {
   return {
     functions: perFunction.length,
     complexity: sum + outside,
-    maxComplexity: perFunction.length ? Math.max(...perFunction) : 0,
+    maxComplexity: perFunction.reduce((a, b) => (b > a ? b : a), 0),
   };
 }

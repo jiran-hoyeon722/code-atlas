@@ -248,3 +248,37 @@ describe('extractPhpProject', () => {
     );
   });
 });
+
+describe('extractPhpProject per-file failures', () => {
+  const throwingOn = (marker: string): Parsers => ({
+    ...parsers,
+    php: {
+      parse: (text: string) => {
+        if (text.includes(marker)) throw new Error('synthetic parse failure');
+        return parsers.php.parse(text);
+      },
+    } as unknown as Parsers['php'],
+  });
+
+  const synthetic: RepoInput = {
+    name: 'synthetic',
+    configs: { 'composer.json': '{"require":{"laravel/framework":"^11"}}' },
+    files: [
+      { path: 'app/Models/Alpha.php', text: '<?php namespace App\\Models; class Alpha {}' },
+      { path: 'app/Models/Boom.php', text: '<?php namespace App\\Models; class Boom {} // BOOM' },
+      { path: 'app/Models/Gamma.php', text: '<?php namespace App\\Models; class Gamma { function f(Alpha $a) {} }' },
+      { path: 'routes/web.php', text: '<?php use App\\Models\\Gamma; Gamma::x(); // BOOM' },
+    ],
+  };
+
+  test('one throwing file is recorded as a read failure and the rest still extract', () => {
+    const det = detect(synthetic)!;
+    const seen: string[] = [];
+    const r = extractPhpProject(synthetic, det, throwingOn('BOOM'), (p) => seen.push(p));
+    expect(seen).toEqual(['app/Models/Alpha.php', 'app/Models/Boom.php', 'app/Models/Gamma.php']);
+    expect(r.failed).toContainEqual({ path: 'app/Models/Boom.php', reason: 'read' });
+    expect(r.failed).toContainEqual({ path: 'routes/web.php', reason: 'read' });
+    expect(r.nodes.map((n) => n.id)).toEqual(['app/Models/Alpha.php', 'app/Models/Boom.php', 'app/Models/Gamma.php']);
+    expect(r.edges).toContainEqual(expect.objectContaining({ from: 'app/Models/Gamma.php', to: 'app/Models/Alpha.php' }));
+  });
+});
