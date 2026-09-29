@@ -53,7 +53,28 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
 }
 
 export async function saveAnalysis(e: CacheEntry): Promise<void> {
-  await run('readwrite', (s) => s.put(e));
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      const store = tx.objectStore(STORE);
+      const cursorReq = store.openCursor();
+      cursorReq.onsuccess = () => {
+        const cursor = cursorReq.result;
+        if (cursor) {
+          if ((cursor.value as CacheEntry).name === e.name && cursor.key !== e.key) cursor.delete();
+          cursor.continue();
+        } else {
+          store.put(e);
+        }
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
 }
 
 export async function listAnalyses(): Promise<CacheSummary[]> {

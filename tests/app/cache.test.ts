@@ -83,14 +83,14 @@ describe('cache', () => {
   });
 
   test('save/list/load/delete/clear roundtrip, newest first', async () => {
-    await saveAnalysis(summary('k1', '2026-01-01T00:00:00Z', arch));
-    await saveAnalysis(summary('k2', '2026-03-01T00:00:00Z', arch));
-    await saveAnalysis(summary('k3', '2026-02-01T00:00:00Z', arch));
+    await saveAnalysis({ ...summary('k1', '2026-01-01T00:00:00Z', arch), name: 'repo-k1' });
+    await saveAnalysis({ ...summary('k2', '2026-03-01T00:00:00Z', arch), name: 'repo-k2' });
+    await saveAnalysis({ ...summary('k3', '2026-02-01T00:00:00Z', arch), name: 'repo-k3' });
 
     const list = await listAnalyses();
     expect(list.map((s) => s.key)).toEqual(['k2', 'k3', 'k1']);
     expect(list[0]).not.toHaveProperty('architecture');
-    expect(list[0]).toMatchObject({ name: 'react-mini', framework: 'react', lang: arch.lang, files: arch.nodes.length });
+    expect(list[0]).toMatchObject({ name: 'repo-k2', framework: 'react', lang: arch.lang, files: arch.nodes.length });
 
     const loaded = await loadAnalysis('k1');
     expect(loaded?.architecture).toEqual(arch);
@@ -102,6 +102,18 @@ describe('cache', () => {
 
     await clearAnalyses();
     expect(await listAnalyses()).toEqual([]);
+  });
+
+  test('saving a changed folder replaces its old entry; other folders untouched', async () => {
+    const at = '2026-01-01T00:00:00Z';
+    await saveAnalysis({ ...summary('x1', at, arch), name: 'x' });
+    await saveAnalysis({ ...summary('y1', at, arch), name: 'y' });
+    await saveAnalysis({ ...summary('x2', '2026-02-01T00:00:00Z', arch), name: 'x' });
+    const list = await listAnalyses();
+    expect(list.map((s) => s.key).sort()).toEqual(['x2', 'y1']);
+    expect(await loadAnalysis('x1')).toBeUndefined();
+    await saveAnalysis({ ...summary('x2', '2026-03-01T00:00:00Z', arch), name: 'x' });
+    expect((await listAnalyses()).length).toBe(2);
   });
 
   test('stored record never contains source text', async () => {
