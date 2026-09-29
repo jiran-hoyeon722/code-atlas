@@ -1,0 +1,109 @@
+.ca-shell {
+    --ca-top: 56px;
+    --ca-bg: #0b0f17;
+    --ca-panel: rgba(22, 28, 40, .72);
+    --ca-border: rgba(255, 255, 255, .08);
+    --ca-text: #e6e9ef;
+    --ca-muted: #8b93a3;
+    --ca-accent: #4c6ef5;
+    position: fixed;
+    inset: 0;
+    background: var(--ca-bg);
+    color: var(--ca-text);
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color-scheme: dark;
+}
+.ca-shell, .ca-shell * { box-sizing: border-box; }
+.ca-shell button { font: inherit; color: inherit; cursor: pointer; }
+
+.ca-shell-top {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 30;
+    height: var(--ca-top);
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 16px;
+    background: var(--ca-panel);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--ca-border);
+    white-space: nowrap;
+}
+.ca-shell-brand { display: flex; flex-direction: column; min-width: 0; }
+.ca-shell-brand strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+.ca-shell-brand span { color: var(--ca-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+
+.ca-shell-tabs { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--ca-border); border-radius: 9px; background: rgba(255, 255, 255, .03); }
+.ca-shell-tabs button { border: 0; background: transparent; padding: 5px 14px; border-radius: 6px; color: var(--ca-muted); }
+.ca-shell-tabs button:hover { color: var(--ca-text); }
+.ca-shell-tabs button.on { background: var(--ca-accent); color: #fff; }
+
+.ca-shell-issues { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ca-shell-chip,
+.ca-shell-issue summary {
+    display: inline-block; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--ca-border); background: rgba(255, 255, 255, .04);
+    color: var(--ca-muted); font-size: 12px;
+}
+.ca-shell-issue { position: relative; }
+.ca-shell-issue summary { cursor: pointer; list-style: none; color: #f5b453; border-color: rgba(245, 180, 83, .3); }
+.ca-shell-issue summary::-webkit-details-marker { display: none; }
+.ca-shell-issue ul {
+    position: absolute; top: calc(100% + 8px); left: 0; z-index: 40;
+    margin: 0; padding: 8px; list-style: none;
+    min-width: 320px; max-width: min(560px, 90vw); max-height: 50vh; overflow: auto;
+    background: rgba(22, 28, 40, .96); border: 1px solid var(--ca-border); border-radius: 10px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .45);
+    white-space: normal;
+}
+.ca-shell-issue li { display: flex; justify-content: space-between; gap: 12px; padding: 4px 6px; }
+.ca-shell-issue li code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; word-break: break-all; }
+.ca-shell-issue li span { color: var(--ca-muted); flex: none; }
+
+.ca-shell-actions { margin-left: auto; display: flex; gap: 6px; }
+.ca-shell-actions button,
+.ca-shell-dialog button,
+.ca-shell-note button {
+    padding: 5px 12px; border-radius: 7px;
+    border: 1px solid var(--ca-border); background: rgba(255, 255, 255, .05);
+}
+.ca-shell-actions button:hover,
+.ca-shell-dialog button:hover { background: rgba(255, 255, 255, .1); }
+.ca-shell button.primary { background: var(--ca-accent); border-color: var(--ca-accent); color: #fff; }
+.ca-shell button:focus-visible,
+.ca-shell input:focus-visible { outline: 2px solid var(--ca-accent); outline-offset: 2px; }
+
+.ca-shell-view { position: absolute; inset: var(--ca-top) 0 0 0; overflow: hidden; }
+.ca-shell-mount { position: absolute; inset: 0; overflow: auto; }
+.ca-shell-note {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    max-width: min(440px, calc(100% - 32px)); padding: 16px 20px; text-align: center;
+    background: var(--ca-panel); border: 1px solid var(--ca-border); border-radius: 12px;
+    backdrop-filter: blur(12px); color: var(--ca-muted);
+}
+.ca-shell-note p { margin: 0 0 12px; color: var(--ca-text); }
+
+.ca-shell-backdrop {
+    position: fixed; inset: 0; z-index: 100;
+    display: grid; place-items: center; padding: 16px;
+    background: rgba(5, 8, 14, .6);
+}
+.ca-shell-dialog {
+    width: min(460px, 100%); padding: 20px;
+    background: rgba(22, 28, 40, .96); border: 1px solid var(--ca-border); border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+    display: flex; flex-direction: column; gap: 10px;
+}
+.ca-shell-dialog h2 { margin: 0; font-size: 15px; }
+.ca-shell-dialog p { margin: 0; color: var(--ca-muted); }
+.ca-shell-dialog label { font-size: 12px; color: var(--ca-muted); }
+.ca-shell-dialog input {
+    padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--ca-border); background: rgba(0, 0, 0, .3); color: var(--ca-text);
+    font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+}
+.ca-shell-dialog .ca-shell-error { color: #ff8787; font-size: 12px; }
+.ca-shell-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
+@media (max-width: 900px) {
+    .ca-shell-top { gap: 10px; padding: 0 10px; }
+    .ca-shell-brand span { display: none; }
+}
