@@ -1,6 +1,17 @@
 import { expect, test } from 'vitest';
 import { shouldSkipDir, isSourcePath, isConfigPath, parseGitignore, MAX_FILES } from '../../src/engine/collect';
 
+// Timing is compared against a same-length benign pattern on the same input, so machine load cancels out.
+const minMs = (fn: () => void, runs: number, reps: number) => {
+  let best = Infinity;
+  for (let i = 0; i < runs; i++) {
+    const start = performance.now();
+    for (let k = 0; k < reps; k++) fn();
+    best = Math.min(best, (performance.now() - start) / reps);
+  }
+  return best;
+};
+
 test('skips vendor-like dirs', () => { expect(shouldSkipDir('node_modules')).toBe(true); expect(shouldSkipDir('src')).toBe(false); });
 test('classifies source paths', () => { expect(isSourcePath('app/A.php')).toBe('php'); expect(isSourcePath('src/a.d.ts')).toBe('ts'); expect(isSourcePath('a.css')).toBeNull(); });
 test('classifies all ts extensions', () => {
@@ -47,9 +58,15 @@ test('gitignore CRLF line endings', () => {
   expect(ig('src/x.ts', false)).toBe(false);
 });
 test('gitignore glob matching stays linear on pathological patterns', () => {
-  const ig = parseGitignore('*a*a*a*a*a*a*a*a*a*a*b\n');
-  const start = performance.now();
-  expect(ig('a'.repeat(40), false)).toBe(false);
-  expect(performance.now() - start).toBeLessThan(50);
-  expect(ig('xaaaaaaaaaab', false)).toBe(true);
+  const hostile = parseGitignore('*a*a*a*a*a*a*a*a*a*a*b\n');
+  const benign = parseGitignore('*c*c*c*c*c*c*c*c*c*c*b\n');
+  // Ends in `b` so the literal-tail shortcut passes and the matcher itself must reject it.
+  const input = `${'a'.repeat(40)}/b`;
+  expect(hostile(input, false)).toBe(false);
+  expect(hostile('xaaaaaaaaaab', false)).toBe(true);
+  benign(input, false); // warm-up
+  // Backtracking blow-up is exponential (ratio in the thousands); a linear matcher stays near 1.
+  const tBenign = minMs(() => { benign(input, false); }, 5, 50);
+  const tHostile = minMs(() => { hostile(input, false); }, 5, 1);
+  expect(tHostile / Math.max(tBenign, 0.0005)).toBeLessThan(20);
 });

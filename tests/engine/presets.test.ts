@@ -2,6 +2,17 @@ import { describe, expect, test } from 'vitest';
 import { compileRoles, presetFor } from '../../src/engine/presets';
 import type { Detection } from '../../src/engine/detect';
 
+// Timing is compared against a same-length benign pattern on the same input, so machine load cancels out.
+const minMs = (fn: () => void, runs: number, reps: number) => {
+  let best = Infinity;
+  for (let i = 0; i < runs; i++) {
+    const start = performance.now();
+    for (let k = 0; k < reps; k++) fn();
+    best = Math.min(best, (performance.now() - start) / reps);
+  }
+  return best;
+};
+
 const role = (name: string, layer: 0 | 1 | 2 | 3, patterns: string[]) => ({ name, layer, patterns, description: '' });
 
 describe('compileRoles', () => {
@@ -28,11 +39,17 @@ describe('compileRoles', () => {
 
 describe('compileRoles pathological patterns', () => {
   test('matching stays linear', () => {
-    const m = compileRoles([role('P', 1, ['*a*a*a*a*a*a*a*a*a*a*b']), role('X', 3, [''])]);
-    const start = performance.now();
-    expect(m('a'.repeat(40))).toBe(1);
-    expect(performance.now() - start).toBeLessThan(50);
-    expect(m('xaaaaaaaaaab')).toBe(0);
+    const hostile = compileRoles([role('P', 1, ['*a*a*a*a*a*a*a*a*a*a*b']), role('X', 3, [''])]);
+    const benign = compileRoles([role('P', 1, ['*c*c*c*c*c*c*c*c*c*c*b']), role('X', 3, [''])]);
+    // Ends in `b` so the literal-tail shortcut passes and the matcher itself must reject it.
+    const input = `${'a'.repeat(40)}/b`;
+    expect(hostile(input)).toBe(1);
+    expect(hostile('xaaaaaaaaaab')).toBe(0);
+    benign(input); // warm-up
+    // Backtracking blow-up is exponential (ratio in the thousands); a linear matcher stays near 1.
+    const tBenign = minMs(() => { benign(input); }, 5, 50);
+    const tHostile = minMs(() => { hostile(input); }, 5, 1);
+    expect(tHostile / Math.max(tBenign, 0.0005)).toBeLessThan(20);
   });
 
   test('consecutive star runs behave like one', () => {
