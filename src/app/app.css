@@ -1,2 +1,9 @@
 html, body, #root { height: 100%; margin: 0; }
-body { font-family: system-ui, sans-serif; background: #0e1116; color: #e6e8eb; }
+body { font-family: system-ui, sans-serif; background: #0b0f17; color: #e6e8eb; }
+
+.ca-app-skipped {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 40;
+  display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 14px; border-radius: 8px;
+  background: rgba(22, 28, 40, .9); border: 1px solid rgba(255, 169, 77, .35); color: #ffd8a8; font-size: 12.5px;
+}
+.ca-app-skipped button { border: 0; background: transparent; color: inherit; font-size: 15px; cursor: pointer; }
