@@ -1,4 +1,5 @@
 import type { Detection } from './detect';
+import { compileGlob, type GlobSyntax } from './glob';
 
 export interface Layer {
   key: 'entry' | 'application' | 'domain' | 'foundation';
@@ -74,6 +75,8 @@ const REACT_ROLES: Role[] = [
   r('기타', 3, [''], '위 역할에 속하지 않는 나머지 코드'),
 ];
 
+const escapeGlob = (s: string) => s.replace(/[*\\]/g, '\\$&');
+
 const inner = (path: string, sourceDir: string) =>
   sourceDir === '' ? path : path.startsWith(sourceDir + '/') ? path.slice(sourceDir.length + 1) : path;
 
@@ -91,26 +94,15 @@ export function presetFor(detection: Detection, paths: string[]): Preset {
   return {
     layers: layers('애플리케이션', '도메인·인프라'),
     roles: [
-      ...folders.map((f) => r(f, 3, [f + '/'], `${f} 폴더의 파일`)),
+      ...folders.map((f) => r(f, 3, [escapeGlob(f) + '/'], `${f} 폴더의 파일`)),
       r('기타', 3, [''], '폴더에 속하지 않는 루트 파일'),
     ],
   };
 }
 
-const escape = (s: string) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+const ROLE_SYNTAX: GlobSyntax = { question: false, bareDoubleStar: 'star' };
 
 export function compileRoles(roles: Role[]): (innerPath: string) => number {
-  const matchers = roles.map((role) =>
-    role.patterns.map(
-      (pattern) =>
-        new RegExp(
-          '^' +
-            pattern
-              .split(/(\*\*\/|\*)/)
-              .map((part) => (part === '**/' ? '(?:.*/)?' : part === '*' ? '[^/]*' : escape(part)))
-              .join(''),
-        ),
-    ),
-  );
-  return (innerPath) => matchers.findIndex((ps) => ps.some((re) => re.test(innerPath)));
+  const matchers = roles.map((role) => role.patterns.map((pattern) => compileGlob(pattern, ROLE_SYNTAX, true)));
+  return (innerPath) => matchers.findIndex((ps) => ps.some((match) => match(innerPath)));
 }
