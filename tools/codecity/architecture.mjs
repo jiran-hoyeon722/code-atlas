@@ -14,9 +14,14 @@ const ROLES = config.roles;
 
 const CONCEPTUAL_KINDS = new Set(['binds', 'triggers']);
 
+// A pattern matches the start of the path under sourceDir; `*` spans one segment, `**/` any number of folders
+const toMatcher = (pattern) =>
+    new RegExp('^' + pattern.split(/(\*\*\/|\*)/).map((part) => (part === '**/' ? '(?:.*/)?' : part === '*' ? '[^/]*' : part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))).join(''));
+const matchers = ROLES.map(([, , patterns]) => patterns.map(toMatcher));
+
 const roleOf = (path) => {
     const inner = path.slice(src.length + 1);
-    return ROLES.findIndex(([, , prefixes]) => prefixes.some((prefix) => inner.startsWith(prefix)));
+    return matchers.findIndex((patterns) => patterns.some((pattern) => pattern.test(inner)));
 };
 
 function indexCodeCharta(map) {
@@ -112,7 +117,7 @@ writeFileSync(
         routesDir: config.routesDir,
         language: config.language,
         layers: LAYERS,
-        roles: ROLES.map(([name, layer, , description]) => ({ name, layer, description, warning: config.roleWarnings?.[name] })),
+        roles: ROLES.map(([name, layer, , description]) => ({ name, layer, description, warning: config.roleWarnings?.[name], color: config.roleColors?.[name] })),
         nodes,
         edges: edges.map((edge) => [edge.from, edge.to, edge.weight, edge.kinds, isUpward(edge) ? 1 : 0]),
     }),

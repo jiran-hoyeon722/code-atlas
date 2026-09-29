@@ -120,16 +120,12 @@ button, input, select { font: inherit; color: inherit; }
 
 <script src="https://cdn.jsdelivr.net/npm/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
 <script>
-const ROLE_COLORS = {
-    Controller: '#4c6ef5', Middleware: '#748ffc', Request: '#91a7ff', Resource: '#339af0', Console: '#1c7ed6', WebSocket: '#74c0fc', Provider: '#5c7cfa',
-    Action: '#12b886', Service: '#ff922b', Job: '#20c997', Listener: '#63e6be', Observer: '#0ca678', Mail: '#96f2d7',
-    Repository: '#9775fa', Gateway: '#cc5de8', Domain: '#e599f7', Model: '#be4bdb', Event: '#f783ac',
-    Data: '#868e96', Enum: '#a9e34b', Exception: '#ffd43b', Support: '#adb5bd',
-};
+const ROLE_COLORS = {};
 const KIND_LABEL = {
     inject: '생성자 주입', type: '타입 힌트', 'static-call': '정적 호출', new: 'new 생성', const: '상수·enum',
     'class-ref': '::class', trait: '트레이트', catch: 'catch', instanceof: 'instanceof', extends: '상속',
     implements: '구현', attribute: '어트리뷰트', triggers: '이벤트→리스너', binds: '바인딩', other: '기타',
+    import: 'import', 'type-import': '타입 import', 'dynamic-import': '동적 import', 're-export': '재export', require: 'require',
 };
 const LAYER_Y = [260, 90, -90, -260];
 const $ = (s) => document.querySelector(s);
@@ -146,12 +142,17 @@ fetch('architecture.json').then((r) => r.json()).then(init).catch((e) => { $('#l
 
 function init(data) {
     A = data;
-    A.roles.forEach((r, i) => { ROLE_COLORS[r.name] ??= `hsl(${(i * 137) % 360} 55% 62%)`; });
+    // Roles without a configured color get a shade of their layer's hue
+    A.roles.forEach((r, i) => {
+        const [hue, sat, step] = [[228, 78, 9], [164, 62, 9], [262, 72, 9], [200, 30, 28]][r.layer] ?? [0, 0, 0];
+        const k = A.roles.slice(0, i).filter((x) => x.layer === r.layer).length;
+        ROLE_COLORS[r.name] = r.color ?? `hsl(${(hue + k * step) % 360}, ${sat}%, ${56 + (k % 3) * 8}%)`;
+    });
     const roleColor = (role) => ROLE_COLORS[A.roles[role].name] ?? '#adb5bd';
     const anchors = anchorPositions();
     const nodes = A.nodes.map((n, i) => ({
         ...n, id: i,
-        name: n.path.split('/').pop().replace(/\.[^./]+$/, ''),
+        name: n.path.replace(/(?:\.d)?\.[^./]+$/, '').replace(/^(?:.*\/)?([^/]+)\/index$|^(?:.*\/)?/, (m, dir) => (dir ? dir + '/index' : '')),
         layer: A.roles[n.role].layer,
         color: roleColor(n.role),
         neighbors: new Set(), links: [],

@@ -6,14 +6,14 @@
 
 - 분석 대상 레포는 **읽기 전용**. 파일 쓰기·git 변경 금지. 분석 도구는 docker 로 돌리고 대상 레포는 `:ro` 로 마운트한다. 대상 레포에 도구·산출물을 두지 않는다.
 - 산출물은 `site/<name>/`(웹 루트), 중간 산출물은 `.work/<name>/`. 둘 다 git 제외(`.gitignore`). 생성 데이터·소스 사본은 커밋하지 않는다.
-- 로컬 서버는 `127.0.0.1` 에만 바인딩한다. 소스는 `sourceDir` 만 `:ro` 로 `/<name>/src/` 에 마운트한다.
+- 로컬 서버는 `127.0.0.1` 에만 바인딩한다. 소스는 `sourceDir` 만 `:ro` 로 웹 루트 밖(`/srv/src/<name>`)에 마운트하고 nginx `alias` 로 `/<name>/src/` 에 연결한다. `site/` 안에 마운트 지점을 만들지 않는다.
 - 배포·push·공개 범위 결정은 매번 사용자 확인. 소스 본문이 들어간 페이지는 접근 제한 없이 배포하지 않는다.
 
 ## 구조
 
 | 경로 | 역할 |
 |---|---|
-| `repos/<name>.json` | 레포 설정: 경로, 언어, sourceDir, routesDir, 역할·계층 규칙, 레거시 패턴, 역할 경고 |
+| `repos/<name>.json` | 레포 설정: `path`, `language`(php / typescript / javascript), `extensions`, `sourceDir`, `routesDir`, `exclude`(생성 파일 등 정규식), `tsConfig`, `layers`, `roles`, `roleColors`, `roleWarnings`, `legacyImport` |
 | `tools/codecity/build.sh <name>` | 전체 파이프라인 (한 명령으로 재생성) |
 | `tools/codecity/serve.sh` | 빌드된 모든 레포를 `http://127.0.0.1:9400/` 에서 서빙 (nginx) |
 | `tools/codecity/pages/` | city / graph / explorer 페이지 원본 (빌드 시 `site/<name>/` 로 복사) |
@@ -23,8 +23,8 @@
 
 1. 코드 지표 — 파일별 줄 수, 복잡도, 함수당 최대 복잡도 (CodeCharta unifiedparser).
 2. git 지표 — 최근 6개월과 전체 이력 두 벌. 커밋 수, 작성자 수, fix 비율, temporal coupling.
-3. 코드 의존성 — 언어별 추출기로 파일 간 참조와 참조 종류(주입/타입/정적 호출/new/상속/구현 등). 프레임워크의 숨은 연결(DI 바인딩, 이벤트→리스너) 보완. 라우트 등 진입점 참조 수. PHP 는 `deps.php`(nikic/php-parser, code-atlas 의 `vendor/`). 다른 언어는 추출기를 추가한다(예: JS/TS → dependency-cruiser).
-4. 역할·계층 분류 — 폴더 prefix 로 역할, 역할을 4계층(진입점 → 애플리케이션 → 도메인·인프라 → 기반)에 배치. `repos/<name>.json` 에 둔다.
+3. 코드 의존성 — 언어별 추출기로 파일 간 참조와 참조 종류(주입/타입/정적 호출/new/상속/구현 등). 프레임워크의 숨은 연결(DI 바인딩, 이벤트→리스너) 보완. 라우트 등 진입점 참조 수. PHP 는 `deps.php`(nikic/php-parser, code-atlas 의 `vendor/`), JS/TS 는 `deps-js.mjs`(dependency-cruiser, code-atlas 의 `node_modules/`; 참조 종류 import / type-import / dynamic-import / re-export / require). 둘 다 같은 `deps.json` 형태를 낸다. 새 언어는 이 형태로 추출기를 추가하고 `build.sh` 의 `case` 에 연결한다.
+4. 역할·계층 분류 — 경로 패턴으로 역할, 역할을 4계층(진입점 → 애플리케이션 → 도메인·인프라 → 기반)에 배치. `repos/<name>.json` 에 둔다. 패턴은 `sourceDir` 기준 앞부분 일치이고 `*`(한 폴더)·`**/`(여러 폴더) glob 을 쓸 수 있다(예: `components/**/hooks/`). 먼저 맞는 규칙이 이긴다. `roleColors` 에 없는 역할은 계층 색조로 자동 배색된다.
 5. 파생 지표 — fan-in, fan-out, 불안정도 = fo/(fi+fo), PageRank 중심도(평균 1.0 배수), 역방향 의존(강: 도메인·기반 → 애플리케이션·진입점, 약: 기반 → 도메인), 핫스팟 = 최근 커밋 × 함수 최대 복잡도, 참조 없음 파일.
 6. 리포트 — 핫스팟 Top 20, 레거시 패턴 잔존 파일 등 (`hotspots.md` / `hotspots.csv`).
 

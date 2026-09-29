@@ -294,7 +294,7 @@ details.group[open] summary::after { content: "▾"; }
                     </select>
                 </label>
                 <label><input type="checkbox" id="only-up"> 역방향만</label>
-                <label><input type="checkbox" id="show-conceptual" checked> 바인딩·이벤트 연결 포함</label>
+                <label id="conceptual-option"><input type="checkbox" id="show-conceptual" checked> 바인딩·이벤트 연결 포함</label>
             </div>
             <div class="scroll-x"><svg id="layer-svg" role="img" aria-label="역할별 계층 의존 지도"></svg></div>
             <div class="legend">
@@ -345,13 +345,14 @@ const KIND_LABEL = {
     const: '상수·enum', 'class-ref': '::class 참조', trait: '트레이트', catch: '예외 catch',
     instanceof: 'instanceof', extends: '상속', implements: '인터페이스 구현', attribute: '어트리뷰트',
     triggers: '이벤트 → 리스너', binds: '컨테이너 바인딩', other: '기타',
+    import: 'import', 'type-import': '타입 import', 'dynamic-import': '동적 import (지연 로딩)', 're-export': '재export', require: 'require',
 };
 const LAYER_VARS = ['--l0', '--l1', '--l2', '--l3'];
 const TABS = [
     { key: 'fanIn', label: '범용 기반', head: 'fan-in', lead: '가장 많은 파일이 기대는 코드. 레포의 "공용어"라서 먼저 익혀두면 나머지 코드가 쉽게 읽혀요.' },
     { key: 'fanOut', label: '조율자', head: 'fan-out', lead: '가장 많은 파일을 엮는 코드. 기능 흐름을 따라갈 때 출발점으로 좋고, 동시에 복잡도가 몰리는 곳이에요.' },
     { key: 'centrality', label: '중심도', head: '중심도', lead: '간접 영향까지 반영한 핵심 파일 (PageRank). "중요한 파일이 쓰는 파일"일수록 높아요.' },
-    { key: 'routeRefs', label: '진입점', head: '라우트 참조', lead: '라우트 파일에서 직접 연결된 클래스. API 요청이 실제로 들어오는 문이에요.' },
+    { key: 'routeRefs', label: '진입점', head: '라우트 참조', lead: '라우트 파일에서 직접 연결된 코드. 요청·화면 진입이 실제로 들어오는 문이에요.' },
     { key: 'upward', label: '역방향 의존', head: '역방향 참조', lead: '가정한 계층(진입점 → 애플리케이션 → 도메인·인프라 → 기반)을 거슬러 위 계층을 참조하는 파일. 강한 역방향을 먼저 정렬했어요.' },
     { key: 'orphan', label: '참조 없음', head: '코드 줄', lead: '코드에서 직접 참조하는 곳이 없는 파일 (진입점 역할 제외). 컨테이너·설정·문자열로만 연결됐거나 안 쓰이는 코드일 수 있어요.' },
 ];
@@ -373,7 +374,7 @@ function init(data) {
     A = data;
     A.nodes.forEach((n, i) => {
         n.i = i;
-        n.name = n.path.split('/').pop().replace(/\.[^./]+$/, '');
+        n.name = n.path.replace(/(?:\.d)?\.[^./]+$/, '').replace(/^(?:.*\/)?([^/]+)\/index$|^(?:.*\/)?/, (m, dir) => (dir ? dir + '/index' : ''));
         n.layer = A.roles[n.role].layer;
         n.in = []; n.out = [];
         n.upStrong = 0; n.upWeak = 0;
@@ -414,6 +415,7 @@ function init(data) {
     $('#title').textContent = document.title;
     $('#meta').textContent = `${A.sourceDir}/ · ${fmt(A.nodes.length)}개 파일 · 생성 ${when}`;
     $('#city-link').href = '/codecharta/?' + new URLSearchParams({ file: `../${A.name}/architecture.cc.json`, area: 'rloc', height: 'fan_in', color: 'instability', edge: 'code_dependency' });
+    $('#conceptual-option').hidden = !A.edges.some((e) => 'binds' in e[3] || 'triggers' in e[3]);
 
     renderCards();
     renderLayers();
@@ -448,7 +450,7 @@ function renderCards() {
         [fmt(A.nodes.length), `파일 (${A.sourceDir}/)`],
         [fmt(A.E.length), `의존하는 파일 쌍 · 참조 ${fmt(refs)}회`],
         [A.roles.length, '역할 · 4개 계층'],
-        [fmt(routed), '라우트에 직접 연결된 클래스'],
+        [fmt(routed), '라우트에 직접 연결된 파일'],
         [`${fmt(upStrong)} / ${fmt(upWeak)}`, '역방향 의존 (강한 / 약한)'],
     ];
     $('#cards').innerHTML = cards.map(([b, s]) => `<div class="card"><b>${b}</b><span>${s}</span></div>`).join('');
@@ -761,7 +763,7 @@ function fileView(n) {
     const pIn = percentile(A.sortedFanIn, n.fanIn), pOut = percentile(A.sortedFanOut, n.fanOut);
     const role = A.roles[n.role];
     const insights = [];
-    if (n.routeRefs > 0) insights.push(['', `라우트(${n.routeFiles.map(esc).join(', ')})에서 직접 연결돼요 — API 요청이 여기로 들어와요.`]);
+    if (n.routeRefs > 0) insights.push(['', `라우트(${n.routeFiles.map(esc).join(', ')})에서 직접 연결돼요 — 요청·화면 진입이 여기로 들어와요.`]);
     if (n.fanIn >= 5 && pIn >= 0.97) insights.push(['', `fan-in 상위 ${Math.max(1, Math.round((1 - pIn) * 100))}% — 레포 전체가 기대는 기반 코드예요. 바꾸면 파급 범위가 넓어요.`]);
     if (n.fanOut >= 5 && pOut >= 0.97) insights.push(['', `fan-out 상위 ${Math.max(1, Math.round((1 - pOut) * 100))}% — 많은 파일을 엮는 조율자예요. 흐름을 이해할 때 출발점으로 좋아요.`]);
     if (n.fanIn >= 10 && n.instability <= 0.2) insights.push(['', '안정된 기반이에요 (불안정도 낮음). 다른 코드가 이걸 따라가고, 이건 남을 거의 따라가지 않아요.']);
@@ -777,7 +779,7 @@ function fileView(n) {
         [fmt(n.routeRefs), '라우트 참조', `${A.routesDir ?? ''}/`],
         [fmt(n.commits), '최근 커밋', '최근 6개월'],
         [fmt(n.maxComplexity), '함수 최대 복잡도', '가장 꼬인 함수'],
-        [fmt(n.lines), '줄 수', `public 메서드 ${n.methods}개`],
+        [fmt(n.lines), '줄 수', n.methods == null ? esc(n.kind) : `public 메서드 ${n.methods}개`],
     ];
     return `
         <div class="kicker">${roleChip(n.role)}<span>${esc(A.layers[n.layer].label)} 계층</span><span>·</span><span>${esc(n.kind)}</span></div>

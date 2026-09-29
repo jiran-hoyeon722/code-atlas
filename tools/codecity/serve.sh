@@ -18,17 +18,25 @@ if [[ ! -f $CODECHARTA/index.html ]]; then
         -c 'cp -R /usr/share/nginx/html/. /export/'
 fi
 
-mounts=(-v "$ATLAS/site":/usr/share/nginx/html:ro -v "$CODECHARTA":/usr/share/nginx/html/codecharta:ro)
-mkdir -p "$ATLAS/site/codecharta"
+# Sources are mounted outside the web root and aliased in, so site/ never holds mount points
+NGINX_CONF=$ATLAS/.cache/nginx.conf
+mounts=(-v "$ATLAS/site":/usr/share/nginx/html:ro -v "$CODECHARTA":/srv/codecharta:ro -v "$NGINX_CONF":/etc/nginx/conf.d/default.conf:ro)
+locations="    location /codecharta/ { alias /srv/codecharta/; }"$'\n'
 for config in "$ATLAS"/repos/*.json; do
     name=$(basename "$config" .json)
     [[ -f $ATLAS/site/$name/meta.json ]] || continue
     repo=$(node -e 'console.log(require(process.argv[1]).path)' "$config" | sed "s|^~|$HOME|")
     src=$(node -e 'console.log(require(process.argv[1]).sourceDir)' "$config")
-    # docker needs the mount point to exist inside the read-only site/ mount
-    mkdir -p "$ATLAS/site/$name/src/$src"
-    mounts+=(-v "$repo/$src":/usr/share/nginx/html/$name/src/$src:ro)
+    mounts+=(-v "$repo/$src":/srv/src/$name/$src:ro)
+    locations+="    location /$name/src/ { alias /srv/src/$name/; }"$'\n'
 done
+cat > "$NGINX_CONF" <<CONF
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+$locations}
+CONF
 
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 docker run -d --name "$CONTAINER" -p 127.0.0.1:"$PORT":80 "${mounts[@]}" nginx:stable-alpine >/dev/null

@@ -1,0 +1,9 @@
+{
+    "name": "code-atlas-tools",
+    "private": true,
+    "description": "JS/TS dependency extractor for code-atlas",
+    "dependencies": {
+        "dependency-cruiser": "^17.0.0",
+        "typescript": "^5.9.0"
+    }
+}
