@@ -96,12 +96,24 @@ async function cspViolations(page) {
 
 async function openFolder(page, dir, loadingShot) {
   await page.evaluate(() => (window.__loading = { seen: false, reading: false }));
+  const miniCitySize = () => {
+    const c = document.querySelector('.cc-load-city canvas');
+    return c ? { w: c.clientWidth, h: c.clientHeight } : null;
+  };
   const loading = loadingShot
-    ? page.waitForSelector('.cc-load', { timeout: 30_000 }).then(() => shot(page, loadingShot)).then(() => true, () => false)
-    : Promise.resolve(false);
+    ? page.waitForSelector('.cc-load-city canvas', { timeout: 30_000 })
+      .then(async () => {
+        const size = await page.evaluate(miniCitySize);
+        await shot(page, loadingShot);
+        const still = await page.evaluate(() => !!document.querySelector('.cc-load'));
+        return { ...size, still };
+      })
+      .catch(() => null)
+    : Promise.resolve(null);
   await page.setInputFiles('[data-testid=folder-input]', dir);
   await waitForCity(page);
-  return { captured: await loading, ...(await page.evaluate(() => window.__loading)) };
+  const miniCity = await loading;
+  return { captured: !!miniCity, miniCity, ...(await page.evaluate(() => window.__loading)) };
 }
 
 let preview = null;
@@ -144,6 +156,9 @@ async function main() {
       assert(r.seen, 'loading screen never appeared');
       assert(r.reading, 'loading screen never showed "코드 읽기"');
       if (!r.captured) notes.push('loading.png: loading screen finished before the screenshot could be taken');
+      else assert(r.miniCity.w > 0 && r.miniCity.h > 0, `mini-city canvas has no size: ${JSON.stringify(r.miniCity)}`);
+      if (r.captured && !r.miniCity.still) notes.push('loading.png: analysis finished while the screenshot was being taken, so it may show the city instead');
+      notes.push(`mini-city canvas while loading: ${r.miniCity ? `${r.miniCity.w}×${r.miniCity.h}` : 'not captured'} (react-mini parses in well under a second, so buildings may not be visible yet)`);
       const brand = await page.locator('.ca-shell-brand strong').textContent();
       assert(brand === 'react-mini', `unexpected repo name "${brand}"`);
       await shot(page, 'city.png');
@@ -169,7 +184,9 @@ async function main() {
     await step('graph tab renders', async () => {
       await page.click('.ca-shell [role=tab]:has-text("그래프")');
       await page.waitForSelector('.ca-shell-mount .cg-canvas canvas', { timeout: 30_000 });
-      await page.waitForTimeout(3000);
+      // the layout settles (up to 15 s on a slow software renderer), then zooms to fit over 600 ms
+      await page.waitForSelector('.cc-graph[data-settled]', { state: 'attached', timeout: 45_000 });
+      await page.waitForTimeout(1500);
       await shot(page, 'graph.png');
     });
 

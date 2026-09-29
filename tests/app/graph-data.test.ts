@@ -8,7 +8,7 @@ import { analyze } from '../../src/engine/analyze';
 import type { RepoInput } from '../../src/engine/types';
 import type { Architecture } from '../../src/engine/architecture';
 import { roleColors } from '../../src/features/palette';
-import { graphData } from '../../src/features/graph/data';
+import { graphData, nodeRelSize } from '../../src/features/graph/data';
 
 function loadRepo(name: string): RepoInput {
   const dir = join(__dirname, '../fixtures', name);
@@ -62,4 +62,11 @@ describe('graphData', () => {
       expect(n.val).toBeCloseTo(1 + Math.sqrt(arch.nodes[i].fanIn) * 1.6);
     });
   });
+});
+
+test('small graphs get bigger dots, large graphs keep the base size', () => {
+  expect(nodeRelSize(9)).toBeCloseTo(2.6 * 3);
+  expect(nodeRelSize(150)).toBeCloseTo(2.6);
+  expect(nodeRelSize(5000)).toBeCloseTo(2.6);
+  expect(nodeRelSize(40)).toBeGreaterThan(nodeRelSize(100));
 });

@@ -5,8 +5,21 @@ import {
 
 const MAX = 600;
 const RISE_MS = 400;
-const SIDE = Math.ceil(Math.sqrt(MAX));
 const GAP = 1.3;
+
+/** Square spiral around the origin, so the first buildings sit where the camera looks and the city grows outward. */
+export function spiral(n: number): [number, number] {
+  if (n === 0) return [0, 0];
+  const k = Math.ceil((Math.sqrt(n + 1) - 1) / 2);
+  const side = 2 * k;
+  let m = (side + 1) * (side + 1) - 1;
+  if (n >= m - side) return [k - (m - n), -k];
+  m -= side;
+  if (n >= m - side) return [-k, -k + (m - n)];
+  m -= side;
+  if (n >= m - side) return [-k + (m - n), k];
+  return [k, k - (m - side - n)];
+}
 
 export function mountMiniCity(root: HTMLElement): { add(color: string): void; dispose(): void } {
   const renderer = new WebGLRenderer({ antialias: true, alpha: true });
@@ -31,7 +44,6 @@ export function mountMiniCity(root: HTMLElement): { add(color: string): void; di
   const heights = new Float32Array(MAX);
   const bornAt = new Float32Array(MAX);
   const dummy = new Object3D();
-  const half = ((SIDE - 1) * GAP) / 2;
   let count = 0;
   let total = 0;
   let raf = 0;
@@ -40,21 +52,25 @@ export function mountMiniCity(root: HTMLElement): { add(color: string): void; di
   const place = (i: number, now: number) => {
     const k = Math.min(1, (now - bornAt[i]) / RISE_MS);
     const eased = 1 - (1 - k) * (1 - k);
-    dummy.position.set((i % SIDE) * GAP - half, 0, Math.floor(i / SIDE) * GAP - half);
+    const [x, z] = spiral(i);
+    dummy.position.set(x * GAP, 0, z * GAP);
     dummy.scale.set(0.9, Math.max(0.001, heights[i] * eased), 0.9);
     dummy.updateMatrix();
     mesh.setMatrixAt(i, dummy.matrix);
     return k < 1;
   };
 
+  const aim = () => {
+    const r = (Math.ceil(Math.sqrt(Math.max(count, 25))) * GAP) / 2;
+    camera.position.set(r * 3.4, r * 3, r * 3.4);
+    camera.lookAt(0, 0, 0);
+  };
   const resize = () => {
     const w = root.clientWidth || 1;
     const h = root.clientHeight || 1;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    const r = (Math.ceil(Math.sqrt(Math.max(count, 16))) * GAP) / 2;
-    camera.position.set(r * 1.9, r * 1.7, r * 1.9);
-    camera.lookAt(0, 0, 0);
+    aim();
     camera.updateProjectionMatrix();
   };
 
@@ -84,7 +100,7 @@ export function mountMiniCity(root: HTMLElement): { add(color: string): void; di
         mesh.count = count;
         mesh.setColorAt(i, new Color(color));
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-        if (count % 16 === 0) resize();
+        aim();
       } else {
         const i = total % MAX;
         heights[i] = Math.min(6, heights[i] + 0.15);
