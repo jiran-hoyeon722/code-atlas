@@ -1,6 +1,7 @@
 import type { Parsers } from '../parsers';
 import type { Detection } from '../detect';
 import type { Edge, Extraction, FileNode, RefKind, RepoInput, SourceFile } from '../types';
+import { sourcesFor } from '../sources';
 import { extractPhpFile, type PhpFacts } from './extract';
 
 const isPhp = (path: string) => path.endsWith('.php');
@@ -16,7 +17,7 @@ export function extractPhpProject(
 ): Extraction {
   const srcPrefix = detection.sourceDir ? `${detection.sourceDir}/` : '';
   const providersPrefix = `${srcPrefix}Providers/`;
-  const appFiles = input.files.filter((f) => isPhp(f.path) && f.path.startsWith(srcPrefix)).sort(byPath);
+  const appFiles = sourcesFor(detection, input.files);
 
   const nodes: FileNode[] = [];
   const failed: Extraction['failed'] = [];

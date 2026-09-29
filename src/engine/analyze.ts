@@ -1,7 +1,7 @@
 import type { Parsers } from './parsers';
 import type { Lang, RepoInput } from './types';
 import { detect } from './detect';
-import { isSourcePath } from './collect';
+import { sourcesFor } from './sources';
 import { extractPhpProject } from './php/project';
 import { extractTsProject } from './ts/project';
 import { compileRoles, presetFor } from './presets';
@@ -30,11 +30,7 @@ export function analyze(
   if (!detection) throw new UnsupportedRepoError();
 
   const prefix = detection.sourceDir === '' ? '' : detection.sourceDir + '/';
-  // The extractors skip generated TS files, so they must not count toward `total`.
-  const processed = input.files
-    .map((f) => f.path)
-    .filter((p) => p.startsWith(prefix) && isSourcePath(p) === detection.lang && !(detection.lang === 'ts' && /\.gen\.tsx?$/.test(p)))
-    .sort();
+  const processed = sourcesFor(detection, input.files).map((f) => f.path);
 
   const preset = presetFor(detection, processed);
   const match = compileRoles(preset.roles);
