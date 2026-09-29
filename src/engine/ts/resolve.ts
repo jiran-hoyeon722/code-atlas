@@ -126,7 +126,8 @@ function loadSettings(configs: Record<string, string>, path: string, visited: Se
 
   const co = json.compilerOptions ?? {};
   let baseUrls = inherited.baseUrls;
-  let baseDir: string | null = dir;
+  // Like tsc: paths resolve against the nearest baseUrl in the extends chain, else this config's dir.
+  let baseDir: string | null = inherited.baseUrls[0] ?? dir;
   if (typeof co.baseUrl === 'string') {
     const b = join(dir, co.baseUrl);
     baseUrls = b === null ? [] : [b];
@@ -138,7 +139,7 @@ function loadSettings(configs: Record<string, string>, path: string, visited: Se
   if (co.paths && typeof co.paths === 'object') {
     hasPaths = true;
     rules = [];
-    const pathsBase = baseDir ?? dir; // relative to baseUrl when set, else the config's dir
+    const pathsBase = baseDir ?? dir;
     for (const [pattern, list] of Object.entries<any>(co.paths)) {
       if (!Array.isArray(list)) continue;
       const star = pattern.indexOf('*');
