@@ -35,7 +35,7 @@ describe('analyze', () => {
   test('laravel fixture end to end', () => {
     const input = loadRepo('laravel-mini');
     const phpUnderApp = input.files.filter((f) => f.path.startsWith('app/')).length;
-    const a = analyze(input, parsers, undefined, NOW);
+    const a = analyze(input, parsers, { now: NOW });
     expect(a.framework).toBe('laravel');
     expect(a.lang).toBe('php');
     expect(a.nodes.length).toBe(phpUnderApp);
@@ -44,7 +44,7 @@ describe('analyze', () => {
   });
 
   test('react fixture end to end', () => {
-    const a = analyze(loadRepo('react-mini'), parsers, undefined, NOW);
+    const a = analyze(loadRepo('react-mini'), parsers, { now: NOW });
     expect(a.framework).toBe('react');
     expect(a.nodes.some((n) => n.path.endsWith('routeTree.gen.ts'))).toBe(false);
     expect(a.nodes.length).toBe(9);
@@ -53,7 +53,7 @@ describe('analyze', () => {
   test('progress events', () => {
     const input = loadRepo('laravel-mini');
     const events: Progress[] = [];
-    analyze(input, parsers, (p) => events.push(p), NOW);
+    analyze(input, parsers, { onProgress: (p) => events.push(p), now: NOW });
     const parse = events.filter((e): e is Extract<Progress, { phase: 'parse' }> => e.phase === 'parse');
     const total = input.files.filter((f) => f.path.startsWith('app/')).length;
     expect(parse.length).toBe(total);
@@ -67,7 +67,7 @@ describe('analyze', () => {
 
   test('react progress excludes generated files', () => {
     const events: Progress[] = [];
-    analyze(loadRepo('react-mini'), parsers, (p) => events.push(p), NOW);
+    analyze(loadRepo('react-mini'), parsers, { onProgress: (p) => events.push(p), now: NOW });
     const parse = events.filter((e) => e.phase === 'parse');
     expect(parse.length).toBe(9);
     expect(parse.some((e) => e.phase === 'parse' && e.path.endsWith('.gen.ts'))).toBe(false);
@@ -75,13 +75,27 @@ describe('analyze', () => {
 
   test('unsupported repo', () => {
     const input: RepoInput = { name: 'x', files: [], configs: {} };
-    expect(() => analyze(input, parsers, undefined, NOW)).toThrow(UnsupportedRepoError);
+    expect(() => analyze(input, parsers, { now: NOW })).toThrow(UnsupportedRepoError);
   });
 
   test('output is JSON-serializable and stable', () => {
     const input = loadRepo('react-mini');
-    const a = analyze(input, parsers, undefined, NOW);
+    const a = analyze(input, parsers, { now: NOW });
     expect(JSON.parse(JSON.stringify(a))).toEqual(a);
-    expect(analyze(input, parsers, undefined, NOW)).toEqual(a);
+    expect(analyze(input, parsers, { now: NOW })).toEqual(a);
+  });
+
+  test('options object: prefer picks the language on mixed input', () => {
+    const input: RepoInput = {
+      name: 'mixed',
+      files: [
+        { path: 'a.php', text: '<?php class A {}' },
+        { path: 'b.php', text: '<?php class B {}' },
+        { path: 'c.ts', text: 'export const c = 1;' },
+      ],
+      configs: {},
+    };
+    expect(analyze(input, parsers, { now: NOW }).lang).toBe('php');
+    expect(analyze(input, parsers, { prefer: 'ts', now: NOW }).lang).toBe('ts');
   });
 });
