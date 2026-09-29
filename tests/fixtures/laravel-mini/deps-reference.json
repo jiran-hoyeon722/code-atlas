@@ -1,0 +1,319 @@
+{
+ "nodes": [
+  {
+   "id": "app/Actions/CreatePost.php",
+   "fqcn": "App\\Actions\\CreatePost",
+   "kind": "class",
+   "methods": 2,
+   "lines": 28
+  },
+  {
+   "id": "app/Broken.php",
+   "fqcn": null,
+   "kind": "script",
+   "methods": 0,
+   "lines": 12
+  },
+  {
+   "id": "app/Contracts/Clock.php",
+   "fqcn": "App\\Contracts\\Clock",
+   "kind": "interface",
+   "methods": 1,
+   "lines": 9
+  },
+  {
+   "id": "app/Contracts/PostRepository.php",
+   "fqcn": "App\\Contracts\\PostRepository",
+   "kind": "interface",
+   "methods": 1,
+   "lines": 9
+  },
+  {
+   "id": "app/Enums/Status.php",
+   "fqcn": "App\\Enums\\Status",
+   "kind": "enum",
+   "methods": 0,
+   "lines": 10
+  },
+  {
+   "id": "app/Events/PostCreated.php",
+   "fqcn": "App\\Events\\PostCreated",
+   "kind": "class",
+   "methods": 1,
+   "lines": 16
+  },
+  {
+   "id": "app/Http/Controllers/PostController.php",
+   "fqcn": "App\\Http\\Controllers\\PostController",
+   "kind": "class",
+   "methods": 2,
+   "lines": 21
+  },
+  {
+   "id": "app/Listeners/NotifyAuthor.php",
+   "fqcn": "App\\Listeners\\NotifyAuthor",
+   "kind": "class",
+   "methods": 1,
+   "lines": 16
+  },
+  {
+   "id": "app/Models/Post.php",
+   "fqcn": "App\\Models\\Post",
+   "kind": "class",
+   "methods": 3,
+   "lines": 27
+  },
+  {
+   "id": "app/Models/User.php",
+   "fqcn": "App\\Models\\User",
+   "kind": "class",
+   "methods": 1,
+   "lines": 14
+  },
+  {
+   "id": "app/Providers/AppServiceProvider.php",
+   "fqcn": "App\\Providers\\AppServiceProvider",
+   "kind": "class",
+   "methods": 1,
+   "lines": 22
+  },
+  {
+   "id": "app/Providers/EventServiceProvider.php",
+   "fqcn": "App\\Providers\\EventServiceProvider",
+   "kind": "class",
+   "methods": 0,
+   "lines": 17
+  },
+  {
+   "id": "app/Repositories/EloquentPostRepository.php",
+   "fqcn": "App\\Repositories\\EloquentPostRepository",
+   "kind": "class",
+   "methods": 1,
+   "lines": 15
+  },
+  {
+   "id": "app/Support/SystemClock.php",
+   "fqcn": "App\\Support\\SystemClock",
+   "kind": "class",
+   "methods": 1,
+   "lines": 14
+  },
+  {
+   "id": "app/legacy.php",
+   "fqcn": "LegacyReport",
+   "kind": "class",
+   "methods": 1,
+   "lines": 18
+  }
+ ],
+ "edges": [
+  {
+   "from": "app/Actions/CreatePost.php",
+   "to": "app/Models/User.php",
+   "weight": 1,
+   "kinds": {
+    "inject": 1
+   }
+  },
+  {
+   "from": "app/Actions/CreatePost.php",
+   "to": "app/Models/Post.php",
+   "weight": 2,
+   "kinds": {
+    "type": 1,
+    "new": 1
+   }
+  },
+  {
+   "from": "app/Actions/CreatePost.php",
+   "to": "app/Enums/Status.php",
+   "weight": 1,
+   "kinds": {
+    "const": 1
+   }
+  },
+  {
+   "from": "app/Actions/CreatePost.php",
+   "to": "app/Events/PostCreated.php",
+   "weight": 1,
+   "kinds": {
+    "static-call": 1
+   }
+  },
+  {
+   "from": "app/Events/PostCreated.php",
+   "to": "app/Models/Post.php",
+   "weight": 1,
+   "kinds": {
+    "inject": 1
+   }
+  },
+  {
+   "from": "app/Http/Controllers/PostController.php",
+   "to": "app/Models/Post.php",
+   "weight": 2,
+   "kinds": {
+    "static-call": 1,
+    "type": 1
+   }
+  },
+  {
+   "from": "app/Http/Controllers/PostController.php",
+   "to": "app/Actions/CreatePost.php",
+   "weight": 1,
+   "kinds": {
+    "type": 1
+   }
+  },
+  {
+   "from": "app/Listeners/NotifyAuthor.php",
+   "to": "app/Events/PostCreated.php",
+   "weight": 1,
+   "kinds": {
+    "type": 1
+   }
+  },
+  {
+   "from": "app/Listeners/NotifyAuthor.php",
+   "to": "app/Models/User.php",
+   "weight": 1,
+   "kinds": {
+    "instanceof": 1
+   }
+  },
+  {
+   "from": "app/Listeners/NotifyAuthor.php",
+   "to": "app/legacy.php",
+   "weight": 1,
+   "kinds": {
+    "static-call": 1
+   }
+  },
+  {
+   "from": "app/Models/Post.php",
+   "to": "app/Enums/Status.php",
+   "weight": 2,
+   "kinds": {
+    "class-ref": 1,
+    "const": 1
+   }
+  },
+  {
+   "from": "app/Models/Post.php",
+   "to": "app/Models/User.php",
+   "weight": 1,
+   "kinds": {
+    "class-ref": 1
+   }
+  },
+  {
+   "from": "app/Models/User.php",
+   "to": "app/Models/Post.php",
+   "weight": 1,
+   "kinds": {
+    "class-ref": 1
+   }
+  },
+  {
+   "from": "app/Providers/AppServiceProvider.php",
+   "to": "app/Contracts/Clock.php",
+   "weight": 1,
+   "kinds": {
+    "class-ref": 1
+   }
+  },
+  {
+   "from": "app/Providers/AppServiceProvider.php",
+   "to": "app/Support/SystemClock.php",
+   "weight": 1,
+   "kinds": {
+    "class-ref": 1
+   }
+  },
+  {
+   "from": "app/Providers/AppServiceProvider.php",
+   "to": "app/Contracts/PostRepository.php",
+   "weight": 1,
+   "kinds": {
+    "class-ref": 1
+   }
+  },
+  {
+   "from": "app/Providers/AppServiceProvider.php",
+   "to": "app/Repositories/EloquentPostRepository.php",
+   "weight": 1,
+   "kinds": {
+    "class-ref": 1
+   }
+  },
+  {
+   "from": "app/Contracts/PostRepository.php",
+   "to": "app/Repositories/EloquentPostRepository.php",
+   "weight": 1,
+   "kinds": {
+    "binds": 1
+   }
+  },
+  {
+   "from": "app/Contracts/Clock.php",
+   "to": "app/Support/SystemClock.php",
+   "weight": 1,
+   "kinds": {
+    "binds": 1
+   }
+  },
+  {
+   "from": "app/Providers/EventServiceProvider.php",
+   "to": "app/Events/PostCreated.php",
+   "weight": 1,
+   "kinds": {
+    "class-ref": 1
+   }
+  },
+  {
+   "from": "app/Providers/EventServiceProvider.php",
+   "to": "app/Listeners/NotifyAuthor.php",
+   "weight": 1,
+   "kinds": {
+    "class-ref": 1
+   }
+  },
+  {
+   "from": "app/Events/PostCreated.php",
+   "to": "app/Listeners/NotifyAuthor.php",
+   "weight": 1,
+   "kinds": {
+    "triggers": 1
+   }
+  },
+  {
+   "from": "app/Repositories/EloquentPostRepository.php",
+   "to": "app/Contracts/PostRepository.php",
+   "weight": 1,
+   "kinds": {
+    "implements": 1
+   }
+  },
+  {
+   "from": "app/Repositories/EloquentPostRepository.php",
+   "to": "app/Models/Post.php",
+   "weight": 1,
+   "kinds": {
+    "static-call": 1
+   }
+  },
+  {
+   "from": "app/Support/SystemClock.php",
+   "to": "app/Contracts/Clock.php",
+   "weight": 1,
+   "kinds": {
+    "implements": 1
+   }
+  }
+ ],
+ "routeRefs": {
+  "app/Http/Controllers/PostController.php": {
+   "routes/api.php": 2
+  }
+ }
+}

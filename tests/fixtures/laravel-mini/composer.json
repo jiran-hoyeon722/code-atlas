@@ -1,0 +1,6 @@
+{
+    "name": "example/laravel-mini",
+    "require": {
+        "laravel/framework": "^11.0"
+    }
+}
