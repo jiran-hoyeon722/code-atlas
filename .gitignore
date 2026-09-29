@@ -5,3 +5,6 @@
 /.cache/
 /vendor/
 .DS_Store
+/node_modules/
+/.superpowers/
+/.local/
