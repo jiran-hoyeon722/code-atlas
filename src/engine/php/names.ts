@@ -9,7 +9,34 @@ export interface PhpScope {
 
 type UseKind = 'classes' | 'functions' | 'consts';
 
-const cache = new WeakMap<Tree, Map<number, PhpScope>>();
+interface TreeCache {
+  scopes: Map<number, PhpScope>;
+  /** Top-level unbracketed `namespace X;` statements, in source order. */
+  unbracketed: Node[];
+}
+
+const cache = new WeakMap<Tree, TreeCache>();
+
+function treeCache(root: Node): TreeCache {
+  let c = cache.get(root.tree);
+  if (!c) {
+    const unbracketed = root.children.filter((n): n is Node => n?.type === 'namespace_definition' && !n.childForFieldName('body'));
+    cache.set(root.tree, (c = { scopes: new Map(), unbracketed }));
+  }
+  return c;
+}
+
+/** Last entry starting at or before `pos` (entries are sorted by startIndex). */
+function lastAtOrBefore(nodes: Node[], pos: number): Node | null {
+  let lo = 0;
+  let hi = nodes.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (nodes[mid].startIndex <= pos) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo > 0 ? nodes[lo - 1] : null;
+}
 
 const strip = (s: string) => s.replace(/^\\+/, '');
 const lastSegment = (s: string) => s.slice(s.lastIndexOf('\\') + 1);
@@ -61,6 +88,7 @@ export function scopeAt(root: Node, node: Node): PhpScope {
   // Bracketed `namespace X { ... }`: the enclosing block is the scope.
   let block: Node | null = node;
   while (block && block.type !== 'namespace_definition') block = block.parent;
+  const tc = treeCache(root);
   let key: number;
   let make: () => PhpScope;
   if (block && block.childForFieldName('body')) {
@@ -69,11 +97,7 @@ export function scopeAt(root: Node, node: Node): PhpScope {
     make = () => build(b.childForFieldName('body')!, b.childForFieldName('name')?.text ?? '');
   } else {
     // Unbracketed: the last top-level `namespace X;` starting at or before the node, else global.
-    let start: Node | null = null;
-    for (const c of root.children) {
-      if (!c || c.startIndex > node.startIndex) break;
-      if (c.type === 'namespace_definition' && !c.childForFieldName('body')) start = c;
-    }
+    const start = lastAtOrBefore(tc.unbracketed, node.startIndex);
     key = start ? start.startIndex : -1;
     make = () => {
       const scope: PhpScope = { namespace: start?.childForFieldName('name')?.text ?? '', classes: new Map(), functions: new Map(), consts: new Map() };
@@ -89,10 +113,8 @@ export function scopeAt(root: Node, node: Node): PhpScope {
       return scope;
     };
   }
-  let perTree = cache.get(root.tree);
-  if (!perTree) cache.set(root.tree, (perTree = new Map()));
-  let scope = perTree.get(key);
-  if (!scope) perTree.set(key, (scope = make()));
+  let scope = tc.scopes.get(key);
+  if (!scope) tc.scopes.set(key, (scope = make()));
   return scope;
 }
 
