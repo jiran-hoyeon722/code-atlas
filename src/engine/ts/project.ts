@@ -83,7 +83,7 @@ export function extractTsProject(
     for (const imp of r.imports) {
       const to = resolve(file.path, imp.specifier);
       if (to === null) {
-        if (isLocal(imp.specifier) && !ASSET_EXT.test(imp.specifier)) unresolved++;
+        if (isLocal(imp.specifier) && !ASSET_EXT.test(imp.specifier.replace(/[?#].*$/, ''))) unresolved++;
         continue;
       }
       if (to === file.path || !known.has(to)) continue;
