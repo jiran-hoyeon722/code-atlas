@@ -9,6 +9,7 @@ import { LAYER_TINT, roleColors } from '../palette';
 import { highlight } from '../code-viewer/highlight';
 import { ROAD, layoutCity } from './layout';
 import { createSelectionReporter } from './selection';
+import { MAX_HEIGHT, SMALL_CITY, homeView } from './homeView';
 
 const KIND_LABEL: Record<string, string> = {
   inject: '생성자 주입', type: '타입 힌트', 'static-call': '정적 호출', new: 'new 생성', const: '상수·enum',
@@ -16,9 +17,6 @@ const KIND_LABEL: Record<string, string> = {
   implements: '구현', attribute: '어트리뷰트', triggers: '이벤트→리스너', binds: '바인딩', other: '기타',
   import: 'import', 'type-import': '타입 import', 'dynamic-import': '동적 import', 're-export': '재export', require: 'require',
 };
-const MAX_HEIGHT = 70;
-const SMALL_CITY = 240;
-const MIN_CAMERA_DISTANCE = 60;
 const fmt = (n: number) => Number(n).toLocaleString('ko-KR');
 
 type HeightKey = 'fanIn' | 'fanOut' | 'centrality' | 'routeRefs' | 'functions' | 'maxComplexity' | 'lines';
@@ -242,35 +240,13 @@ export const mountCity: MountViewer = (root, arch, env) => {
     scene.add(s);
   });
 
-  // home view: keep the classic viewing angle, back off until the whole city (towers and row labels included) is on screen
-  const home = new THREE.Vector3((labelRight - layout.bounds.w / 2) / 2, 0, 0);
-  const homeDir = new THREE.Vector3(-0.3, 0.62, 1.02).normalize();
-  const corners = [-layout.bounds.w / 2, labelRight].flatMap((x) =>
-    [-layout.bounds.d / 2, layout.bounds.d / 2 + 8].flatMap((z) => [0, MAX_HEIGHT].map((y) => new THREE.Vector3(x, y, z))));
-  const fits = (distance: number) => {
-    camera.position.copy(home).addScaledVector(homeDir, distance);
-    camera.lookAt(home);
-    camera.updateMatrixWorld();
-    return corners.every((c) => {
-      const p = c.clone().project(camera);
-      return p.z < 1 && Math.abs(p.x) <= 0.92 && Math.abs(p.y) <= 0.92;
-    });
-  };
-  let lo = MIN_CAMERA_DISTANCE;
-  let hi = Math.max(lo, citySize * 6);
-  if (!fits(lo)) {
-    for (let k = 0; k < 30; k++) {
-      const mid = (lo + hi) / 2;
-      if (fits(mid)) hi = mid; else lo = mid;
-    }
-    lo = hi;
-  }
-  const homeDistance = lo;
-  camera.position.copy(home).addScaledVector(homeDir, homeDistance);
-  camera.far = Math.max(citySize, homeDistance) * 8;
+  const view = homeView(layout.bounds, labelRight, size().w / size().h);
+  const homeDistance = view.distance;
+  camera.position.copy(view.position);
+  camera.far = view.far;
   camera.updateProjectionMatrix();
-  controls.target.copy(home);
-  scene.fog = new THREE.Fog(bg, homeDistance * 0.9, homeDistance + citySize * 2.1);
+  controls.target.copy(view.target);
+  scene.fog = new THREE.Fog(bg, view.fogNear, view.fogFar);
 
   // ---- buildings (one instanced mesh) ----
   const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
