@@ -21,7 +21,8 @@ export interface Robot {
   root: THREE.Object3D;
   mixer: THREE.AnimationMixer;
   actions: Record<string, THREE.AnimationAction>;
-  play(name: string, fade?: number): THREE.AnimationAction | null;
+  /** Cross-fades to `name`; asking for the clip already playing is a no-op unless `restart`. */
+  play(name: string, fade?: number, restart?: boolean): THREE.AnimationAction | null;
   readonly current: THREE.AnimationAction | null;
   dispose(): void;
 }
@@ -58,12 +59,15 @@ export async function spawnRobot(url: string, height: number, tint?: string): Pr
   return {
     root, mixer, actions,
     get current() { return current; },
-    play(name, fade = 0.25) {
+    play(name, fade = 0.25, restart = false) {
       const next = actions[name];
       if (!next) return null;
-      if (next === current && !ONCE.includes(name)) return next;
+      if (next === current) {
+        if (restart) next.reset().setEffectiveWeight(1).play();
+        return next;
+      }
       next.reset().setEffectiveWeight(1).fadeIn(fade).play();
-      if (current && current !== next) current.fadeOut(fade);
+      current?.fadeOut(fade);
       current = next;
       return next;
     },

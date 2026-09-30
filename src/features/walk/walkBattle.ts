@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { spawnRobot, type Robot } from './walkRobot';
+import { decay, separation, turnToward, within } from './walkMotion';
 import { RIVAL_HP, damageAt, dealWeapons, type HeldWeapon, type Weapon, type WeaponKit } from './walkWeapons';
 
 export const RIVALS: { name: string; tint: string }[] = [
@@ -12,6 +13,7 @@ const SIGHT = 14;
 const GUN_SIGHT = 22;
 const WANDER_SPEED = 2.2;
 const CHASE_SPEED = 6.2;
+const PERSONAL = 1.1;
 
 export interface BattleHooks {
   blocked(x: number, z: number): boolean;
@@ -44,6 +46,7 @@ type Rival = {
   name: string; tint: string; weapon: Weapon; held: HeldWeapon; robot: Robot | null; root: THREE.Group; hp: number;
   x: number; z: number; heading: number; vx: number; vz: number; aiming: boolean; burst: number;
   target: THREE.Vector2 | null; pause: number; cooldown: number; pendingHit: number; stun: number; down: boolean;
+  alert: boolean; engaged: boolean;
   tag: { canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; sprite: THREE.Sprite };
 };
 
@@ -115,7 +118,7 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
     const r: Rival = {
       name, tint, weapon, held: kit.hold(scene, weapon.id), robot: null, root, hp: RIVAL_HP,
       x: at.x, z: at.y, heading: hooks.random() * Math.PI * 2, vx: 0, vz: 0, aiming: false, burst: 0,
-      target: null, pause: 0, cooldown: 0, pendingHit: 0, stun: 0, down: false, tag: { canvas, tex, sprite },
+      target: null, pause: 0, cooldown: 0, pendingHit: 0, stun: 0, down: false, alert: false, engaged: false, tag: { canvas, tex, sprite },
     };
     paintTag(r);
     void spawnRobot(url, 1.75, tint).then((robot) => {
@@ -134,12 +137,13 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
     let moved = false;
     if (!hooks.blocked(r.x + sx, r.z)) { r.x += sx; moved = true; }
     if (!hooks.blocked(r.x, r.z + sz)) { r.z += sz; moved = true; }
-    turn(r, dx, dz, dt * 8);
+    turn(r, dx, dz, dt, 8);
     return moved;
   };
-  const turn = (r: Rival, dx: number, dz: number, rate: number) => {
-    const target = Math.atan2(dx, dz);
-    r.heading += Math.atan2(Math.sin(target - r.heading), Math.cos(target - r.heading)) * Math.min(1, rate);
+  const turn = (r: Rival, dx: number, dz: number, dt: number, rate: number) => {
+    // atan2 of a near-zero vector swings wildly, which spun rivals standing on top of the player.
+    if (Math.hypot(dx, dz) < 0.35) return;
+    r.heading = turnToward(r.heading, Math.atan2(dx, dz), dt, rate, 9);
   };
   const hurt = (r: Rival, damage: number, dx: number, dz: number, push: number, stun: number) => {
     if (!r.robot || r.down) return;
@@ -155,8 +159,26 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
       caught++;
       r.robot.play('Death', 0.1);
       hooks.onCaught(r.name, caught, rivals.length);
-    } else r.robot.play('No', 0.08);
+    } else r.robot.play('No', 0.08, true);
     paintTag(r);
+  };
+  const nudge = (r: Rival, [sx, sz]: [number, number]) => {
+    if (!sx && !sz) return;
+    if (!hooks.blocked(r.x + sx, r.z)) r.x += sx;
+    if (!hooks.blocked(r.x, r.z + sz)) r.z += sz;
+  };
+  // Rivals keep a body's width from the player and each other instead of piling into one spot.
+  const separate = (player: THREE.Vector3) => {
+    const active = rivals.filter((r) => r.robot && !r.down);
+    active.forEach((r, k) => {
+      nudge(r, separation(r.x, r.z, player.x, player.z, PERSONAL, r.heading + Math.PI));
+      for (let j = k + 1; j < active.length; j++) {
+        const o = active[j];
+        const [sx, sz] = separation(r.x, r.z, o.x, o.z, PERSONAL, k * 2.4);
+        nudge(r, [sx / 2, sz / 2]);
+        nudge(o, [-sx / 2, -sz / 2]);
+      }
+    });
   };
   const cone = (w: Weapon) => (w.id === 'shotgun' ? 0.32 : 0.2);
   const inSight = (at: THREE.Vector3, heading: number, w: Weapon) => rivals
@@ -235,23 +257,27 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
         r.cooldown -= dt;
         if (r.stun > 0) {
           r.stun -= dt;
-          if (!hooks.blocked(r.x + r.vx * dt, r.z)) r.x += r.vx * dt;
-          if (!hooks.blocked(r.x, r.z + r.vz * dt)) r.z += r.vz * dt;
-          r.vx *= 0.9; r.vz *= 0.9;
+          if (!hooks.blocked(r.x + r.vx * dt, r.z)) r.x += r.vx * dt; else r.vx = 0;
+          if (!hooks.blocked(r.x, r.z + r.vz * dt)) r.z += r.vz * dt; else r.vz = 0;
+          r.vx = decay(r.vx, 6, dt); r.vz = decay(r.vz, 6, dt);
+          r.engaged = false;
           follow();
           return;
         }
         const dx = player.x - r.x, dz = player.z - r.z;
         const d = Math.hypot(dx, dz);
-        const sees = playerCanBeHit && d < (gun ? GUN_SIGHT : SIGHT);
+        const sight = gun ? GUN_SIGHT : SIGHT;
+        r.alert = playerCanBeHit && within(r.alert, d, sight, sight + 4);
+        const sees = r.alert;
         const reach = gun ? Math.min(r.weapon.range * 0.8, 16) : Math.max(1.7, r.weapon.range * 0.7);
-        const inReach = sees && d < reach && (!gun || hooks.clear(r.x, r.z, player.x, player.z));
+        r.engaged = sees && within(r.engaged, d, reach, reach + (gun ? 2 : 0.6)) && (!gun || hooks.clear(r.x, r.z, player.x, player.z));
+        const inReach = r.engaged;
         if (r.pendingHit > 0) {
           r.pendingHit -= dt;
           if (r.pendingHit <= 0 && playerCanBeHit && d < reach + 0.6) hooks.onPlayerHit(r.weapon.rivalDamage, r.x, r.z);
         }
         if (inReach && gun) {
-          turn(r, dx, dz, dt * 10);
+          turn(r, dx, dz, dt, 10);
           r.aiming = true;
           if (r.cooldown <= 0) {
             rivalFire(r, player, d);
@@ -259,14 +285,14 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
             else { r.burst = 0; r.cooldown = Math.max(0.9, r.weapon.cooldown * 3); }
           } else if (r.robot.current !== r.robot.actions.Idle) r.robot.play('Idle', 0.2);
         } else if (inReach) {
-          turn(r, dx, dz, dt * 10);
+          turn(r, dx, dz, dt, 10);
           if (r.cooldown <= 0) {
-            r.robot.play('Punch', 0.08);
+            r.robot.play('Punch', 0.08, true);
             r.cooldown = Math.max(1.1, r.weapon.cooldown * 2.2);
             r.pendingHit = 0.35;
           } else if (r.robot.current !== r.robot.actions.Punch || !r.robot.current.isRunning()) r.robot.play('Idle', 0.2);
         } else if (sees) {
-          move(r, dx, dz, CHASE_SPEED, dt);
+          move(r, dx, dz, gun ? CHASE_SPEED : Math.min(CHASE_SPEED, Math.max(0, d - reach * 0.8) / Math.max(dt, 1e-3)), dt);
           r.robot.play('Running', 0.2);
           r.target = null;
         } else {
@@ -287,6 +313,7 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
         }
         follow();
       });
+      separate(player);
     },
     dispose() {
       disposed = true;
