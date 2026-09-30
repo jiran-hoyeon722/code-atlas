@@ -7,6 +7,8 @@ import { isConfigPath, isSourcePath } from '../../src/engine/collect';
 import { nodeLocate } from '../../src/engine/node';
 import { loadParsers } from '../../src/engine/parsers';
 import type { Architecture } from '../../src/engine/architecture';
+import { packQuality, unpackQuality, type PackedQuality } from '../../src/engine/battle/pack';
+import { buildQuality } from '../../src/engine/battle/quality';
 import type { RepoInput } from '../../src/engine/types';
 import type { Entry, Listing } from '../../src/app/files/types';
 import {
@@ -63,12 +65,29 @@ const summary = (key: string, analyzedAt: string, arch: Architecture): CacheEntr
 });
 
 let arch: Architecture;
+let packed: PackedQuality;
 const MARKER = 'ZZ_SECRET_MARKER_4f9a1c';
 
 beforeAll(async () => {
   const parsers = await loadParsers(nodeLocate);
   arch = analyze(loadRepo('react-mini', MARKER), parsers, { now: new Date('2026-01-01T00:00:00Z') });
+  packed = packQuality(buildQuality(loadRepo('battle-ts', MARKER), parsers));
 });
+
+function rawRecord(key: string): Promise<unknown> {
+  return new Promise<unknown>((resolve, reject) => {
+    const open = indexedDB.open('code-atlas', 1);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const get = open.result.transaction('analyses').objectStore('analyses').get(key);
+      get.onsuccess = () => {
+        open.result.close();
+        resolve(get.result);
+      };
+      get.onerror = () => reject(get.error);
+    };
+  });
+}
 
 beforeEach(async () => {
   await clearAnalyses();
@@ -129,6 +148,43 @@ describe('cache', () => {
       };
     });
     expect(raw).toBeTruthy();
+    expect(JSON.stringify(raw)).not.toContain(MARKER);
+  });
+
+  test('battle data round-trips with the analysis; summaries say which entries can battle', async () => {
+    const handle = { kind: 'directory', name: 'folder' } as unknown as FileSystemDirectoryHandle;
+    await saveAnalysis({ ...summary('ready', '2026-04-01T00:00:00Z', arch), name: 'r', quality: packed });
+    await saveAnalysis({ ...summary('small', '2026-03-01T00:00:00Z', arch), name: 's', qualityIssue: 'too-small' });
+    await saveAnalysis({ ...summary('failed', '2026-02-01T00:00:00Z', arch), name: 'f', qualityIssue: 'failed', handle });
+    await saveAnalysis({ ...summary('none', '2026-01-01T00:00:00Z', arch), name: 'n', qualityIssue: 'no-production' });
+
+    const list = await listAnalyses();
+    expect(list.map((s) => [s.key, s.battle, s.hasHandle])).toEqual([
+      ['ready', 'ready', false],
+      ['small', 'too-small', false],
+      ['failed', 'missing', true],
+      ['none', 'no-production', false],
+    ]);
+    expect(list[0]).not.toHaveProperty('quality');
+    const loaded = await loadAnalysis('ready');
+    expect(loaded?.quality).toEqual(packed);
+    expect(unpackQuality(loaded!.quality!).name).toBe('battle-ts');
+  });
+
+  test('an entry saved before battle data existed loads exactly as before and reads as missing', async () => {
+    const old = { ...summary('old', '2026-01-01T00:00:00Z', arch), name: 'old-repo' };
+    await saveAnalysis(old);
+    expect(await loadAnalysis('old')).toEqual(old);
+    expect(await listAnalyses()).toEqual([
+      { key: 'old', name: 'old-repo', framework: arch.framework, lang: arch.lang, files: arch.nodes.length, analyzedAt: '2026-01-01T00:00:00Z', battle: 'missing', hasHandle: false },
+    ]);
+  });
+
+  test('stored battle data never contains source text', async () => {
+    expect(JSON.stringify(packed)).not.toContain(MARKER);
+    await saveAnalysis({ ...summary('k1', '2026-01-01T00:00:00Z', arch), quality: packed });
+    const raw = await rawRecord('k1');
+    expect(raw).toMatchObject({ quality: { packVersion: packed.packVersion } });
     expect(JSON.stringify(raw)).not.toContain(MARKER);
   });
 });

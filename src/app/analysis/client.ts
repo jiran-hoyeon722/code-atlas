@@ -2,6 +2,8 @@
 import workerUrl from './worker.ts?worker&url';
 import type { Architecture } from '../../engine/architecture';
 import type { Progress } from '../../engine/analyze';
+import type { PackedQuality } from '../../engine/battle/pack';
+import type { QualityIssue } from '../../engine/battle/quality';
 import type { Lang, RepoInput } from '../../engine/types';
 import type { FromWorker, ToWorker } from './protocol';
 
@@ -31,15 +33,22 @@ const defaultWorker = () => {
   return worker;
 };
 
+export interface AnalysisResult {
+  architecture: Architecture;
+  /** battle data, already packed for the cache; null when it could not be measured */
+  quality: PackedQuality | null;
+  qualityIssue?: QualityIssue;
+}
+
 export function startAnalysis(
   input: RepoInput,
   opts: { prefer?: Lang; onProgress: (p: Progress) => void; createWorker?: () => Worker },
-): { result: Promise<Architecture>; cancel(): void } {
+): { result: Promise<AnalysisResult>; cancel(): void } {
   const worker = (opts.createWorker ?? defaultWorker)();
   let settled = false;
   let fail!: (e: Error) => void;
 
-  const result = new Promise<Architecture>((resolve, reject) => {
+  const result = new Promise<AnalysisResult>((resolve, reject) => {
     const finish = () => {
       settled = true;
       worker.terminate();
@@ -55,7 +64,7 @@ export function startAnalysis(
       if (m.type === 'progress') opts.onProgress(m.progress);
       else if (m.type === 'done') {
         finish();
-        resolve(m.architecture);
+        resolve({ architecture: m.architecture, quality: m.quality ?? null, ...(m.qualityIssue && { qualityIssue: m.qualityIssue }) });
       } else fail(m.code === 'unsupported' ? new UnsupportedRepo(m.message) : new Error(m.message));
     };
     worker.onerror = (e) => fail(new Error(e.message || 'Analysis worker crashed'));

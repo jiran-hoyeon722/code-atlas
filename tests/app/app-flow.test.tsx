@@ -5,7 +5,7 @@ import type { Progress } from '../../src/engine/analyze';
 import type { Lang, RepoInput } from '../../src/engine/types';
 import type { CacheEntry, CacheSummary } from '../../src/storage/cache';
 import { cacheKey } from '../../src/storage/cache';
-import { AnalysisCancelled } from '../../src/app/analysis/client';
+import { AnalysisCancelled, type AnalysisResult } from '../../src/app/analysis/client';
 import type { ViewerShellProps } from '../../src/features/shell/ViewerShell';
 
 const h = vi.hoisted(() => ({ shell: null as null | ViewerShellProps }));
@@ -124,7 +124,7 @@ function fakes() {
     startAnalysis: vi.fn((input: RepoInput, opts: { prefer?: Lang; onProgress(p: Progress): void }) => {
       let resolve!: (a: Architecture) => void;
       let reject!: (e: Error) => void;
-      const result = new Promise<Architecture>((ok, err) => { resolve = ok; reject = err; });
+      const result = new Promise<AnalysisResult>((ok, err) => { resolve = (architecture) => ok({ architecture, quality: null }); reject = err; });
       const cancel = vi.fn(() => reject(new AnalysisCancelled()));
       runs.push({ input, prefer: opts.prefer, onProgress: opts.onProgress, resolve, cancel });
       return { result, cancel };
