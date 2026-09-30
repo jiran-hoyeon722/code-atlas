@@ -120,7 +120,7 @@ describe('HUD view-model', () => {
       for (const u of r.battle.soldiers[side]) {
         if (u.status === 'fighting') {
           expect(f.mode[u.index]).toBe(u.alive ? MODE_FIELD : MODE_DEAD);
-          expect(f.x[u.index]).toBeCloseTo(u.x);
+          expect(f.x[u.index]).toBeCloseTo(u.x * r.flip);
           expect(f.z[u.index]).toBeCloseTo(u.z);
         } else if (u.status === 'queued') {
           expect(f.mode[u.index]).toBe(MODE_STAGED);
@@ -129,5 +129,22 @@ describe('HUD view-model', () => {
       }
     }
     expect(r.sign.a).toBe(-r.sign.b);
+  });
+
+  test('A is drawn on the left even when the sim puts it second in canonical order', () => {
+    const late = synthQuality({ name: 'zeta', seed: 3 });
+    const early = synthQuality({ name: 'alpha', seed: 9 });
+    const res = simulate(late, early, 1);
+    const r = new Replay(late, early, 1, res.ticks, res.final.tick);
+    for (let i = 0; i < 40; i++) r.update(0.1);
+    expect(r.flip).toBe(-1);
+    for (const side of ['a', 'b'] as const) {
+      const queued = r.battle.soldiers[side].filter((u) => u.status === 'queued');
+      expect(queued.length).toBeGreaterThan(0);
+      for (const u of queued) expect(Math.sign(r.cur[side].x[u.index])).toBe(side === 'a' ? -1 : 1);
+    }
+    const start = new Replay(late, early, 1, res.ticks, res.final.tick);
+    const firstA = start.battle.soldiers.a.find((u) => u.status === 'fighting')!;
+    expect(start.cur.a.x[firstA.index]).toBeLessThan(0);
   });
 });
