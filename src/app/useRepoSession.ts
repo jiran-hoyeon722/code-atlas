@@ -7,8 +7,10 @@ import { sourcesFor } from '../engine/sources';
 import type { Lang } from '../engine/types';
 import type { LoadStep } from '../features/loading/LoadingScreen';
 import * as cache from '../storage/cache';
-import type { CacheEntry, CacheSummary } from '../storage/cache';
+import { githubKey, type CacheEntry, type CacheSummary } from '../storage/cache';
 import { AnalysisCancelled, UnsupportedRepo, startAnalysis } from './analysis/client';
+import { GithubError, fetchGithubText, githubLabel, openGithub, parseGithubUrl, type GithubOrigin, type GithubSpec } from './files/github';
+import { loadSample, loadSampleManifest, type SampleRepo } from './files/samples';
 import { fromDirectoryHandle, fromEntry, fromFileList } from './files/sources';
 import type { Entry, FsDir, Listing } from './files/types';
 import { isTooMany, listRepo, loadRepo } from './files/walk';
@@ -17,6 +19,7 @@ export interface SessionDeps {
   startAnalysis: typeof startAnalysis;
   cache: Pick<typeof cache, 'cacheKey' | 'saveAnalysis' | 'listAnalyses' | 'loadAnalysis' | 'deleteAnalysis' | 'clearAnalyses'>;
   pickDirectory: (() => Promise<FileSystemDirectoryHandle>) | null;
+  fetch: typeof fetch;
 }
 
 export type Phase = 'landing' | 'listing' | 'confirmTooMany' | 'chooseLang' | 'reading' | 'analyzing' | 'viewer';
@@ -27,6 +30,8 @@ export interface LoadingInfo {
   sourceDir: string;
   roles: Role[];
   step: LoadStep;
+  /** files come over the network (GitHub) rather than from disk */
+  remote?: boolean;
 }
 
 export interface SessionState {
@@ -36,7 +41,10 @@ export interface SessionState {
   loading?: LoadingInfo;
   tooMany?: number;
   langCounts?: Record<Lang, number>;
-  viewer?: { arch: Architecture; skipped: number; canReconnect: boolean; id: number };
+  viewer?: { arch: Architecture; skipped: number; canReconnect: boolean; id: number; origin?: GithubOrigin };
+  samples: SampleRepo[];
+  /** the GitHub spec behind the current notice, so the landing can offer a ZIP download instead */
+  failedGithub?: GithubSpec;
 }
 
 export const NOTICE = {
@@ -46,13 +54,35 @@ export const NOTICE = {
   analyzeFailed: '분석하지 못했어요. 다시 시도해 주세요.',
   missing: '저장된 분석을 찾지 못했어요.',
   reconnectFailed: '폴더를 다시 연결하지 못했어요.',
+  badGithubUrl: 'GitHub 레포 주소를 알아보지 못했어요. 예: github.com/owner/repo',
+  githubNotFound: '레포를 찾지 못했어요. 공개 레포인지, 주소와 브랜치·폴더가 맞는지 확인해 주세요.',
+  githubNetwork: 'GitHub 에 연결하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.',
+  githubTruncated: '레포가 너무 커서 파일 목록을 다 받지 못했어요. 하위 폴더 주소(…/tree/main/폴더)로 좁혀 주세요.',
+  sampleFailed: '샘플을 불러오지 못했어요. 새로고침 후 다시 시도해 주세요.',
 } as const;
+
+/** Every file is its own request, so a huge repo would take minutes; ask for a subfolder instead. */
+export const GITHUB_MAX_FILES = 3000;
+
+const githubTooMany = (n: number) =>
+  `소스 파일이 ${n.toLocaleString('ko-KR')}개라 GitHub 에서 받기엔 많아요. 하위 폴더 주소(…/tree/main/폴더)로 좁히거나, ZIP 으로 받아 폴더로 열어 주세요.`;
+
+const rateLimitNotice = (resetAt?: Date) =>
+  `GitHub 요청 한도(시간당 60회)를 다 썼어요.${resetAt ? ` ${resetAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 이후 다시 시도하거나` : ''} ZIP 으로 받아 폴더로 열어 주세요.`;
+
+function githubNotice(e: unknown): string {
+  if (!(e instanceof GithubError)) return NOTICE.githubNetwork;
+  if (e.code === 'rateLimit') return rateLimitNotice(e.resetAt);
+  if (e.code === 'notFound') return NOTICE.githubNotFound;
+  if (e.code === 'truncated') return NOTICE.githubTruncated;
+  return NOTICE.githubNetwork;
+}
 
 const reconnectNotice = (reason: string) => `${NOTICE.reconnectFailed} ${reason}`;
 
 const FRAMEWORK = { laravel: 'Laravel', react: 'React' } as const;
 
-type Source = { dir: FsDir; handle?: FileSystemDirectoryHandle };
+type Source = { dir: FsDir; handle?: FileSystemDirectoryHandle; origin?: GithubOrigin };
 type Mode = 'open' | 'reanalyze' | 'reconnect';
 
 interface Current {
@@ -60,6 +90,7 @@ interface Current {
   dir?: FsDir;
   handle?: FileSystemDirectoryHandle;
   files?: Map<string, Entry>;
+  origin?: GithubOrigin;
 }
 
 type PermissionHandle = FileSystemDirectoryHandle & {
@@ -72,7 +103,7 @@ function nativePicker(): SessionDeps['pickDirectory'] {
   return typeof w.showDirectoryPicker === 'function' ? () => w.showDirectoryPicker!({ mode: 'read' }) : null;
 }
 
-export const defaultDeps = (): SessionDeps => ({ startAnalysis, cache, pickDirectory: nativePicker() });
+export const defaultDeps = (): SessionDeps => ({ startAnalysis, cache, pickDirectory: nativePicker(), fetch: (...a) => globalThis.fetch(...a) });
 
 async function hasReadPermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
   const h = handle as PermissionHandle;
@@ -143,7 +174,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
   overridesRef.current = overrides;
   const d = (): SessionDeps => ({ ...defaults, ...overridesRef.current });
 
-  const [state, setState] = useState<SessionState>({ phase: 'landing', recent: [] });
+  const [state, setState] = useState<SessionState>({ phase: 'landing', recent: [], samples: [] });
   const patch = (p: Partial<SessionState>) => setState((s) => ({ ...s, ...p }));
 
   const runId = useRef(0);
@@ -165,6 +196,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
 
   useEffect(() => {
     void refreshRecent();
+    loadSampleManifest(d().fetch).then((m) => patch({ samples: m.repos }), () => {});
     // a stray drop outside the drop zone would make the browser navigate to the file and lose the session
     const block = (e: DragEvent) => e.preventDefault();
     window.addEventListener('dragover', block);
@@ -179,9 +211,9 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     };
   }, []);
 
-  const toLanding = (notice?: string) => {
+  const toLanding = (notice?: string, failedGithub?: GithubSpec) => {
     cancelAnalysis.current = null;
-    setState((s) => ({ phase: 'landing', recent: s.recent, notice }));
+    setState((s) => ({ phase: 'landing', recent: s.recent, samples: s.samples, notice, failedGithub }));
     void refreshRecent();
   };
 
@@ -193,7 +225,10 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
 
   const showViewer = (arch: Architecture, cur: Current, skipped: number, canReconnect: boolean) => {
     current.current = cur;
-    setState((s) => ({ phase: 'viewer', recent: s.recent, viewer: { arch, skipped, canReconnect, id: ++viewerSeq.current } }));
+    setState((s) => ({
+      phase: 'viewer', recent: s.recent, samples: s.samples,
+      viewer: { arch, skipped, canReconnect, id: ++viewerSeq.current, origin: cur.origin },
+    }));
   };
 
   const setCanReconnect = (canReconnect: boolean) =>
@@ -224,8 +259,8 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     const onFound = throttled(() => setStep({ phase: 'list', found }));
     const enterLoading = () =>
       setState((s) => ({
-        phase: 'listing', recent: s.recent,
-        loading: { name, framework: null, sourceDir: '', roles: [], step: { phase: 'list', found } },
+        phase: 'listing', recent: s.recent, samples: s.samples,
+        loading: { name, framework: null, sourceDir: '', roles: [], step: { phase: 'list', found }, remote: !!src.origin },
       }));
     if (mode !== 'reconnect') enterLoading();
 
@@ -235,14 +270,15 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
       listing = await listRepo(counting(src.dir, () => { found++; onFound(undefined); }));
       if (!alive()) return;
       if (listing.sources.length === 0) return fail(NOTICE.noFiles);
-      key = await deps.cache.cacheKey(listing);
+      if (src.origin && listing.sources.length > GITHUB_MAX_FILES) return toLanding(githubTooMany(listing.sources.length), src.origin);
+      key = src.origin ? githubKey(src.origin) : await deps.cache.cacheKey(listing);
     } catch {
       if (alive()) fail(NOTICE.readFailed);
       return;
     }
     if (!alive()) return;
     const files = new Map(listing.sources.map((e) => [e.path, e]));
-    const cur: Current = { key, dir: src.dir, handle: src.handle, files };
+    const cur: Current = { key, dir: src.dir, handle: src.handle, files, origin: src.origin };
 
     if (mode === 'reconnect' && current.current?.key === key) {
       current.current = cur;
@@ -314,7 +350,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
 
     await save({
       key, name: listing.name, framework: arch.framework, lang: arch.lang, files: arch.nodes.length,
-      analyzedAt: arch.generatedAt, architecture: arch, handle: src.handle,
+      analyzedAt: arch.generatedAt, architecture: arch, handle: src.handle, ...(src.origin && { origin: src.origin }),
     });
     if (!alive()) return;
     showViewer(arch, cur, listing.tooLarge.length, false);
@@ -371,6 +407,48 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     void run({ dir: fromFileList(list) }, mode);
   };
 
+  const openGithubSpec = async (spec: GithubSpec, mode: Mode) => {
+    const id = ++runId.current;
+    answerWith(null);
+    setState((s) => ({
+      phase: 'listing', recent: s.recent, samples: s.samples,
+      loading: { name: githubLabel(spec), framework: null, sourceDir: '', roles: [], step: { phase: 'list', found: 0 }, remote: true },
+    }));
+    let repo: Awaited<ReturnType<typeof openGithub>>;
+    try {
+      repo = await openGithub(spec, d().fetch);
+    } catch (e) {
+      // a ZIP only helps when the repo exists but the API route did not work out
+      if (runId.current === id) toLanding(githubNotice(e), e instanceof GithubError && e.code === 'notFound' ? undefined : spec);
+      return;
+    }
+    if (runId.current !== id) return;
+    await run({ dir: repo.dir, origin: repo.origin }, mode);
+  };
+
+  const onOpenGithub = (input: string) => {
+    const spec = parseGithubUrl(input);
+    if (!spec) {
+      patch({ notice: NOTICE.badGithubUrl, failedGithub: undefined });
+      return;
+    }
+    void openGithubSpec(spec, 'open');
+  };
+
+  const onOpenSample = async (sample: SampleRepo) => {
+    const id = ++runId.current;
+    let arch: Architecture;
+    try {
+      arch = await loadSample(sample.id, d().fetch);
+    } catch {
+      if (runId.current === id) patch({ notice: NOTICE.sampleFailed });
+      return;
+    }
+    if (runId.current !== id) return;
+    const origin: GithubOrigin = { kind: 'github', owner: sample.owner, repo: sample.repo, sha: sample.sha, ref: '', subdir: sample.subdir };
+    showViewer(arch, { key: `sample:${sample.id}`, origin }, 0, false);
+  };
+
   const onOpenRecent = async (key: string) => {
     const id = ++runId.current;
     const entry = await d().cache.loadAnalysis(key).catch(() => undefined);
@@ -380,7 +458,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
       void refreshRecent();
       return;
     }
-    showViewer(entry.architecture, { key, handle: entry.handle }, 0, true);
+    showViewer(entry.architecture, { key, handle: entry.handle, origin: entry.origin }, 0, !entry.origin);
   };
 
   const onDeleteRecent = async (key: string) => {
@@ -418,6 +496,13 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
         return null;
       }
     }
+    if (cur.origin) {
+      try {
+        return await fetchGithubText(cur.origin, path, d().fetch);
+      } catch {
+        return null;
+      }
+    }
     if (!cur.handle) return null;
     if (!(await hasReadPermission(cur.handle))) {
       setCanReconnect(true);
@@ -435,6 +520,8 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
 
   const onReanalyze = async () => {
     const cur = current.current;
+    // GitHub: fetch the ref again, which picks up newer commits
+    if (cur?.origin) return openGithubSpec({ owner: cur.origin.owner, repo: cur.origin.repo, ref: cur.origin.ref || undefined, subdir: cur.origin.subdir }, 'reanalyze');
     if (cur?.dir) return run({ dir: cur.dir, handle: cur.handle }, 'reanalyze');
     if (cur?.handle && (await hasReadPermission(cur.handle))) {
       return run({ dir: fromDirectoryHandle(cur.handle), handle: cur.handle }, 'reanalyze');
@@ -454,6 +541,8 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     hasPicker: !!d().pickDirectory,
     viewerInput,
     onPickFolder: () => void pick('open'),
+    onOpenGithub,
+    onOpenSample: (sample: SampleRepo) => void onOpenSample(sample),
     onDrop,
     onFiles,
     onOpenRecent,
@@ -466,6 +555,6 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     onReconnect,
     onReanalyze,
     onOpenOther,
-    onDismissNotice: () => patch({ notice: undefined }),
+    onDismissNotice: () => patch({ notice: undefined, failedGithub: undefined }),
   };
 }

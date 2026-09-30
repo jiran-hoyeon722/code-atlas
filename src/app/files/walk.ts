@@ -44,32 +44,37 @@ export async function listRepo(root: FsDir): Promise<Listing> {
   return listing;
 }
 
+const READ_CONCURRENCY = 12;
+
 export async function loadRepo(
   listing: Listing,
   onRead?: (done: number, total: number) => void,
 ): Promise<RepoInput> {
-  const total = listing.sources.length + listing.configs.length;
+  const all = [...listing.sources, ...listing.configs];
+  const texts: (string | null)[] = new Array(all.length).fill(null);
   let done = 0;
-  const read = async (e: Entry): Promise<string | null> => {
-    let text: string | null = null;
-    try {
-      text = await e.file.text();
-    } catch {
-      text = null;
+  let next = 0;
+  // parallel so a remote source (GitHub) is not one round trip per file; results keep listing order
+  const worker = async () => {
+    while (next < all.length) {
+      const i = next++;
+      try {
+        texts[i] = await all[i].file.text();
+      } catch {
+        texts[i] = null;
+      }
+      onRead?.(++done, all.length);
     }
-    onRead?.(++done, total);
-    return text;
   };
+  await Promise.all(Array.from({ length: Math.min(READ_CONCURRENCY, all.length) }, worker));
   const files: RepoInput['files'] = [];
   const configs: RepoInput['configs'] = {};
-  for (const e of listing.sources) {
-    const text = await read(e);
-    if (text !== null) files.push({ path: e.path, text });
-  }
-  for (const e of listing.configs) {
-    const text = await read(e);
-    if (text !== null) configs[e.path] = text;
-  }
+  all.forEach((e, i) => {
+    const text = texts[i];
+    if (text === null) return;
+    if (i < listing.sources.length) files.push({ path: e.path, text });
+    else configs[e.path] = text;
+  });
   return { name: listing.name, files, configs };
 }
 

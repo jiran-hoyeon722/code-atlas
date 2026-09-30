@@ -10,6 +10,36 @@ import type { ViewerShellProps } from '../../src/features/shell/ViewerShell';
 
 const h = vi.hoisted(() => ({ shell: null as null | ViewerShellProps }));
 
+const SHA = 'c'.repeat(40);
+/** A fake GitHub + static host: set `files` to what the repo contains, `status` to make every API call fail. */
+const github = {
+  files: {} as Record<string, string>,
+  status: 0,
+  headers: {} as Record<string, string>,
+  calls: [] as string[],
+  /** API calls wait on this, so a test can act while the lookup is in flight */
+  gate: Promise.resolve() as Promise<unknown>,
+  handle(url: string): Response {
+    this.calls.push(url);
+    if (url === './samples/index.json') return Response.json({ generatedAt: '2026-09-30', repos: [SAMPLE] });
+    if (url === './samples/acme-shop.json') return Response.json({ ...archBase('acme/shop'), nodes: [] });
+    if (url.startsWith('https://api.github.com') && this.status) return new Response('{}', { status: this.status, headers: this.headers });
+    if (url === 'https://api.github.com/repos/acme/shop') return Response.json({ name: 'shop', owner: { login: 'acme' }, default_branch: 'main' });
+    if (url === 'https://api.github.com/repos/acme/shop/commits/main') return new Response(SHA);
+    if (url === `https://api.github.com/repos/acme/shop/git/trees/${SHA}?recursive=1`) {
+      return Response.json({ truncated: false, tree: Object.entries(this.files).map(([path, t]) => ({ path, type: 'blob', size: t.length })) });
+    }
+    const raw = `https://raw.githubusercontent.com/acme/shop/${SHA}/`;
+    if (url.startsWith(raw) && url.slice(raw.length) in this.files) return new Response(this.files[url.slice(raw.length)]);
+    return new Response('missing', { status: 404 });
+  },
+};
+
+const SAMPLE = {
+  id: 'acme-shop', owner: 'acme', repo: 'shop', sha: SHA, subdir: '', blurb: '가짜 쇼핑몰', lang: 'ts', framework: 'react',
+  files: 2, edges: 1, stars: 12345, roles: [{ name: 'Page', layer: 0 }], roleCounts: [2],
+};
+
 vi.mock('../../src/features/loading/miniCity', () => ({ mountMiniCity: () => ({ add() {}, dispose() {} }) }));
 vi.mock('../../src/features/shell/ViewerShell', () => ({
   ViewerShell: (p: ViewerShellProps) => {
@@ -24,7 +54,7 @@ vi.mock('../../src/features/shell/ViewerShell', () => ({
 }));
 
 import { App } from '../../src/app/App';
-import type { SessionDeps } from '../../src/app/useRepoSession';
+import { GITHUB_MAX_FILES, type SessionDeps } from '../../src/app/useRepoSession';
 
 type Tree = { [name: string]: string | Tree };
 
@@ -64,14 +94,17 @@ function items(...handles: unknown[]): DataTransferItemList {
   return list as unknown as DataTransferItemList;
 }
 
+const archBase = (name: string, lang: Lang = 'ts') => ({
+  version: 1 as const, name, lang, framework: null, sourceDir: '', generatedAt: '2026-09-29T01:02:03.000Z',
+  layers: [], roles: [], edges: [], failed: [], unresolved: 0,
+});
+
 const archFor = (input: RepoInput, lang: Lang = 'ts'): Architecture => ({
-  version: 1, name: input.name, lang, framework: null, sourceDir: '', generatedAt: '2026-09-29T01:02:03.000Z',
-  layers: [], roles: [],
+  ...archBase(input.name, lang),
   nodes: input.files.map((f) => ({
     path: f.path, name: f.path, kind: 'module', role: 0, lines: 1, functions: 0, complexity: 0, maxComplexity: 0,
     fanIn: 0, fanOut: 0, instability: 0, centrality: 0, routeRefs: 0, routeFiles: [],
   })),
-  edges: [], failed: [], unresolved: 0,
 });
 
 interface Run {
@@ -109,6 +142,10 @@ function fakes() {
       clearAnalyses: vi.fn(async () => { store.clear(); }),
     },
     pickDirectory: null,
+    fetch: vi.fn(async (url: string) => {
+      if (url.startsWith('https://api.github.com')) await github.gate;
+      return github.handle(url);
+    }) as unknown as typeof fetch,
   };
   return { deps, store, runs, saved };
 }
@@ -127,7 +164,11 @@ async function finish(run: Run, lang: Lang = 'ts') {
   });
 }
 
-beforeEach(() => { h.shell = null; history.replaceState(null, '', '/'); });
+beforeEach(() => {
+  h.shell = null;
+  history.replaceState(null, '', '/');
+  Object.assign(github, { files: {}, status: 0, headers: {}, calls: [], gate: Promise.resolve() });
+});
 afterEach(cleanup);
 
 test('dropping a single file shows notice', async () => {
@@ -469,4 +510,104 @@ test('stray drops anywhere are prevented while the app is mounted', async () => 
   const after = createEvent.drop(document);
   fireEvent(document, after);
   expect(after.defaultPrevented).toBe(false);
+});
+
+const ghInput = () => screen.getByRole('textbox', { name: 'GitHub 레포 주소' });
+const openGithub = (url: string) => {
+  fireEvent.change(ghInput(), { target: { value: url } });
+  fireEvent.click(screen.getByRole('button', { name: '분석하기' }));
+};
+
+test('github url: previews the parse, downloads, analyses, caches, and reads code from the pinned commit', async () => {
+  github.files = { 'package.json': '{"dependencies":{}}', 'src/a.ts': 'export const a = 1;', 'src/b.ts': 'import { a } from "./a";', 'README.md': '# x' };
+  const { deps, runs, saved } = fakes();
+  render(<App deps={deps} />);
+  const button = screen.getByRole('button', { name: '분석하기' });
+  expect((button as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(ghInput(), { target: { value: 'nonsense' } });
+  expect(screen.getByText('owner/repo 형식이나 GitHub 주소를 넣어 주세요')).toBeTruthy();
+  fireEvent.change(ghInput(), { target: { value: 'https://github.com/acme/shop' } });
+  expect(screen.getByText('✓ acme/shop · 기본 브랜치')).toBeTruthy();
+  openGithub('https://github.com/acme/shop');
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(screen.getByText('GitHub 에서 코드 받기')).toBeTruthy();
+  expect(runs[0].input.name).toBe('acme/shop');
+  expect(runs[0].input.files.map((f) => f.path).sort()).toEqual(['src/a.ts', 'src/b.ts']);
+  await finish(runs[0]);
+  expect(await screen.findByText('viewer:acme/shop:ts')).toBeTruthy();
+  expect(saved[0]).toMatchObject({ key: `gh:acme/shop@${SHA}/`, name: 'acme/shop', origin: { kind: 'github', owner: 'acme', repo: 'shop', sha: SHA } });
+  expect(JSON.stringify(saved[0])).not.toContain('export const a');
+  expect(h.shell!.origin?.sha).toBe(SHA);
+  expect(h.shell!.canReconnect).toBe(false);
+
+  // back on the landing the recent card reopens it, and code still comes from GitHub
+  await act(async () => h.shell!.onOpenOther());
+  fireEvent.click(await screen.findByRole('button', { name: /^acme\/shop TypeScript/ }));
+  await screen.findByText('viewer:acme/shop:ts');
+  expect(h.shell!.canReconnect).toBe(false);
+  expect(await h.shell!.readSource('src/b.ts')).toBe('import { a } from "./a";');
+  expect(github.calls.at(-1)).toBe(`https://raw.githubusercontent.com/acme/shop/${SHA}/src/b.ts`);
+});
+
+test('github rate limit returns to landing with the reset time and a ZIP fallback', async () => {
+  github.status = 403;
+  github.headers = { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1790000000' };
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  openGithub('acme/shop');
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toContain('GitHub 요청 한도(시간당 60회)를 다 썼어요.');
+  const zip = within(alert).getByRole('link', { name: /ZIP 내려받기/ });
+  expect(zip.getAttribute('href')).toBe('https://github.com/acme/shop/archive/HEAD.zip');
+  expect(runs).toHaveLength(0);
+});
+
+test('a github repo that does not exist says so without a ZIP link', async () => {
+  github.status = 404;
+  const { deps } = fakes();
+  render(<App deps={deps} />);
+  openGithub('acme/shop');
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toContain('레포를 찾지 못했어요.');
+  expect(within(alert).queryByRole('link')).toBeNull();
+});
+
+test('a huge github repo asks for a subfolder instead of downloading', async () => {
+  for (let i = 0; i <= GITHUB_MAX_FILES; i++) github.files[`src/f${i}.ts`] = '';
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  openGithub('acme/shop');
+  const alert = await screen.findByRole('alert', {}, { timeout: 5000 });
+  expect(alert.textContent).toContain('하위 폴더 주소');
+  expect(github.calls.filter((u) => u.startsWith('https://raw.githubusercontent.com')).length).toBeLessThanOrEqual(1);
+  expect(runs).toHaveLength(0);
+});
+
+test('cancelling while GitHub resolves drops the result', async () => {
+  github.files = { 'src/a.ts': 'export const a = 1;' };
+  let release!: () => void;
+  github.gate = new Promise<void>((ok) => { release = ok; });
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  openGithub('acme/shop');
+  expect(await screen.findByRole('heading', { name: 'acme/shop' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '취소' }));
+  await screen.findByRole('button', { name: '분석하기' });
+  await act(async () => { release(); await new Promise((r) => setTimeout(r, 20)); });
+  expect(runs).toHaveLength(0);
+  expect(screen.queryByTestId('viewer')).toBeNull();
+});
+
+test('sample card opens the bundled analysis instantly and reads code from GitHub', async () => {
+  github.files = { 'src/a.ts': 'export const a = 1;' };
+  const { deps, runs, saved } = fakes();
+  render(<App deps={deps} />);
+  const card = await screen.findByRole('button', { name: /acme \/\s*shop/ });
+  expect(card.textContent).toContain('가짜 쇼핑몰');
+  expect(card.textContent).toContain('★ 12.3K');
+  fireEvent.click(card);
+  expect(await screen.findByText('viewer:acme/shop:ts')).toBeTruthy();
+  expect(runs).toHaveLength(0);
+  expect(saved).toHaveLength(0);
+  expect(await h.shell!.readSource('src/a.ts')).toBe('export const a = 1;');
 });
