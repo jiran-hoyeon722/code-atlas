@@ -20,3 +20,9 @@ test('empty sourceDir means the whole repo', () => {
   const d: Detection = { lang: 'php', framework: null, sourceDir: '', routeDirs: [] };
   expect(sourcesFor(d, files('b/x.php', 'a.php')).map((f) => f.path)).toEqual(['a.php', 'b/x.php']);
 });
+
+test('kotlin sources skip gradle build scripts but keep other scripts', () => {
+  const d: Detection = { lang: 'kotlin', framework: null, sourceDir: '', routeDirs: [] };
+  const got = sourcesFor(d, files('build.gradle.kts', 'app/build.gradle.kts', 'settings.gradle.kts', 'gradle/deps.gradle.kts', 'a/A.kt', 'tools/gen.main.kts', 'a/B.java'));
+  expect(got.map((f) => f.path)).toEqual(['a/A.kt', 'tools/gen.main.kts']);
+});

@@ -173,4 +173,25 @@ describe('presetFor', () => {
     expect(p.layers.map((l) => l.label)).toEqual(['진입점', '애플리케이션', '도메인', '기반']);
     expect(p.roles[p.roles.length - 1]).toMatchObject({ name: '기타', patterns: [''] });
   });
+  test('kotlin preset: tests first, then Java roles with Android UI entry points', () => {
+    const d: Detection = { lang: 'kotlin', framework: null, sourceDir: '', routeDirs: [] };
+    const p = presetFor(d, []);
+    const m = compileRoles(p.roles);
+    const roleOf = (path: string) => p.roles[m(path)].name;
+    expect(p.roles[0].name).toBe('테스트');
+    expect(roleOf('src/test/kotlin/a/ui/HomeScreenIT.kt')).toBe('테스트');
+    expect(roleOf('app/src/androidTest/kotlin/a/Helper.kt')).toBe('테스트');
+    expect(roleOf('src/main/kotlin/a/viewmodel/HomeViewModelTest.kt')).toBe('테스트');
+    expect(roleOf('ui/Home.kt')).toBe('진입점');
+    expect(roleOf('app/src/main/kotlin/a/viewmodel/HomeViewModel.kt')).toBe('진입점');
+    expect(roleOf('app/src/main/kotlin/a/activity/MainActivity.kt')).toBe('진입점');
+    expect(roleOf('app/src/main/kotlin/a/fragment/ListFragment.kt')).toBe('진입점');
+    expect(roleOf('src/main/kotlin/a/ShopApplication.kt')).toBe('진입점');
+    expect(roleOf('src/main/kotlin/a/service/Pay.kt')).toBe('애플리케이션');
+    expect(roleOf('src/main/kotlin/a/domain/User.kt')).toBe('도메인');
+    expect(roleOf('src/main/kotlin/a/util/Strings.kt')).toBe('기반');
+    expect(roleOf('src/main/kotlin/a/Contest.kt')).toBe('기타');
+    expect(p.layers.map((l) => l.label)).toEqual(['진입점', '애플리케이션', '도메인', '기반']);
+    expect(p.roles[p.roles.length - 1]).toMatchObject({ name: '기타', patterns: [''] });
+  });
 });

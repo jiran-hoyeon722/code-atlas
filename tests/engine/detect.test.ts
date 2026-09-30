@@ -52,3 +52,7 @@ test('prefer for a language without an extractor is ignored', () => {
 test('ties go to the earlier language in ALL_LANGS', () => {
   expect(detect({ name: 'x', configs: {}, files: [{ path: 'a.ts', text: '' }, { path: 'b.php', text: '' }] })?.lang).toBe('php');
 });
+test('gradle kotlin build scripts do not make a java repo kotlin', () => {
+  const files = ['build.gradle.kts', 'settings.gradle.kts', 'app/build.gradle.kts', 'app/src/main/java/a/A.java'].map((path) => ({ path, text: '' }));
+  expect(detect({ name: 'x', configs: {}, files })?.lang).toBe('java');
+});

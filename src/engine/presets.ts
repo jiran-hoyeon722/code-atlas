@@ -104,6 +104,12 @@ const JAVA_ROLES: Role[] = [
   r('기타', 3, [''], '위 역할에 속하지 않는 나머지 코드'),
 ];
 
+const KOTLIN_ROLES: Role[] = [
+  r('테스트', 3, anywhere('src/test/', 'src/androidTest/', '*Test.kt', '*Tests.kt'), '테스트 코드'),
+  r('진입점', 0, anywhere('controller/', 'controllers/', 'web/', 'api/', 'ui/', 'viewmodel/', 'activity/', 'fragment/', '*Application.kt'), '앱을 시작하는 클래스와 화면·요청을 처음 받는 UI·뷰모델·컨트롤러'),
+  ...JAVA_ROLES.slice(2),
+];
+
 const escapeGlob = (s: string) => s.replace(/[*\\]/g, '\\$&');
 
 const inner = (path: string, sourceDir: string) =>
@@ -115,6 +121,7 @@ export function presetFor(detection: Detection, paths: string[]): Preset {
   if (detection.lang === 'py') return { layers: layers('애플리케이션', '도메인'), roles: PYTHON_ROLES };
   if (detection.lang === 'go') return { layers: layers('애플리케이션', '도메인'), roles: GO_ROLES };
   if (detection.lang === 'java') return { layers: layers('애플리케이션', '도메인'), roles: JAVA_ROLES };
+  if (detection.lang === 'kotlin') return { layers: layers('애플리케이션', '도메인'), roles: KOTLIN_ROLES };
 
   const folders: string[] = [];
   for (const p of paths) {

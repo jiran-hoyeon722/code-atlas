@@ -28,7 +28,7 @@ function loadRepo(name: string): RepoInput {
 const NOW = new Date('2026-01-01T00:00:00Z');
 let parsers: Parsers;
 beforeAll(async () => {
-  parsers = await loadParsers(nodeLocate, ['php', 'ts', 'py', 'go', 'java']);
+  parsers = await loadParsers(nodeLocate, ['php', 'ts', 'py', 'go', 'java', 'kotlin']);
 });
 
 describe('analyze', () => {
@@ -159,6 +159,45 @@ describe('analyze', () => {
     expect(kind(`${J}/service/PriceCalculator.java`)).toBe('interface');
     expect(kind(`${J}/domain/Order.java`)).toBe('class');
     expect(kind(`${T}/service/OrderServiceTest.java`)).toBe('test');
+  });
+
+  test('kotlin fixture end to end', () => {
+    const a = analyze(loadRepo('kotlin-mini'), parsers, { now: NOW });
+    expect(a.lang).toBe('kotlin');
+    expect(a.framework).toBeNull();
+    expect(a.nodes.length).toBe(7);
+    const K = 'src/main/kotlin/com/acme/notes';
+    const T = 'src/test/kotlin/com/acme/notes';
+    const path = (i: number) => a.nodes[i].path;
+    expect(a.nodes.some((n) => n.path.endsWith('.gradle.kts'))).toBe(false);
+    const kinds = Object.fromEntries(a.edges.map(([from, to, , k]) => [`${path(from)}→${path(to)}`, k]));
+    expect(kinds).toEqual({
+      [`${K}/NotesApp.kt→${K}/ui/NoteScreen.kt`]: { import: 1 },
+      [`${K}/ui/NoteScreen.kt→${K}/viewmodel/NoteViewModel.kt`]: { import: 1 },
+      [`${K}/viewmodel/NoteViewModel.kt→${K}/domain/Models.kt`]: { 'class-ref': 3 },
+      [`${K}/viewmodel/NoteViewModel.kt→${K}/domain/NoteRepository.kt`]: { 'class-ref': 1 },
+      [`${K}/viewmodel/NoteViewModel.kt→${K}/util/Strings.kt`]: { import: 1 },
+      [`${K}/domain/NoteRepository.kt→${K}/domain/Models.kt`]: { 'class-ref': 1 },
+      [`${T}/viewmodel/NoteViewModelTest.kt→${K}/viewmodel/NoteViewModel.kt`]: { 'class-ref': 1 },
+    });
+    expect(a.edges.map(([from, to]) => `${path(from)}→${path(to)}`).sort()).toEqual(Object.keys(kinds).sort());
+    expect(a.unresolved).toBe(1);
+    expect(a.failed).toEqual([]);
+    const byRole: Record<string, string[]> = {};
+    for (const n of a.nodes) (byRole[a.roles[n.role].name] ??= []).push(n.path);
+    expect(byRole).toEqual({
+      기타: [`${K}/NotesApp.kt`],
+      도메인: [`${K}/domain/Models.kt`, `${K}/domain/NoteRepository.kt`],
+      진입점: [`${K}/ui/NoteScreen.kt`, `${K}/viewmodel/NoteViewModel.kt`],
+      기반: [`${K}/util/Strings.kt`],
+      테스트: [`${T}/viewmodel/NoteViewModelTest.kt`],
+    });
+    const node = (p: string) => a.nodes.find((n) => n.path === p)!;
+    expect(node(`${K}/domain/Models.kt`)).toMatchObject({ name: 'Models', kind: 'class' });
+    expect(node(`${K}/NotesApp.kt`).kind).toBe('class');
+    expect(node(`${K}/domain/NoteRepository.kt`).kind).toBe('interface');
+    expect(node(`${K}/util/Strings.kt`).kind).toBe('module');
+    expect(node(`${T}/viewmodel/NoteViewModelTest.kt`).kind).toBe('test');
   });
 
   test('progress events', () => {
