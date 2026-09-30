@@ -1,4 +1,5 @@
-export type Lang = 'php' | 'ts';
+import type { Lang } from './langs';
+export type { Lang };
 
 export interface SourceFile {
   path: string;

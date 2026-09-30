@@ -1,11 +1,11 @@
 import type { Node } from 'web-tree-sitter';
-import type { Lang } from '../types';
+import { LANGS, type Lang } from '../langs';
 import type { FnInfo } from './types';
 import { CCN_TIERS, FOUR_STAR, LENGTH_TIERS, tierOf } from './rules';
 import { codeLineMapper, codeLines } from './lines';
 
 // Same tables as ../complexity.ts, copied so battle rules stay fixed when that module changes.
-const FUNCTIONS: Record<Lang, Set<string>> = {
+const FUNCTIONS: Partial<Record<Lang, ReadonlySet<string>>> = {
   php: new Set(['function_definition', 'method_declaration', 'anonymous_function', 'arrow_function']),
   ts: new Set([
     'function_declaration',
@@ -16,7 +16,7 @@ const FUNCTIONS: Record<Lang, Set<string>> = {
   ]),
 };
 
-const BRANCHES: Record<Lang, Set<string>> = {
+const BRANCHES: Partial<Record<Lang, ReadonlySet<string>>> = {
   php: new Set([
     'if_statement',
     'else_if_clause',
@@ -41,16 +41,18 @@ const BRANCHES: Record<Lang, Set<string>> = {
   ]),
 };
 
-const OPERATORS: Record<Lang, Set<string>> = {
+const OPERATORS: Partial<Record<Lang, ReadonlySet<string>>> = {
   php: new Set(['&&', '||', 'and', 'or', '??']),
   ts: new Set(['&&', '||', '??']),
 };
 
 function isBranch(node: Node, lang: Lang): boolean {
-  if (BRANCHES[lang].has(node.type)) return true;
-  if (node.type !== 'binary_expression') return false;
+  const spec = LANGS[lang];
+  if ((BRANCHES[lang] ?? spec.branches).has(node.type)) return true;
+  const logical = spec.logical;
+  if (!logical || node.type !== logical.node) return false;
   const op = node.childForFieldName('operator');
-  return op !== null && OPERATORS[lang].has(lang === 'php' ? op.type.toLowerCase() : op.type);
+  return op !== null && (OPERATORS[lang] ?? logical.ops).has(lang === 'php' ? op.type.toLowerCase() : op.type);
 }
 
 export interface FunctionProfile {
@@ -63,7 +65,7 @@ export interface FunctionProfile {
 export function measureFunctions(root: Node, lang: Lang, text: string): FunctionProfile {
   const physical = codeLines(text);
   const map = codeLineMapper(physical);
-  const fnTypes = FUNCTIONS[lang];
+  const fnTypes = FUNCTIONS[lang] ?? LANGS[lang].functions;
   const functions: FnInfo[] = [];
   // Explicit stack: deeply nested code must not overflow the JS call stack.
   const stack: { node: Node; fn: number }[] = [{ node: root, fn: -1 }];

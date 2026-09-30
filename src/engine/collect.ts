@@ -1,3 +1,4 @@
+import { ALL_LANGS, LANGS } from './langs';
 import type { Lang } from './types';
 import { compileGlob, type GlobSyntax } from './glob';
 
@@ -11,13 +12,13 @@ export function shouldSkipDir(name: string): boolean {
   return SKIP_DIRS.has(name);
 }
 
+const EXT_TO_LANG = new Map<string, Lang>(ALL_LANGS.flatMap((l) => LANGS[l].exts.map((e) => [e, l] as const)));
+
 export function isSourcePath(path: string): Lang | null {
   const m = /\.([^./]+)$/.exec(path);
   if (!m) return null;
   const ext = m[1];
-  if (ext === 'php') return 'php';
-  if (['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs'].includes(ext)) return 'ts';
-  return null;
+  return EXT_TO_LANG.get(ext) ?? null;
 }
 
 export function isConfigPath(path: string): boolean {

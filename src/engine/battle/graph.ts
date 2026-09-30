@@ -3,14 +3,14 @@ import type { Lang, RefKind } from '../types';
 import { ARMY } from './rules';
 import type { Cycle } from './types';
 
-const TYPE_ONLY: Record<Lang, ReadonlySet<RefKind>> = {
+const TYPE_ONLY: Partial<Record<Lang, ReadonlySet<RefKind>>> = {
   ts: new Set<RefKind>(['type-import']),
   php: new Set<RefKind>(['type', 'binds', 'triggers']),
 };
 
 /** Strongly connected groups of 2+ production files over runtime references (iterative Tarjan). */
 export function findCycles(arch: Architecture, prodPaths: Set<string>): Cycle[] {
-  const ignored = TYPE_ONLY[arch.lang];
+  const ignored = TYPE_ONLY[arch.lang] ?? new Set<RefKind>();
   const n = arch.nodes.length;
   const keep = arch.nodes.map((node) => prodPaths.has(node.path));
   const adj: number[][] = Array.from({ length: n }, () => []);

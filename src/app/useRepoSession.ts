@@ -40,7 +40,7 @@ export interface SessionState {
   notice?: string;
   loading?: LoadingInfo;
   tooMany?: number;
-  langCounts?: Record<Lang, number>;
+  langCounts?: Partial<Record<Lang, number>>;
   viewer?: { arch: Architecture; skipped: number; canReconnect: boolean; id: number; origin?: GithubOrigin };
   samples: SampleRepo[];
   /** the GitHub spec behind the current notice, so the landing can offer a ZIP download instead */
@@ -309,15 +309,16 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
       if (!ok) return toLanding();
     }
 
-    const counts: Record<Lang, number> = { php: 0, ts: 0 };
+    const counts: Partial<Record<Lang, number>> = {};
     for (const e of listing.sources) {
       const lang = isSourcePath(e.path);
-      if (lang) counts[lang]++;
+      if (lang) counts[lang] = (counts[lang] ?? 0) + 1;
     }
+    const phpTs = (counts.php ?? 0) > 0 && (counts.ts ?? 0) > 0;
     let prefer: Lang | undefined;
-    if (counts.php > 0 && counts.ts > 0) prefer = await frameworkLang(listing);
+    if (phpTs) prefer = await frameworkLang(listing);
     if (!alive()) return;
-    if (counts.php > 0 && counts.ts > 0 && !prefer) {
+    if (phpTs && !prefer) {
       const choice = await ask<Lang | null>({ phase: 'chooseLang', langCounts: counts });
       if (!alive()) return;
       if (!choice) return toLanding();

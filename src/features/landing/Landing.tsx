@@ -3,6 +3,7 @@ import { githubLabel, githubZipUrl, parseGithubUrl, type GithubSpec } from '../.
 import type { SampleRepo } from '../../app/files/samples';
 import type { CacheSummary } from '../../storage/cache';
 import { roleColors } from '../palette';
+import { LANGS } from '../../engine/langs';
 import './landing.css';
 
 export interface LandingProps {
@@ -29,7 +30,6 @@ export interface LandingProps {
 const TITLE = '레포 폴더를 여기에 끌어다 놓으세요';
 const NO_PICKER = '이 브라우저에서는 폴더를 끌어다 놓거나 "폴더 선택"으로 골라 주세요. 다시 열 때 코드 보기는 폴더를 한 번 더 넣어야 해요.';
 const FRAMEWORK = { laravel: 'Laravel', react: 'React' } as Record<string, string>;
-const LANG = { php: 'PHP', ts: 'TypeScript' } as const;
 
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 
@@ -135,7 +135,7 @@ function SampleGallery({ samples, onOpen }: { samples: SampleRepo[]; onOpen(samp
               </span>
               <span className="ca-land-sample-blurb">{s.blurb}</span>
               <span className="ca-land-sample-meta">
-                <span className="ca-land-tag">{s.framework ? (FRAMEWORK[s.framework] ?? s.framework) : LANG[s.lang]}</span>
+                <span className="ca-land-tag">{s.framework ? (FRAMEWORK[s.framework] ?? s.framework) : LANGS[s.lang].label}</span>
                 <span>{`파일 ${s.files.toLocaleString('ko-KR')}`}</span>
                 {s.stars !== null && <span aria-label={`별 ${s.stars.toLocaleString('ko-KR')}개`}>{`★ ${compact.format(s.stars)}`}</span>}
               </span>
@@ -256,7 +256,7 @@ export function Landing({
                       {r.origin && <GithubMark size={12} />}
                       {r.name}
                     </strong>{' '}
-                    <span>{`${r.framework ? (FRAMEWORK[r.framework] ?? r.framework) : LANG[r.lang]} · ${r.files.toLocaleString('ko-KR')} 파일 · ${formatDate(r.analyzedAt)}`}</span>
+                    <span>{`${r.framework ? (FRAMEWORK[r.framework] ?? r.framework) : LANGS[r.lang].label} · ${r.files.toLocaleString('ko-KR')} 파일 · ${formatDate(r.analyzedAt)}`}</span>
                   </button>
                   <button type="button" className="ca-land-del" aria-label={`${r.name} 삭제`} onClick={() => onDeleteRecent(r.key)}>
                     ×

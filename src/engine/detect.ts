@@ -23,16 +23,18 @@ function hasKey(obj: unknown, key: string): boolean {
 }
 
 export function detect(input: RepoInput, prefer?: Lang): Detection | null {
-  const count: Record<Lang, number> = { php: 0, ts: 0 };
+  const count: Partial<Record<Lang, number>> = {};
   for (const f of input.files) {
     const l = isSourcePath(f.path);
-    if (l) count[l]++;
+    if (l) count[l] = (count[l] ?? 0) + 1;
   }
-  if (count.php + count.ts === 0) return null;
+  const php = count.php ?? 0;
+  const ts = count.ts ?? 0;
+  if (php + ts === 0) return null;
 
   let lang: Lang;
-  if (prefer && count[prefer] > 0) lang = prefer;
-  else lang = count.php >= count.ts ? 'php' : 'ts';
+  if (prefer && (count[prefer] ?? 0) > 0) lang = prefer;
+  else lang = php >= ts ? 'php' : 'ts';
 
   const hasDir = (dir: string) => input.files.some((f) => f.path.startsWith(dir + '/'));
 

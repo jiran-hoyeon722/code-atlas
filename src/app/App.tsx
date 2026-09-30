@@ -72,10 +72,10 @@ export function App({ deps }: { deps?: Partial<SessionDeps> }) {
         <ChoiceDialog
           title={LANG_QUESTION}
           choices={[
-            { label: `PHP · ${counts.php.toLocaleString('ko-KR')}개`, value: 'php' },
-            { label: `TypeScript · ${counts.ts.toLocaleString('ko-KR')}개`, value: 'ts' },
+            { label: `PHP · ${(counts.php ?? 0).toLocaleString('ko-KR')}개`, value: 'php' },
+            { label: `TypeScript · ${(counts.ts ?? 0).toLocaleString('ko-KR')}개`, value: 'ts' },
           ]}
-          initial={counts.php >= counts.ts ? 'php' : 'ts'}
+          initial={(counts.php ?? 0) >= (counts.ts ?? 0) ? 'php' : 'ts'}
           onChoose={(v) => s.onChooseLang(v as Lang | null)}
         />
       )}

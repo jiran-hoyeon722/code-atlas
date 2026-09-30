@@ -1,6 +1,8 @@
 import { Parser, Language } from 'web-tree-sitter';
 
-export type WasmFile = 'web-tree-sitter.wasm' | 'tree-sitter-php.wasm' | 'tree-sitter-tsx.wasm';
+import type { WasmFile } from './langs';
+
+export type { WasmFile };
 
 export interface Parsers {
   php: Parser;

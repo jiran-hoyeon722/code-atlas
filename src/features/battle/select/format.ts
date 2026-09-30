@@ -1,8 +1,7 @@
+import { LANGS } from '../../../engine/langs';
 import type { Lang } from '../../../engine/types';
 
-const LANG: Record<Lang, string> = { php: 'PHP', ts: 'TypeScript' };
-
-export const langLabel = (lang: Lang): string => LANG[lang] ?? lang;
+export const langLabel = (lang: Lang): string => LANGS[lang]?.label ?? lang;
 
 /** Rounds down to the two largest Korean units: 184,321 → "18만 4천", 9,876 → "9,876". */
 export function koreanCount(n: number): string {
