@@ -80,10 +80,10 @@ function initScript() {
 
 // hard upper bound so a hung browser or server can never stall the run
 const watchdog = setTimeout(() => {
-  console.error('e2e watchdog: exceeded 4 minutes, aborting');
+  console.error('e2e watchdog: exceeded 8 minutes, aborting');
   stopPreview(preview);
   process.exit(2);
-}, 4 * 60_000);
+}, 8 * 60_000);
 watchdog.unref();
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
@@ -107,7 +107,7 @@ async function main() {
   await startPreview();
   let browser = null;
   try {
-    browser = await chromium.launch({ channel: 'chrome', headless: true });
+    browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     await context.exposeBinding('__reportCsp', (_source, v) => cspEvents.push(v));
     await context.addInitScript(initScript);
@@ -207,10 +207,10 @@ async function main() {
       await page.click('button:has-text("다른 전개 보기")');
       await page.waitForSelector('text=대결 #2');
       await page.click('button:has-text("전투 시작하기")');
-      await page.waitForSelector('h1:has-text("전투")');
-      assert((await page.locator('text=대결 #2').count()) === 1, 'battle placeholder should show match 2');
+      await page.waitForSelector('.rb-engage', { timeout: 30_000 });
       await page.click('button:has-text("브리핑으로")');
       await page.waitForSelector('.rb-brief-counts[data-state=done]', { timeout: 2_000 });
+      assert((await page.locator('text=대결 #2').count()) >= 1, 'briefing should still be on match 2');
     });
 
     await step('narrow window keeps the briefing without horizontal scroll', async () => {
@@ -221,6 +221,74 @@ async function main() {
       }
       await page.screenshot({ path: resolve(OUT, 'battle-briefing-1024.png'), fullPage: true });
       await page.setViewportSize({ width: 1440, height: 900 });
+    });
+
+    let live = false;
+    await step('start opens the engagement replay', async () => {
+      await page.click('button:has-text("전투 시작하기")');
+      await page.waitForSelector('.rb-engage', { timeout: 30_000 });
+      await page.waitForSelector('.rb-eng-stage canvas, .rb-eng-fallback', { state: 'attached', timeout: 30_000 });
+      live = (await page.locator('.rb-eng-stage canvas').count()) > 0;
+      notes.push(`engagement path: ${live ? 'WebGL 3D field' : 'fallback without WebGL'}`);
+      await page.waitForTimeout(3_000);
+      await page.screenshot({ path: resolve(OUT, 'battle-engage.png') });
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      assert(overflow <= 0, `horizontal overflow of ${overflow}px on the engagement`);
+      assert((await page.locator('.rb-eng-panel .rb-eng-seg-btn').count()) === 4, 'commentary filters missing');
+    });
+
+    await step('skip to the final, then open the result', async () => {
+      if (live) {
+        const speed = page.locator('.rb-eng-controls button:has-text("2배속")');
+        if (await speed.count()) await speed.click();
+        const skip = page.locator('button:has-text("최종전으로 건너뛰기")');
+        if (await skip.count()) await skip.click();
+        else notes.push('skip button was already gone (final had started)');
+      }
+      const t = Date.now();
+      await page.waitForSelector('button:has-text("결과 보기")', { timeout: 180_000 });
+      if (live) notes.push(`final to result button: ${Date.now() - t} ms at 2x`);
+      await page.click('button:has-text("결과 보기")');
+      await page.waitForSelector('.rb-result', { timeout: 10_000 });
+      const headline = await page.locator('.rb-res-headline').textContent();
+      assert(/승리$|^무승부$/.test(headline.trim()), `unexpected verdict "${headline}"`);
+      notes.push(`result verdict (match 2): ${headline.trim()}`);
+    });
+
+    await step('the fix list is computed in the worker', async () => {
+      const t = Date.now();
+      await page.waitForFunction(() => !document.querySelector('.rb-res-fix-wait'), null, { timeout: 120_000 });
+      assert((await page.locator('.rb-res-fix-error').count()) === 0, 'fix list failed');
+      const n = await page.locator('.rb-res-fix').count();
+      notes.push(`fix list: ${n} files in ${Date.now() - t} ms`);
+      if (!(await page.locator('text=비겨서 진 쪽이 없어요').count())) assert(n > 0 || (await page.locator('text=눈에 띄게 손볼 파일이 없어요').count()) === 1, 'fix list is empty without saying so');
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: resolve(OUT, 'battle-result.png'), fullPage: true });
+      for (const width of [1440, 1024]) {
+        await page.setViewportSize({ width, height: 800 });
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        assert(overflow <= 0, `horizontal overflow of ${overflow}px on the result at ${width}px`);
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
+    });
+
+    await step('rematch goes straight to the next battle, home keeps both repos', async () => {
+      await page.click('button:has-text("다시 싸우기")');
+      await page.waitForSelector('.rb-engage', { timeout: 30_000 });
+      await page.click('button:has-text("브리핑으로")');
+      await page.waitForSelector('text=대결 #3', { timeout: 10_000 });
+      await page.click('button:has-text("전투 시작하기")');
+      await page.waitForSelector('.rb-engage', { timeout: 30_000 });
+      if (live) {
+        const skip = page.locator('button:has-text("최종전으로 건너뛰기")');
+        if (await skip.count()) await skip.click();
+      }
+      await page.waitForSelector('button:has-text("결과 보기")', { timeout: 180_000 });
+      await page.click('button:has-text("결과 보기")');
+      await page.waitForSelector('text=대결 #3');
+      await page.click('button:has-text("처음으로")');
+      await page.waitForSelector('.rb-card-a[data-state=ready]', { timeout: 5_000 });
+      await page.waitForSelector('.rb-card-b[data-state=ready]', { timeout: 5_000 });
     });
 
     await step('no external requests', async () => {

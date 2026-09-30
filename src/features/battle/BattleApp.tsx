@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import type { BattleResult } from '../../engine/battle/sim';
 import type { Prediction } from '../../engine/battle/sim/types';
 import type { Quality } from '../../engine/battle/types';
 import { BriefingScreen } from './briefing/BriefingScreen';
-import type { BattleDeps } from './deps';
-import { BattleScreen, ResultScreen } from './Placeholder';
+import type { BattleDeps, FixesJob } from './deps';
+import { EngageScreen } from './engage/EngageScreen';
+import { ResultScreen } from './result/ResultScreen';
 import { SelectScreen } from './select/SelectScreen';
 
 export type { BattleDeps } from './deps';
@@ -14,12 +16,19 @@ export type Screen =
   | { name: 'select'; pair?: Pair }
   | ({ name: 'briefing'; match: number; prior: Prediction | null } & Pair)
   | ({ name: 'battle'; match: number; prior: Prediction } & Pair)
-  | ({ name: 'result' } & Pair);
+  | ({ name: 'result'; match: number; prior: Prediction; result: BattleResult } & Pair);
+
+/** Win shares out of the prediction runs, the shape the replay and result screens read. */
+export function priorShares(p: Prediction): { a: number; b: number } {
+  const runs = Math.max(1, p.runs);
+  return { a: p.aWins / runs, b: p.bWins / runs };
+}
 
 export function BattleApp({ deps }: { deps: BattleDeps }) {
   const [screen, setScreen] = useState<Screen>({ name: 'select' });
   const root = useRef<HTMLDivElement>(null);
   const first = useRef(true);
+  const fixJob = useRef<FixesJob | null>(null);
 
   useEffect(() => {
     // keyboard and screen-reader users land on the new screen's heading, not on a removed button
@@ -29,6 +38,15 @@ export function BattleApp({ deps }: { deps: BattleDeps }) {
     }
     root.current?.querySelector<HTMLElement>('[data-screen-focus]')?.focus();
   }, [screen.name]);
+
+  // leaving the result screen stops a fix-candidate job that may still be replaying battles
+  useEffect(() => {
+    if (screen.name !== 'result') return;
+    return () => {
+      fixJob.current?.cancel();
+      fixJob.current = null;
+    };
+  }, [screen]);
 
   let view;
   switch (screen.name) {
@@ -55,19 +73,39 @@ export function BattleApp({ deps }: { deps: BattleDeps }) {
     case 'battle': {
       const { a, b, match, prior } = screen;
       view = (
-        <BattleScreen
+        <EngageScreen
           a={a}
           b={b}
           match={match}
+          prior={priorShares(prior)}
           onBack={() => setScreen({ name: 'briefing', a, b, match, prior })}
-          onNext={() => setScreen({ name: 'result', a, b })}
+          onDone={(result) => setScreen({ name: 'result', a, b, match, prior, result })}
         />
       );
       break;
     }
     case 'result': {
-      const { a, b } = screen;
-      view = <ResultScreen a={a} b={b} onBack={() => setScreen({ name: 'select', pair: { a, b } })} />;
+      const { a, b, match, prior, result } = screen;
+      const loadFixes = () => {
+        const w = result.winner;
+        if (!w) return Promise.resolve([]);
+        fixJob.current?.cancel();
+        const job = w === 'a' ? deps.fixes(b, a, 'b') : deps.fixes(a, b, 'a');
+        fixJob.current = job;
+        return job.result;
+      };
+      view = (
+        <ResultScreen
+          a={a}
+          b={b}
+          match={match}
+          prior={priorShares(prior)}
+          result={result}
+          loadFixes={loadFixes}
+          onRematch={() => setScreen({ name: 'battle', a, b, match: match + 1, prior })}
+          onHome={() => setScreen({ name: 'select', pair: { a, b } })}
+        />
+      );
       break;
     }
   }

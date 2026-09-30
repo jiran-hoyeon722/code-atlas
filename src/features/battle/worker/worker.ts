@@ -1,4 +1,5 @@
 import { UnsupportedRepoError } from '../../../engine/analyze';
+import { fixCandidates } from '../../../engine/battle/fixes';
 import { buildQuality, TooSmallRepoError } from '../../../engine/battle/quality';
 import { buildArmy, createBattleFromArmies } from '../../../engine/battle/sim';
 import type { Prediction } from '../../../engine/battle/sim/types';
@@ -40,6 +41,8 @@ export async function handle(
 ): Promise<void> {
   try {
     if (msg.type === 'predict') predictRuns(msg, post);
+    else if (msg.type === 'fixes')
+      post({ type: 'fixes-done', fixes: fixCandidates(msg.loser, msg.winner, msg.loserSide, { seeds: msg.seeds, count: msg.count }) });
     else await measure(msg, post, locate);
   } catch (e) {
     post({ type: 'error', code: codeOf(e), message: e instanceof Error ? e.message : String(e) });

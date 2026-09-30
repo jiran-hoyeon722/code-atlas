@@ -5,6 +5,7 @@ import { defaultDeps, MEASURE_MSG } from '../../../src/features/battle/deps';
 import { MSG } from '../../../src/features/battle/select/useSlot';
 import type { ToWorker } from '../../../src/features/battle/worker/protocol';
 import { fakes, FakeWorker, quality } from './fakes';
+import { synthQuality } from '../../engine/battle/synth';
 
 afterEach(cleanup);
 
@@ -70,15 +71,17 @@ test('pick A and B through the folder input, measure, then open the briefing', a
   expect(brief().disabled).toBe(false);
 });
 
-test('the same folder can fight itself, through briefing → battle → result and back, keeping the prediction', async () => {
+test('the same folder can fight itself: briefing → battle and back keeps the prediction', async () => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   const { deps, runs, predictions } = fakes();
   render(<BattleApp deps={deps} />);
   choose('a', repo('twin'));
   choose('b', repo('twin'));
   await waitFor(() => expect(runs).toHaveLength(2));
+  const twin = synthQuality({ name: 'twin', totalLines: 4000, seed: 5 });
   await act(async () => {
-    runs[0].resolve(quality('twin'));
-    runs[1].resolve(quality('twin'));
+    runs[0].resolve(twin);
+    runs[1].resolve(twin);
   });
   expect(brief().disabled).toBe(false);
   fireEvent.click(brief());
@@ -88,18 +91,12 @@ test('the same folder can fight itself, through briefing → battle → result a
   fireEvent.click(screen.getByRole('button', { name: '다른 전개 보기' }));
   expect(screen.getByRole('heading', { name: '레포 전쟁 대결 #2' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '전투 시작하기' }));
-  expect(screen.getByRole('heading', { name: '전투' })).toBeTruthy();
-  expect(screen.getByText('대결 #2')).toBeTruthy();
+  expect(document.activeElement).toBe(screen.getByRole('heading', { name: '전투 장면' }));
   fireEvent.click(screen.getByRole('button', { name: '브리핑으로' }));
   expect(screen.getByRole('heading', { name: '레포 전쟁 대결 #2' })).toBeTruthy();
   expect(screen.getByText('박빙이에요')).toBeTruthy();
   expect(predictions).toHaveLength(1);
-  fireEvent.click(screen.getByRole('button', { name: '전투 시작하기' }));
-  fireEvent.click(screen.getByRole('button', { name: '결과 보기' }));
-  expect(screen.getByRole('heading', { name: '결과' })).toBeTruthy();
-  expect(screen.getAllByText('twin')).toHaveLength(2);
-  fireEvent.click(screen.getByRole('button', { name: '레포 다시 고르기' }));
-  expect(brief().disabled).toBe(false);
+  vi.restoreAllMocks();
 });
 
 test('too-small repo cannot fight', async () => {

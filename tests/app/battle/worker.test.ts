@@ -3,7 +3,8 @@ import { nodeLocate } from '../../../src/engine/node';
 import type { RepoInput } from '../../../src/engine/types';
 import type { FromWorker } from '../../../src/features/battle/worker/protocol';
 import { handle } from '../../../src/features/battle/worker/worker';
-import { startPredict, startQuality, QualityCancelled, QualityError } from '../../../src/features/battle/worker/client';
+import { startFixes, startPredict, startQuality, QualityCancelled, QualityError } from '../../../src/features/battle/worker/client';
+import { fixCandidates } from '../../../src/engine/battle/fixes';
 import { predict } from '../../../src/engine/battle/sim';
 import { qfile, quality } from './fakes';
 import { loadFixture } from '../../engine/battle/fixture';
@@ -170,6 +171,62 @@ describe('battle worker predict', () => {
       await expect(job.result).rejects.toBeInstanceOf(QualityCancelled);
       const w2 = new FakeWorker();
       const job2 = startPredict(a, b, { onProgress: vi.fn(), createWorker: () => w2 as unknown as Worker });
+      w2.emit({ type: 'error', code: 'failed', message: 'boom' });
+      await expect(job2.result).rejects.toMatchObject({ code: 'failed', message: 'boom' });
+    });
+  });
+});
+
+describe('battle worker fixes', () => {
+  const pair = () => {
+    const loser = quality('loser', {
+      totals: { prodLines: 1200, testLines: 0, testFiles: 0 },
+      files: [qfile('src/bad.ts', 600, { ccnTier: new Array(600).fill(3) }), qfile('src/ok.ts', 600, { lenTier: new Array(600).fill(1) })],
+    });
+    const winner = quality('winner', { totals: { prodLines: 1200, testLines: 0, testFiles: 0 }, files: [qfile('src/w.ts', 1200)] });
+    return { loser, winner };
+  };
+
+  test('posts the same candidates as the engine, in one done message', async () => {
+    const { loser, winner } = pair();
+    const msgs: FromWorker[] = [];
+    await handle({ type: 'fixes', loser, winner, loserSide: 'b', seeds: 4, count: 5 }, (m) => msgs.push(m));
+    expect(msgs).toEqual([{ type: 'fixes-done', fixes: fixCandidates(loser, winner, 'b', { seeds: 4, count: 5 }) }]);
+    if (msgs[0].type === 'fixes-done') expect(msgs[0].fixes.map((f) => f.path)).toEqual(['src/bad.ts', 'src/ok.ts']);
+  });
+
+  test('an army that cannot be built reports an error', async () => {
+    const { winner } = pair();
+    const tiny = quality('tiny', { files: [qfile('a.ts', 10, { ccnTier: new Array(10).fill(3) })] });
+    const msgs: FromWorker[] = [];
+    await handle({ type: 'fixes', loser: tiny, winner, loserSide: 'a', seeds: 2, count: 5 }, (m) => msgs.push(m));
+    expect(msgs).toEqual([expect.objectContaining({ type: 'error', code: 'failed' })]);
+  });
+
+  describe('client', () => {
+    beforeEach(() => vi.stubGlobal('document', { baseURI: 'http://localhost/app/index.html' }));
+    afterEach(() => vi.unstubAllGlobals());
+
+    test('startFixes posts seeds 20 and count 5, resolves with the list and terminates', async () => {
+      const { loser, winner } = pair();
+      const w = new FakeWorker();
+      const { result } = startFixes(loser, winner, 'a', { createWorker: () => w as unknown as Worker });
+      expect(w.posted[0]).toEqual({ type: 'fixes', loser, winner, loserSide: 'a', seeds: 20, count: 5 });
+      const fixes = [{ path: 'src/bad.ts', penalty: 1, reasons: ['complexity'], baseline: 0.1, improved: 0.2, delta: 0.1 }] as never;
+      w.emit({ type: 'fixes-done', fixes });
+      await expect(result).resolves.toBe(fixes);
+      expect(w.terminate).toHaveBeenCalledTimes(1);
+    });
+
+    test('startFixes cancel and errors reject', async () => {
+      const { loser, winner } = pair();
+      const w = new FakeWorker();
+      const job = startFixes(loser, winner, 'b', { createWorker: () => w as unknown as Worker });
+      job.cancel();
+      await expect(job.result).rejects.toBeInstanceOf(QualityCancelled);
+      expect(w.terminate).toHaveBeenCalledTimes(1);
+      const w2 = new FakeWorker();
+      const job2 = startFixes(loser, winner, 'b', { createWorker: () => w2 as unknown as Worker });
       w2.emit({ type: 'error', code: 'failed', message: 'boom' });
       await expect(job2.result).rejects.toMatchObject({ code: 'failed', message: 'boom' });
     });
