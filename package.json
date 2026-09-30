@@ -1,8 +1,8 @@
 {
-    "name": "code-atlas-tools",
+    "name": "code-atlas",
     "private": true,
     "type": "module",
-    "description": "JS/TS dependency extractor for code-atlas",
+    "description": "Browser-only app that visualizes a local repository folder as a 3D dependency city, graph, and architecture explorer",
     "scripts": {
         "dev": "vite",
         "predev": "node scripts/copy-wasm.mjs",
@@ -15,7 +15,6 @@
     },
     "dependencies": {
         "3d-force-graph": "1.80.0",
-        "dependency-cruiser": "^17.0.0",
         "highlight.js": "^11.12.0",
         "react": "^19.3.0",
         "react-dom": "^19.3.0",
