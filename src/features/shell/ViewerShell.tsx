@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import './shell.css';
 import type { Architecture } from '../../engine/architecture';
 import type { GithubOrigin } from '../../app/files/github';
-import type { MountViewer, Selection, TabId, ViewerEnv } from '../viewer-env';
+import type { BattleAccess, MountViewer, Selection, TabId, ViewerEnv } from '../viewer-env';
 import { downloadCodeCharta } from './codecharta';
 import { formatHash, parseHash } from './hash';
 import { getRepoRoot, setRepoRoot, vscodeHref } from './vscode';
@@ -17,6 +17,8 @@ export interface ViewerShellProps {
   onOpenOther(): void;
   /** the analysis is of a public GitHub repo at this commit */
   origin?: GithubOrigin;
+  /** battle data for the open repo and the registered ones; the battle tab explains its absence */
+  battle?: BattleAccess;
 }
 
 const LOADERS: Record<TabId, () => Promise<MountViewer>> = {
@@ -56,7 +58,7 @@ function initialState(webgl: boolean): { tab: TabId; sel: Selection } {
 
 const treeUrl = (o: GithubOrigin) => `https://github.com/${o.owner}/${o.repo}/tree/${o.sha}${o.subdir ? `/${o.subdir.split('/').map(encodeURIComponent).join('/')}` : ''}`;
 
-export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onReanalyze, onOpenOther, origin }: ViewerShellProps) {
+export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onReanalyze, onOpenOther, origin, battle }: ViewerShellProps) {
   const webgl = useMemo(() => hasWebGL(), []);
   const initial = useMemo(() => initialState(webgl), [webgl]);
   const [tab, setTab] = useState<TabId>(initial.tab);
@@ -69,6 +71,8 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
   const repoRootRef = useRef<string | null>(getRepoRoot(arch.name));
   const readSourceRef = useRef(readSource);
   readSourceRef.current = readSource;
+  const battleRef = useRef(battle);
+  battleRef.current = battle;
   const viewRef = useRef<HTMLDivElement>(null);
 
   const go = (next: TabId, sel: Selection) => {
@@ -123,6 +127,7 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
       goto: (next, sel) => {
         if (live) go(next, sel ?? {});
       },
+      ...(battleRef.current && { battle: battleRef.current }),
     };
     setStatus('loading');
     LOADERS[tab]().then(

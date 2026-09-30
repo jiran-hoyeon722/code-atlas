@@ -8,6 +8,7 @@ import type { FromWorker } from '../../src/app/analysis/protocol';
 import { handle } from '../../src/app/analysis/worker';
 import { startAnalysis, AnalysisCancelled, UnsupportedRepo } from '../../src/app/analysis/client';
 import { wasmLocate } from '../../src/app/analysis/wasm';
+import { PACK_VERSION, unpackQuality } from '../../src/engine/battle/pack';
 
 function loadRepo(name: string): RepoInput {
   const dir = join(__dirname, '../fixtures', name);
@@ -55,6 +56,38 @@ describe('worker handle', () => {
     if (last.type === 'done') expect(last.architecture.framework).toBe('laravel');
   });
 
+  test('done carries battle data already packed for the cache', async () => {
+    const msgs: FromWorker[] = [];
+    await handle({ type: 'analyze', input: loadRepo('battle-ts'), wasmBase: '' }, (m) => msgs.push(m), locate);
+    const last = msgs.at(-1)!;
+    expect(last.type).toBe('done');
+    if (last.type !== 'done') return;
+    expect(last.qualityIssue).toBeUndefined();
+    expect(last.quality).not.toBeNull();
+    expect(last.quality!.packVersion).toBe(PACK_VERSION);
+    expect(last.quality!.name).toBe('battle-ts');
+    expect(unpackQuality(last.quality!).files.length).toBeGreaterThan(0);
+    expect(last.architecture.nodes.length).toBeGreaterThan(0);
+  });
+
+  test('too small for battle: the analysis still succeeds, with the reason instead of battle data', async () => {
+    const msgs: FromWorker[] = [];
+    await handle({ type: 'analyze', input: loadRepo('laravel-mini'), wasmBase: '' }, (m) => msgs.push(m), locate);
+    expect(msgs.at(-1)).toMatchObject({ type: 'done', quality: null, qualityIssue: 'too-small' });
+  });
+
+  test('client passes the battle issue through', async () => {
+    vi.stubGlobal('document', { baseURI: 'http://localhost/app/index.html' });
+    try {
+      const w = new FakeWorker();
+      const { result } = startAnalysis({ name: 'x', files: [], configs: {} }, { onProgress: vi.fn(), createWorker: () => w as unknown as Worker });
+      w.emit({ type: 'done', architecture: { name: 'x' } as never, quality: null, qualityIssue: 'too-small' });
+      await expect(result).resolves.toMatchObject({ quality: null, qualityIssue: 'too-small' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('maps UnsupportedRepoError', async () => {
     const msgs: FromWorker[] = [];
     await handle({ type: 'analyze', input: { name: 'x', files: [], configs: {} }, wasmBase: '' }, (m) => msgs.push(m), locate);
@@ -98,8 +131,12 @@ describe('client', () => {
     expect(w.posted[0]).toMatchObject({ type: 'analyze', input, wasmBase: 'http://localhost/app/' });
     w.emit({ type: 'progress', progress: { phase: 'link' } });
     const architecture = { name: 'x' } as never;
-    w.emit({ type: 'done', architecture });
-    await expect(result).resolves.toBe(architecture);
+    const quality = { name: 'x' } as never;
+    w.emit({ type: 'done', architecture, quality, qualityIssue: undefined });
+    const r = await result;
+    expect(r.architecture).toBe(architecture);
+    expect(r.quality).toBe(quality);
+    expect(r).not.toHaveProperty('qualityIssue');
     expect(onProgress).toHaveBeenCalledWith({ phase: 'link' });
     expect(w.terminate).toHaveBeenCalledTimes(1);
   });

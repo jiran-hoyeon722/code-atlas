@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { GithubError, githubZipUrl, openGithub, parseGithubUrl, rawUrl } from '../../src/app/files/github';
+import { GithubError, githubZipUrl, openGithub, openGithubCommit, parseGithubUrl, rawUrl, type GithubOrigin } from '../../src/app/files/github';
 import { listRepo, loadRepo } from '../../src/app/files/walk';
 
 describe('parseGithubUrl', () => {
@@ -89,6 +89,27 @@ describe('openGithub', () => {
     await expect(openGithub({ owner: 'acme', repo: 'shop', subdir: '' }, fakeGithub({ truncated: true }).fetchFn)).rejects.toMatchObject({ code: 'truncated' });
     const offline = (async () => { throw new TypeError('Failed to fetch'); }) as typeof fetch;
     await expect(openGithub({ owner: 'acme', repo: 'shop', subdir: '' }, offline)).rejects.toMatchObject({ code: 'network' });
+  });
+});
+
+describe('openGithubCommit', () => {
+  const origin: GithubOrigin = { kind: 'github', owner: 'acme', repo: 'shop', sha: SHA, ref: 'main', subdir: 'src' };
+
+  test('reads the analysed commit again with one API call', async () => {
+    const gh = fakeGithub();
+    const listing = await listRepo(await openGithubCommit(origin, gh.fetchFn));
+    expect(listing.name).toBe('acme/shop/src');
+    expect(listing.sources.map((e) => e.path).sort()).toEqual(['App.tsx', 'a.ts']);
+    expect(gh.calls.filter((u) => u.startsWith('https://api.github.com'))).toEqual([`https://api.github.com/repos/acme/shop/git/trees/${SHA}?recursive=1`]);
+  });
+
+  test('rejects a malformed stored origin without calling out, and maps API failures', async () => {
+    const gh = fakeGithub();
+    await expect(openGithubCommit({ ...origin, sha: 'main' }, gh.fetchFn)).rejects.toMatchObject({ code: 'notFound' });
+    await expect(openGithubCommit({ ...origin, owner: '../x' }, gh.fetchFn)).rejects.toMatchObject({ code: 'notFound' });
+    expect(gh.calls).toEqual([]);
+    await expect(openGithubCommit(origin, fakeGithub({ truncated: true }).fetchFn)).rejects.toMatchObject({ code: 'truncated' });
+    await expect(openGithubCommit(origin, fakeGithub({ status: 404 }).fetchFn)).rejects.toMatchObject({ code: 'notFound' });
   });
 });
 

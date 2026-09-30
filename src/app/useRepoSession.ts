@@ -1,15 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Architecture } from '../engine/architecture';
+import type { PackedQuality } from '../engine/battle/pack';
+import type { QualityIssue } from '../engine/battle/quality';
+import type { Quality } from '../engine/battle/types';
 import { isSourcePath } from '../engine/collect';
 import { detect } from '../engine/detect';
 import { presetFor, type Role } from '../engine/presets';
 import { sourcesFor } from '../engine/sources';
-import type { Lang } from '../engine/types';
+import type { Lang, RepoInput } from '../engine/types';
+import { startQuality } from '../features/battle/worker/client';
 import type { LoadStep } from '../features/loading/LoadingScreen';
+import type { BattleAccess } from '../features/viewer-env';
 import * as cache from '../storage/cache';
 import { githubKey, type CacheEntry, type CacheSummary } from '../storage/cache';
-import { AnalysisCancelled, UnsupportedRepo, startAnalysis } from './analysis/client';
-import { GithubError, fetchGithubText, githubLabel, openGithub, parseGithubUrl, type GithubOrigin, type GithubSpec } from './files/github';
+import { AnalysisCancelled, UnsupportedRepo, startAnalysis, type AnalysisResult } from './analysis/client';
+import { createBattleAccess, type SelfSource } from './battleAccess';
+import { GithubError, fetchGithubText, githubLabel, openGithub, openGithubCommit, parseGithubUrl, type GithubOrigin, type GithubSpec } from './files/github';
 import { loadSample, loadSampleManifest, type SampleRepo } from './files/samples';
 import { fromDirectoryHandle, fromEntry, fromFileList } from './files/sources';
 import type { Entry, FsDir, Listing } from './files/types';
@@ -20,6 +26,8 @@ export interface SessionDeps {
   cache: Pick<typeof cache, 'cacheKey' | 'saveAnalysis' | 'listAnalyses' | 'loadAnalysis' | 'deleteAnalysis' | 'clearAnalyses'>;
   pickDirectory: (() => Promise<FileSystemDirectoryHandle>) | null;
   fetch: typeof fetch;
+  /** Measures battle data for a repo whose cached analysis has none; defaults to the battle worker. */
+  measureQuality?: (input: RepoInput, prefer: Lang) => Promise<Quality>;
 }
 
 export type Phase = 'landing' | 'listing' | 'confirmTooMany' | 'chooseLang' | 'reading' | 'analyzing' | 'viewer';
@@ -41,7 +49,7 @@ export interface SessionState {
   loading?: LoadingInfo;
   tooMany?: number;
   langCounts?: Record<Lang, number>;
-  viewer?: { arch: Architecture; skipped: number; canReconnect: boolean; id: number; origin?: GithubOrigin };
+  viewer?: { arch: Architecture; skipped: number; canReconnect: boolean; id: number; origin?: GithubOrigin; battle: BattleAccess };
   samples: SampleRepo[];
   /** the GitHub spec behind the current notice, so the landing can offer a ZIP download instead */
   failedGithub?: GithubSpec;
@@ -90,8 +98,14 @@ interface Current {
   dir?: FsDir;
   handle?: FileSystemDirectoryHandle;
   files?: Map<string, Entry>;
+  /** kept so battle data can still be measured from memory when the cached analysis has none */
+  listing?: Listing;
   origin?: GithubOrigin;
+  quality?: PackedQuality | null;
+  qualityIssue?: QualityIssue;
 }
+
+const measureInWorker = (input: RepoInput, prefer: Lang) => startQuality(input, { prefer, onProgress: () => {} }).result;
 
 type PermissionHandle = FileSystemDirectoryHandle & {
   queryPermission?(d: { mode: 'read' }): Promise<PermissionState>;
@@ -223,11 +237,24 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
       patch(p);
     });
 
+  const battleFor = (arch: Architecture, cur: Current): BattleAccess => {
+    const selfOf = (c: Current): SelfSource => ({
+      key: c.key, name: arch.name, lang: arch.lang, quality: c.quality, qualityIssue: c.qualityIssue,
+      listing: c.listing, origin: c.origin, handle: c.handle,
+    });
+    return createBattleAccess(() => selfOf(current.current ?? cur), {
+      cache: d().cache,
+      measure: (input, prefer) => (d().measureQuality ?? measureInWorker)(input, prefer),
+      readGithub: (origin) => openGithubCommit(origin, d().fetch),
+    });
+  };
+
   const showViewer = (arch: Architecture, cur: Current, skipped: number, canReconnect: boolean) => {
     current.current = cur;
+    const battle = battleFor(arch, cur);
     setState((s) => ({
       phase: 'viewer', recent: s.recent, samples: s.samples,
-      viewer: { arch, skipped, canReconnect, id: ++viewerSeq.current, origin: cur.origin },
+      viewer: { arch, skipped, canReconnect, id: ++viewerSeq.current, origin: cur.origin, battle },
     }));
   };
 
@@ -278,10 +305,10 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     }
     if (!alive()) return;
     const files = new Map(listing.sources.map((e) => [e.path, e]));
-    const cur: Current = { key, dir: src.dir, handle: src.handle, files, origin: src.origin };
+    const cur: Current = { key, dir: src.dir, handle: src.handle, files, listing, origin: src.origin };
 
     if (mode === 'reconnect' && current.current?.key === key) {
-      current.current = cur;
+      current.current = { ...cur, quality: current.current.quality, qualityIssue: current.current.qualityIssue };
       setCanReconnect(false);
       patch({ notice: undefined });
       const entry = src.handle ? await deps.cache.loadAnalysis(key).catch(() => undefined) : undefined;
@@ -295,7 +322,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
       if (!alive()) return;
       if (hit) {
         if (src.handle && !hit.handle) void save({ ...hit, handle: src.handle });
-        showViewer(hit.architecture, cur, listing.tooLarge.length, false);
+        showViewer(hit.architecture, { ...cur, quality: hit.quality ?? null, qualityIssue: hit.qualityIssue }, listing.tooLarge.length, false);
         void refreshRecent();
         return;
       }
@@ -338,22 +365,24 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
 
     const job = deps.startAnalysis(input, { prefer, onProgress: (p) => setStep(p) });
     cancelAnalysis.current = job.cancel;
-    let arch: Architecture;
+    let result: AnalysisResult;
     try {
-      arch = await job.result;
+      result = await job.result;
     } catch (e) {
       if (!alive() || e instanceof AnalysisCancelled) return;
       return toLanding(e instanceof UnsupportedRepo ? NOTICE.noFiles : NOTICE.analyzeFailed);
     }
     if (!alive()) return;
     cancelAnalysis.current = null;
+    const { architecture: arch, quality, qualityIssue } = result;
 
     await save({
       key, name: listing.name, framework: arch.framework, lang: arch.lang, files: arch.nodes.length,
       analyzedAt: arch.generatedAt, architecture: arch, handle: src.handle, ...(src.origin && { origin: src.origin }),
+      ...(quality && { quality }), ...(qualityIssue && { qualityIssue }),
     });
     if (!alive()) return;
-    showViewer(arch, cur, listing.tooLarge.length, false);
+    showViewer(arch, { ...cur, quality, qualityIssue }, listing.tooLarge.length, false);
     void refreshRecent();
   };
 
@@ -458,7 +487,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
       void refreshRecent();
       return;
     }
-    showViewer(entry.architecture, { key, handle: entry.handle, origin: entry.origin }, 0, !entry.origin);
+    showViewer(entry.architecture, { key, handle: entry.handle, origin: entry.origin, quality: entry.quality ?? null, qualityIssue: entry.qualityIssue }, 0, !entry.origin);
   };
 
   const onDeleteRecent = async (key: string) => {
