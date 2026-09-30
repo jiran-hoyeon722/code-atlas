@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { analyze } from '../src/engine/analyze';
 import { nodeLocate } from '../src/engine/node';
+import { detect } from '../src/engine/detect';
 import { loadParsers } from '../src/engine/parsers';
 import type { Lang } from '../src/engine/types';
 import type { SampleManifest, SampleRepo } from '../src/app/files/samples';
@@ -39,7 +40,6 @@ async function stars(owner: string, repo: string): Promise<number | null> {
 }
 
 async function main() {
-  const parsers = await loadParsers(nodeLocate);
   rmSync(OUT, { recursive: true, force: true });
   mkdirSync(OUT, { recursive: true });
   const repos: SampleRepo[] = [];
@@ -47,6 +47,9 @@ async function main() {
     const { dir, sha } = checkout(s.owner, s.repo);
     const id = `${s.owner}-${s.repo}`.toLowerCase();
     const input = readRepo(s.subdir ? join(dir, s.subdir) : dir, `${s.owner}/${s.repo}`);
+    const detection = detect(input, s.prefer);
+    if (!detection) throw new Error(`unsupported repo: ${s.owner}/${s.repo}`);
+    const parsers = await loadParsers(nodeLocate, [detection.lang]);
     const arch = analyze(input, parsers, { prefer: s.prefer });
     const json = JSON.stringify(arch);
     writeFileSync(join(OUT, `${id}.json`), json);

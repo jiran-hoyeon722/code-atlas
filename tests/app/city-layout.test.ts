@@ -29,7 +29,7 @@ function loadRepo(name: string): RepoInput {
 
 let a: Architecture;
 beforeAll(async () => {
-  a = analyze(loadRepo('laravel-mini'), await loadParsers(nodeLocate));
+  a = analyze(loadRepo('laravel-mini'), await loadParsers(nodeLocate, ['php', 'ts']));
 });
 
 test('one building per node, inside bounds, no overlaps', () => {

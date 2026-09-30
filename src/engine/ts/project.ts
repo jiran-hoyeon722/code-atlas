@@ -58,7 +58,7 @@ export function extractTsProject(
   for (const file of sources) {
     let r;
     try {
-      r = extractTsFile(parsers.tsx, file);
+      r = extractTsFile(parsers.get('ts'), file);
     } catch {
       failed.push({ path: file.path, reason: 'read' });
       nodes.push({ id: file.path, name: moduleName(file.path), kind: moduleKind(file.path), lines: file.text.split('\n').length, functions: 0, complexity: 0, maxComplexity: 0 });

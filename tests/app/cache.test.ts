@@ -66,7 +66,7 @@ let arch: Architecture;
 const MARKER = 'ZZ_SECRET_MARKER_4f9a1c';
 
 beforeAll(async () => {
-  const parsers = await loadParsers(nodeLocate);
+  const parsers = await loadParsers(nodeLocate, ['php', 'ts']);
   arch = analyze(loadRepo('react-mini', MARKER), parsers, { now: new Date('2026-01-01T00:00:00Z') });
 });
 

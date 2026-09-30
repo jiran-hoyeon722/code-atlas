@@ -5,12 +5,12 @@ import { measureFunctions, readabilityScores } from '../../../src/engine/battle/
 import type { FnInfo } from '../../../src/engine/battle/types';
 
 async function ts(src: string) {
-  const { tsx } = await loadParsers(nodeLocate);
+  const tsx = (await loadParsers(nodeLocate, ['php', 'ts'])).get('ts');
   return measureFunctions(tsx.parse(src)!.rootNode, 'ts', src);
 }
 
 async function php(src: string) {
-  const { php: parser } = await loadParsers(nodeLocate);
+  const parser = (await loadParsers(nodeLocate, ['php', 'ts'])).get('php');
   return measureFunctions(parser.parse(src)!.rootNode, 'php', src);
 }
 

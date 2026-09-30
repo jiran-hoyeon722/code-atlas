@@ -9,7 +9,7 @@ import { loadFixture } from './fixture';
 
 let parsers: Parsers;
 beforeAll(async () => {
-  parsers = await loadParsers(nodeLocate);
+  parsers = await loadParsers(nodeLocate, ['php', 'ts']);
 });
 
 const paths = (files: { path: string }[]) => files.map((f) => f.path);
@@ -147,8 +147,8 @@ describe('buildQuality errors and edge cases', () => {
 
   test('a file that fails to parse still counts its lines, with no functions', () => {
     const body = Array.from({ length: 320 }, (_, i) => `export const v${i} = ${i};`).join('\n');
-    const broken = { parse: () => null } as unknown as Parsers['tsx'];
-    const q = buildQuality(repo({ 'a.ts': body }), { ...parsers, tsx: broken } as Parsers);
+    const broken = { parse: () => null } as unknown as ReturnType<Parsers['get']>;
+    const q = buildQuality(repo({ 'a.ts': body }), { get: (lang) => (lang === 'ts' ? broken : parsers.get(lang)) });
     expect(q.files).toHaveLength(1);
     expect(q.files[0]).toMatchObject({ lines: 320, functions: [] });
     expect(q.files[0].ccnTier).toHaveLength(320);

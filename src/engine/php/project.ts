@@ -29,7 +29,7 @@ export function extractPhpProject(
   for (const file of appFiles) {
     let f: PhpFacts;
     try {
-      f = extractPhpFile(parsers.php, file, file.path.startsWith(providersPrefix));
+      f = extractPhpFile(parsers.get('php'), file, file.path.startsWith(providersPrefix));
     } catch {
       failed.push({ path: file.path, reason: 'read' });
       nodes.push({ id: file.path, name: baseName(file.path), kind: 'script', lines: file.text.split('\n').length, functions: 0, complexity: 0, maxComplexity: 0 });
@@ -96,7 +96,7 @@ export function extractPhpProject(
   for (const file of routeFiles) {
     let refs: PhpFacts['refs'];
     try {
-      refs = extractPhpFile(parsers.php, file, false).refs;
+      refs = extractPhpFile(parsers.get('php'), file, false).refs;
     } catch {
       failed.push({ path: file.path, reason: 'read' });
       continue;

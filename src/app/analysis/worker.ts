@@ -1,4 +1,5 @@
 import { analyze, UnsupportedRepoError } from '../../engine/analyze';
+import { detect } from '../../engine/detect';
 import { loadParsers, type WasmFile } from '../../engine/parsers';
 import type { FromWorker, ToWorker } from './protocol';
 import { wasmLocate } from './wasm';
@@ -9,7 +10,9 @@ export async function handle(
   locate: (base: string) => (f: WasmFile) => string = wasmLocate,
 ): Promise<void> {
   try {
-    const parsers = await loadParsers(locate(msg.wasmBase));
+    const detection = detect(msg.input, msg.prefer);
+    if (!detection) throw new UnsupportedRepoError();
+    const parsers = await loadParsers(locate(msg.wasmBase), [detection.lang]);
     const architecture = analyze(msg.input, parsers, {
       prefer: msg.prefer,
       onProgress: (progress) => post({ type: 'progress', progress }),

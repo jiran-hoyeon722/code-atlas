@@ -30,7 +30,7 @@ function loadRepo(name: string): RepoInput {
 
 let arch: Architecture;
 beforeAll(async () => {
-  arch = analyze(loadRepo('react-mini'), await loadParsers(nodeLocate));
+  arch = analyze(loadRepo('react-mini'), await loadParsers(nodeLocate, ['php', 'ts']));
 });
 
 describe('graphData', () => {

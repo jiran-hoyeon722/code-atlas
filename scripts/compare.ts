@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { analyze } from '../src/engine/analyze';
+import { detect } from '../src/engine/detect';
 import { loadParsers } from '../src/engine/parsers';
 import { nodeLocate } from '../src/engine/node';
 import { readRepo } from './read-repo';
@@ -43,10 +44,11 @@ const kindKey = (kinds: Record<string, number>): string => Object.keys(kinds).so
 async function main() {
   const { repoDir, baselinePath, outDir } = parseArgs(process.argv.slice(2));
   const baseline = JSON.parse(readFileSync(baselinePath, 'utf8')) as Baseline;
-  const parsers = await loadParsers(nodeLocate);
-
   const started = performance.now();
   const input = readRepo(repoDir);
+  const detection = detect(input);
+  if (!detection) throw new Error('unsupported repo');
+  const parsers = await loadParsers(nodeLocate, [detection.lang]);
   const arch = analyze(input, parsers);
   const ms = Math.round(performance.now() - started);
 

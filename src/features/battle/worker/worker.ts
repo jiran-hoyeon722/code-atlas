@@ -3,6 +3,7 @@ import { fixCandidates } from '../../../engine/battle/fixes';
 import { buildQuality, TooSmallRepoError } from '../../../engine/battle/quality';
 import { buildArmy, createBattleFromArmies } from '../../../engine/battle/sim';
 import type { Prediction } from '../../../engine/battle/sim/types';
+import { detect } from '../../../engine/detect';
 import { loadParsers, type WasmFile } from '../../../engine/parsers';
 import { wasmLocate } from '../../../app/analysis/wasm';
 import type { ErrorCode, FromWorker, PredictRequest, QualityRequest, ToWorker } from './protocol';
@@ -11,7 +12,9 @@ const codeOf = (e: unknown): ErrorCode =>
   e instanceof UnsupportedRepoError ? 'unsupported' : e instanceof TooSmallRepoError ? 'too-small' : 'failed';
 
 async function measure(msg: QualityRequest, post: (m: FromWorker) => void, locate: (base: string) => (f: WasmFile) => string) {
-  const parsers = await loadParsers(locate(msg.wasmBase));
+  const detection = detect(msg.input, msg.prefer);
+  if (!detection) throw new UnsupportedRepoError();
+  const parsers = await loadParsers(locate(msg.wasmBase), [detection.lang]);
   const quality = buildQuality(msg.input, parsers, {
     prefer: msg.prefer,
     onProgress: (progress) => post({ type: 'progress', progress }),

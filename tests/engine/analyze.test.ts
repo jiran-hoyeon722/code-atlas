@@ -28,7 +28,7 @@ function loadRepo(name: string): RepoInput {
 const NOW = new Date('2026-01-01T00:00:00Z');
 let parsers: Parsers;
 beforeAll(async () => {
-  parsers = await loadParsers(nodeLocate);
+  parsers = await loadParsers(nodeLocate, ['php', 'ts']);
 });
 
 describe('analyze', () => {

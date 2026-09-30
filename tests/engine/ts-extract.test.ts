@@ -33,7 +33,7 @@ let result: Extraction;
 const seen: string[] = [];
 
 beforeAll(async () => {
-  parsers = await loadParsers(nodeLocate);
+  parsers = await loadParsers(nodeLocate, ['php', 'ts']);
   const input = loadFixture();
   const detection = detect(input)!;
   result = extractTsProject(input, detection, parsers, (p) => seen.push(p));
@@ -42,7 +42,7 @@ beforeAll(async () => {
 test('import kinds', () => {
   const src =
     "import type {A} from './a'; import {type B} from './b'; import C from './c'; export * from './d'; export type {E} from './e'; import('./f'); require('./g');";
-  const r = extractTsFile(parsers.tsx, { path: 'x.ts', text: src });
+  const r = extractTsFile(parsers.get('ts'), { path: 'x.ts', text: src });
   expect(r.imports.map((i) => i.kind)).toEqual([
     'type-import', 'type-import', 'import', 're-export', 'type-import', 'dynamic-import', 'require',
   ]);
@@ -53,7 +53,7 @@ test('import kinds', () => {
 test('other import shapes', () => {
   const src =
     "import D, {type X} from './d'; import {type P, type Q} from './pq'; import './side'; export {x} from './y'; export * as ns from './n'; import r = require('./r'); import(`./${a}`); import(v); import {} from './empty';";
-  const r = extractTsFile(parsers.tsx, { path: 'x.ts', text: src });
+  const r = extractTsFile(parsers.get('ts'), { path: 'x.ts', text: src });
   expect(r.imports).toEqual([
     { specifier: './d', kind: 'import' },
     { specifier: './pq', kind: 'type-import' },
@@ -73,7 +73,7 @@ test('import() in type positions is a type import', () => {
     "import('./then').then((m) => m.run());",
     "const v = await import('./awaited');",
   ].join('\n');
-  const r = extractTsFile(parsers.tsx, { path: 'x.ts', text: src });
+  const r = extractTsFile(parsers.get('ts'), { path: 'x.ts', text: src });
   expect(r.imports).toEqual([
     { specifier: './size', kind: 'type-import' },
     { specifier: './tint', kind: 'type-import' },
@@ -86,12 +86,12 @@ test('import() in type positions is a type import', () => {
 
 test('import() type followed by [] still counts as a type import', () => {
   const src = "export interface Store {\n  rows: import('./row').Row[]\n  pick: (r: import('./row').Row | null) => void\n}\n";
-  const r = extractTsFile(parsers.tsx, { path: 'x.ts', text: src });
+  const r = extractTsFile(parsers.get('ts'), { path: 'x.ts', text: src });
   expect(r.imports.map((i) => i.kind)).toEqual(['type-import', 'type-import']);
 });
 
 test('lines and complexity', () => {
-  const r = extractTsFile(parsers.tsx, { path: 'x.ts', text: 'function f(a){\n if(a){}\n}\n' });
+  const r = extractTsFile(parsers.get('ts'), { path: 'x.ts', text: 'function f(a){\n if(a){}\n}\n' });
   expect(r).toMatchObject({ lines: 4, functions: 1, complexity: 2, maxComplexity: 2 });
 });
 

@@ -7,7 +7,7 @@ import { extractPhpFile } from '../../src/engine/php/extract';
 
 let parsers: Parsers;
 beforeAll(async () => {
-  parsers = await loadParsers(nodeLocate);
+  parsers = await loadParsers(nodeLocate, ['php', 'ts']);
 });
 
 function find(n: Node, type: string, text?: string): Node {
@@ -21,7 +21,7 @@ function find(n: Node, type: string, text?: string): Node {
 }
 
 function scopeOf(src: string, className: string) {
-  const root = parsers.php.parse(src)!.rootNode;
+  const root = parsers.get('php').parse(src)!.rootNode;
   return scopeAt(root, find(root, 'class_declaration', className));
 }
 
@@ -91,7 +91,7 @@ describe('scopeAt performance', () => {
   };
 
   test('3,000-statement unnamespaced file extracts correctly', () => {
-    const facts = extractPhpFile(parsers.php, bigFile(3000), false);
+    const facts = extractPhpFile(parsers.get('php'), bigFile(3000), false);
     expect(facts.refs.filter((r) => r.fqcn === 'Lib\\Thing0')).toHaveLength(429);
     expect(facts.refs.some((r) => r.fqcn === 'Thing1')).toBe(true);
   }, 30_000);
@@ -105,12 +105,12 @@ describe('scopeAt performance', () => {
       let best = Infinity;
       for (let i = 0; i < 3; i++) {
         const start = performance.now();
-        extractPhpFile(parsers.php, file, false);
+        extractPhpFile(parsers.get('php'), file, false);
         best = Math.min(best, performance.now() - start);
       }
       return best;
     };
-    extractPhpFile(parsers.php, small, false); // warm-up
+    extractPhpFile(parsers.get('php'), small, false); // warm-up
     const t3k = minMs(small);
     const t12k = minMs(large);
     expect(t12k / t3k).toBeLessThan(10);

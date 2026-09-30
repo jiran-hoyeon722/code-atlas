@@ -86,7 +86,7 @@ function mount(arch: Architecture, env: ViewerEnv) {
 afterEach(() => { disposers.forEach((d) => d()); disposers = []; });
 
 let parsers: Parsers;
-beforeAll(async () => { parsers = await loadParsers(nodeLocate); });
+beforeAll(async () => { parsers = await loadParsers(nodeLocate, ['php', 'ts']); });
 
 const fileButton = (root: HTMLElement, text: string) =>
   Array.from(root.querySelectorAll<HTMLElement>('[data-open]')).find((b) => b.textContent?.includes(text))!;

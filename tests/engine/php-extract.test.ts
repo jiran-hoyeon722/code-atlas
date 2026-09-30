@@ -39,7 +39,7 @@ const edge = (from: string, to: string): Edge | undefined =>
   result.edges.find((e) => e.from === from && e.to === to);
 
 beforeAll(async () => {
-  parsers = await loadParsers(nodeLocate);
+  parsers = await loadParsers(nodeLocate, ['php', 'ts']);
   repo = loadRepo(FIXTURE);
   detection = detect(repo)!;
   result = extractPhpProject(repo, detection, parsers, (p) => processed.push(p));
@@ -47,7 +47,7 @@ beforeAll(async () => {
 
 describe('extractPhpFile', () => {
   test('reference kinds', () => {
-    const facts = extractPhpFile(parsers.php, file('app/Actions/CreatePost.php'), false);
+    const facts = extractPhpFile(parsers.get('php'), file('app/Actions/CreatePost.php'), false);
     expect(facts.refs).toEqual([
       { fqcn: 'App\\Models\\User', kind: 'inject' },
       { fqcn: 'App\\Models\\Post', kind: 'type' },
@@ -87,7 +87,7 @@ trait T3 {}
 enum E3: string implements I4 { case A = 'a'; }
 function top(never|Foo2 $x): iterable {}
 `;
-    const facts = extractPhpFile(parsers.php, { path: 'x.php', text: src }, false);
+    const facts = extractPhpFile(parsers.get('php'), { path: 'x.php', text: src }, false);
     expect(facts.refs).toEqual([
       { fqcn: 'N\\Attr', kind: 'attribute' },
       { fqcn: 'N\\Z', kind: 'class-ref' },
@@ -135,15 +135,15 @@ function top(never|Foo2 $x): iterable {}
   });
 
   test('laravel wiring facts', () => {
-    const esp = extractPhpFile(parsers.php, file('app/Providers/EventServiceProvider.php'), true);
+    const esp = extractPhpFile(parsers.get('php'), file('app/Providers/EventServiceProvider.php'), true);
     expect(esp.listen).toEqual([['App\\Events\\PostCreated', 'App\\Listeners\\NotifyAuthor']]);
     const asp = file('app/Providers/AppServiceProvider.php');
-    expect(extractPhpFile(parsers.php, asp, true).binds).toEqual([
+    expect(extractPhpFile(parsers.get('php'), asp, true).binds).toEqual([
       ['App\\Contracts\\PostRepository', 'App\\Repositories\\EloquentPostRepository'],
       ['App\\Contracts\\Clock', 'App\\Support\\SystemClock'],
     ]);
     // Outside providers only the bind() call counts, not the class map.
-    expect(extractPhpFile(parsers.php, asp, false).binds).toEqual([
+    expect(extractPhpFile(parsers.get('php'), asp, false).binds).toEqual([
       ['App\\Contracts\\PostRepository', 'App\\Repositories\\EloquentPostRepository'],
     ]);
   });
@@ -158,7 +158,7 @@ $app->instance(H::class, I::class);
 App::bind(J::class, K::class);
 $app->bind(self::class, L::class);
 `;
-    expect(extractPhpFile(parsers.php, { path: 'x.php', text: src }, false).binds).toEqual([
+    expect(extractPhpFile(parsers.get('php'), { path: 'x.php', text: src }, false).binds).toEqual([
       ['A', 'B'],
       ['C', 'D'],
       ['E', 'F'],
@@ -194,7 +194,7 @@ describe('extractPhpProject', () => {
   });
 
   test('multiple classes in global namespace', () => {
-    const facts = extractPhpFile(parsers.php, file('app/legacy.php'), false);
+    const facts = extractPhpFile(parsers.get('php'), file('app/legacy.php'), false);
     expect(facts.declarations).toEqual([
       { fqcn: 'LegacyReport', kind: 'class' },
       { fqcn: 'LegacyFormatter', kind: 'class' },
@@ -251,13 +251,15 @@ describe('extractPhpProject', () => {
 
 describe('extractPhpProject per-file failures', () => {
   const throwingOn = (marker: string): Parsers => ({
-    ...parsers,
-    php: {
-      parse: (text: string) => {
-        if (text.includes(marker)) throw new Error('synthetic parse failure');
-        return parsers.php.parse(text);
-      },
-    } as unknown as Parsers['php'],
+    get: (lang) =>
+      lang !== 'php'
+        ? parsers.get(lang)
+        : ({
+            parse: (text: string) => {
+              if (text.includes(marker)) throw new Error('synthetic parse failure');
+              return parsers.get('php').parse(text);
+            },
+          } as unknown as ReturnType<Parsers['get']>),
   });
 
   const synthetic: RepoInput = {

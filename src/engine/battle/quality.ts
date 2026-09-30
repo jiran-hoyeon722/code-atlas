@@ -30,7 +30,7 @@ export class TooSmallRepoError extends Error {
 }
 
 function profileOf(parsers: Parsers, lang: Lang, file: SourceFile): FunctionProfile {
-  const parser = lang === 'php' ? parsers.php : parsers.tsx;
+  const parser = parsers.get(lang);
   let tree: ReturnType<typeof parser.parse> = null;
   try {
     tree = parser.parse(file.text);

@@ -1,34 +1,55 @@
 import { Parser, Language } from 'web-tree-sitter';
 
-import type { WasmFile } from './langs';
+import { ALL_LANGS, LANGS, type Lang, type WasmFile } from './langs';
 
 export type { WasmFile };
 
 export interface Parsers {
-  php: Parser;
-  tsx: Parser;
+  get(lang: Lang): Parser;
 }
 
-let cached: Promise<Parsers> | null = null;
+let ready: Promise<void> | null = null;
+const grammars = new Map<WasmFile, Promise<Parser>>();
 
-export function loadParsers(locate: (file: WasmFile) => string): Promise<Parsers> {
+function initOnce(locate: (file: WasmFile) => string): Promise<void> {
   // A failed load must not poison later retries.
-  cached ??= init(locate).catch((e) => {
-    cached = null;
+  ready ??= Parser.init({ locateFile: (name: string) => locate(name as WasmFile) }).catch((e) => {
+    ready = null;
     throw e;
   });
-  return cached;
+  return ready;
 }
 
-async function init(locate: (file: WasmFile) => string): Promise<Parsers> {
-  await Parser.init({ locateFile: (name: string) => locate(name as WasmFile) });
-  const [phpLang, tsxLang] = await Promise.all([
-    Language.load(locate('tree-sitter-php.wasm')),
-    Language.load(locate('tree-sitter-tsx.wasm')),
-  ]);
-  const php = new Parser();
-  php.setLanguage(phpLang);
-  const tsx = new Parser();
-  tsx.setLanguage(tsxLang);
-  return { php, tsx };
+function grammar(file: WasmFile, locate: (file: WasmFile) => string): Promise<Parser> {
+  let p = grammars.get(file);
+  if (!p) {
+    p = initOnce(locate)
+      .then(() => Language.load(locate(file)))
+      .then((language) => {
+        const parser = new Parser();
+        parser.setLanguage(language);
+        return parser;
+      })
+      .catch((e) => {
+        grammars.delete(file);
+        throw e;
+      });
+    grammars.set(file, p);
+  }
+  return p;
+}
+
+export async function loadParsers(
+  locate: (file: WasmFile) => string,
+  langs: readonly Lang[] = ALL_LANGS,
+): Promise<Parsers> {
+  const loaded = new Map<Lang, Parser>();
+  await Promise.all(langs.map(async (lang) => loaded.set(lang, await grammar(LANGS[lang].wasm, locate))));
+  return {
+    get(lang) {
+      const parser = loaded.get(lang);
+      if (!parser) throw new Error(`parser for ${lang} is not loaded`);
+      return parser;
+    },
+  };
 }
