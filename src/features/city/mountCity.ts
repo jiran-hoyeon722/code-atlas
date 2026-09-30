@@ -3,13 +3,14 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import 'highlight.js/styles/github-dark.css';
 import './city.css';
 import type { ArchNode } from '../../engine/architecture';
-import type { MountViewer } from '../viewer-env';
+import type { MountViewer, Selection } from '../viewer-env';
 import { esc } from '../escape';
 import { LAYER_TINT, roleColors } from '../palette';
 import { renderCode } from '../code-viewer/highlight';
 import { ROAD, layoutCity } from './layout';
 import { createSelectionReporter } from './selection';
 import { MAX_HEIGHT, SMALL_CITY, homeView } from './homeView';
+import { type BlastResult, blastPercent, blastRadius } from './blast';
 
 const KIND_LABEL: Record<string, string> = {
   inject: '생성자 주입', type: '타입 힌트', 'static-call': '정적 호출', new: 'new 생성', const: '상수·enum',
@@ -18,6 +19,10 @@ const KIND_LABEL: Record<string, string> = {
   import: 'import', 'type-import': '타입 import', 'dynamic-import': '동적 import', 're-export': '재export', require: 'require',
 };
 const fmt = (n: number) => Number(n).toLocaleString('ko-KR');
+function blastColor(level: number, maxDepth: number) {
+  const t = maxDepth <= 1 ? 0 : (level - 1) / (maxDepth - 1);
+  return new THREE.Color().setHSL(0.14 * t, 0.85, 0.5 + 0.12 * t);
+}
 
 type HeightKey = 'fanIn' | 'fanOut' | 'centrality' | 'routeRefs' | 'functions' | 'maxComplexity' | 'lines';
 type ColorKey = 'role' | 'instability' | 'upward' | 'maxComplexity';
@@ -264,7 +269,11 @@ export const mountCity: MountViewer = (root, arch, env) => {
   selectBox.visible = false;
   scene.add(selectBox);
 
-  const state = { height: 'fanIn' as HeightKey, color: 'role' as ColorKey, selected: null as CityNode | null, hidden: new Set<number>() };
+  const state = {
+    height: 'fanIn' as HeightKey, color: 'role' as ColorKey, selected: null as CityNode | null, hidden: new Set<number>(),
+    blast: null as { result: BlastResult; skipTypeOnly: boolean; startedAt: number } | null,
+  };
+  const routeRefs = nodes.map((n) => n.routeRefs);
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
   const gray = new THREE.Color('#2a2d35');
@@ -281,7 +290,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     });
     buildings.instanceMatrix.needsUpdate = true;
     buildings.computeBoundingSphere();
-    if (state.selected) drawArcs(state.selected);
+    if (state.selected) drawArcs(state.blast ? null : state.selected);
     placeBox(selectBox, state.selected);
   }
 
@@ -300,9 +309,13 @@ export const mountCity: MountViewer = (root, arch, env) => {
   }
   function applyColors() {
     const sel = state.selected;
+    const blast = state.blast?.result;
     nodes.forEach((n) => {
       const c = baseColor(n);
-      if (sel && n !== sel && !sel.neighbors.has(n.i)) c.lerp(gray, 0.88);
+      if (blast) {
+        const d = blast.depth[n.i];
+        if (d > 0) c.copy(blastColor(d, blast.maxDepth)); else if (d < 0) c.lerp(gray, 0.88);
+      } else if (sel && n !== sel && !sel.neighbors.has(n.i)) c.lerp(gray, 0.88);
       buildings.setColorAt(n.i, c);
     });
     if (buildings.instanceColor) buildings.instanceColor.needsUpdate = true;
@@ -375,15 +388,37 @@ export const mountCity: MountViewer = (root, arch, env) => {
   const reporter = createSelectionReporter((sel) => env.onSelect(sel));
   let codePath: string | null = null;
   const codeOpen = () => $('code').classList.contains('open');
+  function currentSelection(): Selection {
+    const n = state.selected;
+    if (!n) return {};
+    return { file: n.path, ...(codeOpen() && codePath === n.path ? { code: true } : {}), ...(state.blast ? { blast: true } : {}) };
+  }
   function select(n: CityNode | null, fly = false) {
+    const prev = state.selected;
+    const hadBlast = !!state.blast;
+    state.blast = null;
     state.selected = n;
     applyColors();
     drawArcs(n);
     placeBox(selectBox, n);
-    reporter.report(n ? { file: n.path, ...(codeOpen() && codePath === n.path ? { code: true } : {}) } : {});
-    if (!n) { $('panel').classList.remove('open'); return; }
+    reporter.report(currentSelection());
+    if (!n) {
+      if (prev && hadBlast) renderPanel(prev);
+      $('panel').classList.remove('open');
+      return;
+    }
     renderPanel(n);
     if (fly) flyTo(n);
+  }
+  function setBlast(on: boolean) {
+    const n = state.selected;
+    if (!n) return;
+    const skipTypeOnly = on && !!state.blast?.skipTypeOnly;
+    state.blast = on ? { result: blastRadius(nodes.length, arch.edges, n.i, routeRefs, { skipTypeOnly }), skipTypeOnly, startedAt: performance.now() } : null;
+    drawArcs(on ? null : n);
+    applyColors();
+    renderPanel(n);
+    reporter.report(currentSelection());
   }
 
   const vscodeAction = (path: string) => {
@@ -401,6 +436,21 @@ export const mountCity: MountViewer = (root, arch, env) => {
         return `<button class="item" data-select="${o.i}"><i style="background:${esc(o.css)}"></i><span>${esc(o.name)}${e.strong ? '<b class="up">역방향</b>' : ''}</span><small>${esc(kinds)}</small></button>`;
       }).join('') || '<div class="more">없음</div>'}${sorted.length > 40 ? `<div class="more">외 ${sorted.length - 40}개 — 탐색기에서 전체 보기</div>` : ''}</div>`;
     };
+    const blastSection = () => {
+      if (!state.blast) return '';
+      const { result: r, skipTypeOnly } = state.blast;
+      const direct = r.levels[0]?.length ?? 0;
+      const summary = r.affected
+        ? `<div class="blast-summary">직접 ${fmt(direct)} · 간접 ${fmt(r.affected - direct)} · 도시의 ${blastPercent(r.affected, nodes.length)}% · 최대 ${r.maxDepth}단계</div><div class="blast-routes">영향권 중 라우트가 직접 쓰는 파일 ${fmt(r.routeFiles)}개</div>`
+        : '<div class="more">이 파일을 쓰는 곳이 없습니다 — 고쳐도 다른 파일에 번지지 않습니다</div>';
+      const levels = r.levels.map((level, k) => {
+        const sorted = level.map((i) => nodes[i]).sort((a, b) => (b.fanIn - a.fanIn) || a.name.localeCompare(b.name));
+        const color = blastColor(k + 1, r.maxDepth).getStyle();
+        return `<h4><span><span class="dot" style="background:${color}"></span>${k + 1}단계</span><span>${sorted.length}</span></h4>${sorted.slice(0, 40).map((o) =>
+          `<button class="item" data-select="${o.i}"><i style="background:${esc(o.css)}"></i><span>${esc(o.name)}</span><small>fan-in ${fmt(o.fanIn)}</small></button>`).join('')}${sorted.length > 40 ? `<div class="more">외 ${sorted.length - 40}개</div>` : ''}`;
+      }).join('');
+      return `<div class="sec blast" data-el="blast">${summary}<label class="blast-types"><input type="checkbox" data-blast-types${skipTypeOnly ? ' checked' : ''}> 타입 참조 제외</label>${levels}</div>`;
+    };
     $('panel-body').innerHTML = `
         <span class="chip" style="--c:${esc(n.css)}">${esc(role.name)} · ${esc(arch.layers[n.layer].label)}</span>
         <h3>${esc(n.name)}</h3>
@@ -416,8 +466,10 @@ export const mountCity: MountViewer = (root, arch, env) => {
             <div class="metric"><b>${fmt(n.maxComplexity)}</b><span>함수 최대 복잡도</span></div>
             <div class="metric"><b>${fmt(n.lines)}</b><span>줄 수</span></div>
         </div>
+        ${blastSection()}
         <div class="actions">
             <button data-open-code="${n.i}">코드 보기</button>
+            <button data-blast aria-pressed="${!!state.blast}">💥 폭발 반경</button>
             ${vscodeAction(n.path)}
             <a data-explorer="${n.i}">탐색기에서 보기 ↗</a>
         </div>
@@ -426,12 +478,19 @@ export const mountCity: MountViewer = (root, arch, env) => {
     $('panel').classList.add('open');
   }
   listen($('panel-body'), 'click', (ev) => {
-    const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-select],[data-open-code],[data-explorer],[data-vscode-setup]');
+    const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-select],[data-open-code],[data-explorer],[data-vscode-setup],[data-blast]');
     if (!el) return;
     if (el.dataset.select) select(nodes[+el.dataset.select], true);
     else if (el.dataset.openCode) void openCode(+el.dataset.openCode);
     else if (el.dataset.explorer) env.goto('explorer', { file: nodes[+el.dataset.explorer].path });
+    else if (el.dataset.blast !== undefined) setBlast(!state.blast);
     else env.requestVscodeSetup();
+  });
+  listen($('panel-body'), 'change', (ev) => {
+    const input = ev.target as HTMLInputElement;
+    if (!input.matches('[data-blast-types]') || !state.blast) return;
+    state.blast.skipTypeOnly = input.checked;
+    setBlast(true);
   });
 
   // ---- source viewer ----
@@ -441,7 +500,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     const request = ++codeRequest;
     $('code').classList.add('open');
     codePath = n.path;
-    reporter.report({ file: n.path, code: true });
+    reporter.report(currentSelection());
     $('code-name').textContent = n.name;
     $('code-path').textContent = `${n.path} · ${fmt(n.lines)}줄`;
     $('code-vscode').innerHTML = vscodeAction(n.path);
@@ -470,7 +529,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     $('code').classList.remove('open');
     codePath = null;
     codeRequest++;
-    reporter.report(state.selected ? { file: state.selected.path } : {});
+    reporter.report(currentSelection());
   }
 
   // Wraps the short class names this file references so they jump to that building.
@@ -629,6 +688,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
   if (linked) {
     reporter.restore(() => {
       select(linked, true);
+      if (env.selection.blast) setBlast(true);
       if (env.selection.code) void openCode(linked.i);
     });
   }
