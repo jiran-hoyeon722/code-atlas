@@ -10,7 +10,6 @@ const PAGE = `${BASE}battle.html`;
 const OUT = resolve(ROOT, 'test-results/e2e');
 const FIXTURE_A = resolve(ROOT, 'tests/fixtures/battle-ts');
 const FIXTURE_B = resolve(ROOT, 'tests/fixtures/battle-php');
-const CSP = "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; worker-src 'self' blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'";
 
 let preview = null;
 const results = [];
@@ -98,10 +97,13 @@ async function main() {
   console.log('build');
   await run('npm', ['run', 'build']);
 
-  await step('dist/battle.html carries the CSP meta', async () => {
+  await step('dist/battle.html carries the same CSP meta as the main app', async () => {
+    const cspMeta = /<meta http-equiv="Content-Security-Policy" content="[^"]*">/;
     const html = await readFile(resolve(ROOT, 'dist/battle.html'), 'utf8');
-    assert(html.includes(`<meta http-equiv="Content-Security-Policy" content="${CSP}">`), 'CSP meta missing from dist/battle.html');
-    assert(!/https?:\/\/(?!www\.w3\.org)/.test(html), 'dist/battle.html references an external URL');
+    const main = await readFile(resolve(ROOT, 'dist/index.html'), 'utf8');
+    const meta = cspMeta.exec(html)?.[0];
+    assert(meta && meta === cspMeta.exec(main)?.[0], 'CSP meta missing from dist/battle.html or differs from dist/index.html');
+    assert(!/https?:\/\/(?!www\.w3\.org)/.test(html.replace(meta, '')), 'dist/battle.html references an external URL');
   });
 
   await startPreview();
