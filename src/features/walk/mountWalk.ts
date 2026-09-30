@@ -40,6 +40,7 @@ const HORIZON = new THREE.Color('#1a1d36');
 const ZENITH = new THREE.Color('#030409');
 const fmt = (n: number) => Number(n).toLocaleString('ko-KR');
 const VIRUS_SPREAD = 150;
+const DESCEND = ['KeyC', 'KeyX', 'ControlLeft', 'ControlRight'];
 const CURE_TIME = 2.5;
 const clock = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const icon = (body: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
@@ -57,7 +58,7 @@ const HELP = [
   ['이동', [['W A S D', '걷기'], ['Shift', '달리기'], ['Space', '점프'], ['클릭', '마우스로 시점 돌리기 (Esc 로 풀기)'], ['휠', '카메라 거리']]],
   ['전투', [['1 ~ 6', '무기 고르기'], ['F · 클릭', '공격 (기관단총은 누르고 있기)'], ['G', '감정 표현']]],
   ['행동', [['E', '건물 들어가기 · 차 타기 · 바이러스 치료'], ['H', '헬기 타기 (라이벌 4명을 다 잡으면)']]],
-  ['헬기', [['W S', '앞으로 · 뒤로'], ['A D · 마우스', '방향 돌리기'], ['Q E', '옆으로 이동'], ['Space · C', '올라가기 · 내려가기'], ['Shift', '가속'], ['F · 클릭', '기관총 (누르고 있기)'], ['G · 우클릭', '폭탄 떨어뜨리기'], ['마우스 위아래', '조준점 가깝게 · 멀리'], ['H', '천천히 내려가 착륙 (Space 로 취소)']]],
+  ['헬기', [['W S', '앞으로 · 뒤로'], ['A D · 마우스', '방향 돌리기'], ['Q E', '옆으로 이동'], ['Space · C (Ctrl · X)', '올라가기 · 내려가기'], ['Shift', '가속'], ['F · 클릭', '기관총 (누르고 있기)'], ['G · 우클릭', '폭탄 떨어뜨리기'], ['마우스 위아래', '조준점 가깝게 · 멀리'], ['H', '천천히 내려가 착륙 (Space 로 취소)']]],
   ['화면', [['/', '파일 이름으로 순간 이동'], ['T', '날씨 바꾸기'], ['V', '바이러스 모드'], ['?', '이 도움말']]],
 ] as const;
 
@@ -80,6 +81,7 @@ const MARKUP = `
 <div class="wk-heli glass" data-el="heli-hud" aria-label="헬기">
     <div class="hh-slot" data-el="hh-gun">${GUN_ICON}<span>기관총</span><kbd>F</kbd></div>
     <div class="hh-slot" data-el="hh-bomb">${BOMB_ICON}<span>폭탄</span><kbd>G</kbd><i><b data-el="hh-bomb-bar"></b></i></div>
+    <div class="hh-lift"><span data-el="hh-up"><kbd>Space</kbd>▲ 상승</span><span data-el="hh-down"><kbd>C</kbd>▼ 하강</span></div>
     <div class="hh-meter"><span>고도</span><b data-el="hh-alt">0</b><small>m</small></div>
     <div class="hh-meter"><span>속도</span><b data-el="hh-speed">0</b><small>km/h</small></div>
     <div class="hh-hint" data-el="hh-hint"></div>
@@ -777,7 +779,7 @@ const mount: MountViewer = (root, arch, env) => {
   });
   let aimPitch = 0.55;
   let flyYaw = 0;
-  const hud = { alt: '', speed: '', hint: '', bomb: -1, gun: false };
+  const hud = { alt: '', speed: '', hint: '', bomb: -1, gun: false, lift: 0 };
   function renderHeliHud() {
     const set = (el: string, key: 'alt' | 'speed' | 'hint', text: string, html = false) => {
       if (hud[key] === text) return;
@@ -798,6 +800,12 @@ const mount: MountViewer = (root, arch, env) => {
       $('hh-bomb-bar').style.width = `${charge}%`;
       $('hh-bomb').classList.toggle('ready', charge === 100);
     }
+    const lift = (DESCEND.some((k) => keys.has(k)) ? -1 : 0) + (keys.has('Space') ? 1 : 0);
+    if (lift !== hud.lift) {
+      hud.lift = lift;
+      $('hh-up').classList.toggle('on', lift > 0);
+      $('hh-down').classList.toggle('on', lift < 0);
+    }
     if (heliArms.firing !== hud.gun) {
       hud.gun = heliArms.firing;
       $('hh-gun').classList.toggle('on', hud.gun);
@@ -815,7 +823,7 @@ const mount: MountViewer = (root, arch, env) => {
         blob.visible = false;
         setFocus(null);
         root.classList.add('flying');
-        toast('비행 시작 — WASD 이동 · Q/E 옆으로 · Space/C 위아래 · F 기관총 · G 폭탄 · H 착륙', 5000);
+        toast('비행 시작 — WASD 이동 · Q/E 옆으로 · Space 상승 · C 하강 · F 기관총 · G 폭탄 · H 착륙', 5000);
       } else if (heli.state === 'hidden') {
         toast(`헬기는 ${RIVALS.length}명을 모두 잡으면 나타나요 (${battle.caught}/${RIVALS.length})`);
       } else if (heli.state === 'parked') {
@@ -983,7 +991,7 @@ const mount: MountViewer = (root, arch, env) => {
   const EMOTES: Emote[] = ['Wave', 'ThumbsUp', 'Dance'];
   let emoteIndex = 0;
   listen(window, 'keydown', (e) => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.metaKey || e.altKey || (e.ctrlKey && e.key !== 'Control')) return;
     if (typing()) { if (e.key === 'Escape') (document.activeElement as HTMLElement).blur(); return; }
     if (helpOpen()) { if (e.key === 'Escape' || e.key === '?') setHelp(false); return; }
     if (e.key === 'Escape' && (detailOpen || entering)) { leave(); return; }
@@ -1285,7 +1293,7 @@ const mount: MountViewer = (root, arch, env) => {
     blob.position.set(pos.x, 0.18, pos.z);
     blob.scale.setScalar(1 / (1 + footY * 0.6));
     heli.update(dt, time, flying
-      ? { forward: fz, strafe: input(['KeyE'], ['KeyQ']), turn: -fx, lift: input(['Space'], ['KeyC']), boost: running, yaw: flyYaw }
+      ? { forward: fz, strafe: input(['KeyE'], ['KeyQ']), turn: -fx, lift: input(['Space'], DESCEND), boost: running, yaw: flyYaw }
       : { forward: 0, strafe: 0, turn: 0, lift: 0, boost: false, yaw: 0 }, floorAt);
     flyYaw = 0;
     heliArms.update(dt, time, { active: flying, firing: triggerHeld, pitch: aimPitch });

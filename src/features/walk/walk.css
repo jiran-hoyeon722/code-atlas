@@ -69,6 +69,9 @@
 .wk-walk .wk-heli .hh-slot.ready { color: var(--text); border-color: #ffa53b; }
 .wk-walk .wk-heli .hh-slot i { position: absolute; left: 8px; right: 8px; bottom: 3px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .1); overflow: hidden; }
 .wk-walk .wk-heli .hh-slot i b { display: block; height: 100%; width: 100%; background: #ffa53b; }
+.wk-walk .wk-heli .hh-lift { display: flex; flex-direction: column; gap: 3px; padding: 0 6px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.wk-walk .wk-heli .hh-lift span { display: flex; align-items: center; gap: 5px; padding: 1px 6px 1px 2px; border-radius: 6px; }
+.wk-walk .wk-heli .hh-lift span.on { color: #0b0d12; background: #8dffb4; }
 .wk-walk .wk-heli .hh-meter { display: grid; grid-template-columns: auto auto; justify-content: end; align-items: baseline; column-gap: 3px; min-width: 64px; padding: 0 4px; line-height: 1.2; }
 .wk-walk .wk-heli .hh-meter span { grid-column: 1 / -1; justify-self: end; color: var(--muted); font-size: 10px; }
 .wk-walk .wk-heli .hh-meter b { font: 700 18px ui-monospace, Menlo, monospace; }
