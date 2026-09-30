@@ -2,7 +2,7 @@ import { LIMITS, VICTORY_LABEL } from '../../../engine/battle/rules';
 import { buildArmy, LANES } from '../../../engine/battle/sim';
 import type { Army, Lane, Prediction } from '../../../engine/battle/sim/types';
 import type { Quality } from '../../../engine/battle/types';
-import { codeLines, langLabel } from '../select/format';
+import { codeLines, langLabel } from '../format';
 
 export type Side = 'a' | 'b';
 

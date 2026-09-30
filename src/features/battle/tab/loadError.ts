@@ -4,7 +4,7 @@ import { QualityError } from '../worker/client';
 const FALLBACK = '대결 데이터를 불러오지 못했어요';
 const HANGUL = /[가-힣]/;
 
-/** A plain Korean line for a failed load; worker codes such as too-small get the standalone page's wording. */
+/** A plain Korean line for a failed load; worker codes such as too-small get the same wording as a failed measure. */
 export function loadErrorText(e: unknown): string {
   if (e instanceof QualityError || e instanceof MeasureError) return measureError(e).message;
   const code = typeof e === 'object' && e !== null ? (e as { code?: unknown }).code : undefined;

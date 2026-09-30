@@ -4,6 +4,7 @@ import type { Architecture } from '../../../src/engine/architecture';
 import { simulate } from '../../../src/engine/battle/sim';
 import type { Quality } from '../../../src/engine/battle/types';
 import { MEASURE_MSG } from '../../../src/features/battle/deps';
+import { priorShares } from '../../../src/features/battle/prior';
 import { BattleTab } from '../../../src/features/battle/tab/BattleTab';
 import { mountBattle } from '../../../src/features/battle/tab/mountBattle';
 import { QualityError } from '../../../src/features/battle/worker/client';
@@ -292,4 +293,33 @@ describe('flow', () => {
     expect(screen.getByRole('heading', { name: '레포 전쟁' })).toBeTruthy();
     expect(env.goto).not.toHaveBeenCalled();
   }, 30_000);
+
+  test('다시 싸우기 bumps the match without a new prediction and cancels an unfinished fix job', async () => {
+    let match = 1;
+    while (!simulate(A, B, match).winner) match++;
+    const f = fakes();
+    const { access, loads } = fakeAccess([opp('beta')]);
+    render(<BattleTab env={fakeEnv(access)} jobs={f.deps} />);
+    await screen.findByText(/코드 4,000줄/);
+    fireEvent.click(rowOf(/^beta/));
+    await act(async () => loads[0].d.resolve(B));
+    await act(async () => f.predictions[0].resolve({ runs: 100, aWins: 30, bWins: 68, draws: 2 }));
+    for (let m = 1; m < match; m++) fireEvent.click(screen.getByRole('button', { name: '다른 전개 보기' }));
+    fireEvent.click(screen.getByRole('button', { name: '전투 시작하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '결과 보기' }));
+    expect(screen.getByText(`대결 #${match}`)).toBeTruthy();
+    expect(f.fixes).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '다시 싸우기' }));
+    expect(f.fixes[0].cancel).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('heading', { name: '전투 장면' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '결과 보기' }));
+    expect(screen.getByText(`대결 #${match + 1}`)).toBeTruthy();
+    expect(f.predictions).toHaveLength(1);
+  }, 30_000);
+});
+
+test('prior shares divide the wins by the runs', () => {
+  expect(priorShares({ runs: 100, aWins: 30, bWins: 68, draws: 2 })).toEqual({ a: 0.3, b: 0.68 });
+  expect(priorShares({ runs: 0, aWins: 0, bWins: 0, draws: 0 })).toEqual({ a: 0, b: 0 });
 });

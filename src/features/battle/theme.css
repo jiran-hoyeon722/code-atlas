@@ -6,11 +6,6 @@
   font-display: swap;
 }
 
-.rb-page {
-  margin: 0;
-  background: #111317;
-}
-
 .rb-root {
   --rb-bg: #111317;
   --rb-card: #1b1e24;

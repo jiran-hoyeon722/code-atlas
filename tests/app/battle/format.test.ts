@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { codeLines, koreanCount, langLabel } from '../../../src/features/battle/select/format';
+import { codeLines, koreanCount, langLabel } from '../../../src/features/battle/format';
 
 test('koreanCount keeps the two largest units and rounds down', () => {
   expect(koreanCount(0)).toBe('0');

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { LIMITS } from '../../../engine/battle/rules';
 import type { Quality } from '../../../engine/battle/types';
 import type { BattleAccess, BattleLoadStep, OpponentReadiness, OpponentSummary } from '../../viewer-env';
-import { codeLines, langLabel } from '../select/format';
+import { codeLines, langLabel } from '../format';
 import { loadErrorText } from './loadError';
 import './pick.css';
 

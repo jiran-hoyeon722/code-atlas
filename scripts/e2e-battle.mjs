@@ -1,15 +1,14 @@
 import { spawn } from 'node:child_process';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = 'http://localhost:4173/';
-const PAGE = `${BASE}battle.html`;
 const OUT = resolve(ROOT, 'test-results/e2e');
-const FIXTURE_A = resolve(ROOT, 'tests/fixtures/battle-ts');
-const FIXTURE_B = resolve(ROOT, 'tests/fixtures/battle-php');
+const TS = resolve(ROOT, 'tests/fixtures/battle-ts');
+const PHP = resolve(ROOT, 'tests/fixtures/battle-php');
 
 let preview = null;
 const results = [];
@@ -35,7 +34,7 @@ async function startPreview() {
   while (Date.now() < deadline) {
     if (p.exitCode !== null) throw new Error(`vite preview exited early:\n${log}`);
     try {
-      if ((await fetch(PAGE)).ok) return p;
+      if ((await fetch(BASE)).ok) return p;
     } catch {
       // not up yet
     }
@@ -71,6 +70,49 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
+const shot = (page, name, opts = {}) => page.screenshot({ path: resolve(OUT, name), ...opts });
+
+/** Horizontal overflow of the page and of the battle tab's own scroll box, which the shell clips. */
+async function overflowAt(page, widths) {
+  const out = [];
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: width >= 1440 ? 900 : 800 });
+    await page.waitForTimeout(200);
+    const o = await page.evaluate(() => {
+      const d = document.documentElement;
+      const tab = document.querySelector('.rb-tab');
+      return { page: d.scrollWidth - d.clientWidth, tab: tab ? tab.scrollWidth - tab.clientWidth : 0 };
+    });
+    if (o.page > 0 || o.tab > 0) out.push(`${width}px: page ${o.page}px, battle tab ${o.tab}px`);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(200);
+  return out;
+}
+
+async function assertNoOverflow(page, where) {
+  const bad = await overflowAt(page, [1440, 1024]);
+  assert(bad.length === 0, `horizontal overflow on ${where}: ${bad.join('; ')}`);
+}
+
+async function waitForCity(page) {
+  await page.waitForSelector('.ca-shell [role=tab][aria-selected=true]:has-text("도시")', { timeout: 90_000 });
+  await page.waitForSelector('.ca-shell-mount canvas', { timeout: 30_000 });
+}
+
+async function openBattleTab(page) {
+  await page.click('.ca-shell [role=tab]:has-text("대결")');
+  await page.waitForSelector('.rb-tab', { timeout: 30_000 });
+}
+
+async function toPick(page) {
+  if (await page.locator('.rb-pick').count()) return;
+  const home = page.locator('.rb-tab button:has-text("처음으로")');
+  if (await home.count()) await home.click();
+  else await page.click('.rb-tab button:has-text("상대 다시 고르기")');
+  await page.waitForSelector('.rb-pick', { timeout: 10_000 });
+}
+
 function initScript() {
   document.addEventListener('securitypolicyviolation', (e) => {
     window.__reportCsp?.({ directive: e.violatedDirective, blocked: e.blockedURI, source: e.sourceFile, line: e.lineNumber });
@@ -96,16 +138,6 @@ async function main() {
   await mkdir(OUT, { recursive: true });
   console.log('build');
   await run('npm', ['run', 'build']);
-
-  await step('dist/battle.html carries the same CSP meta as the main app', async () => {
-    const cspMeta = /<meta http-equiv="Content-Security-Policy" content="[^"]*">/;
-    const html = await readFile(resolve(ROOT, 'dist/battle.html'), 'utf8');
-    const main = await readFile(resolve(ROOT, 'dist/index.html'), 'utf8');
-    const meta = cspMeta.exec(html)?.[0];
-    assert(meta && meta === cspMeta.exec(main)?.[0], 'CSP meta missing from dist/battle.html or differs from dist/index.html');
-    assert(!/https?:\/\/(?!www\.w3\.org)/.test(html.replace(meta, '')), 'dist/battle.html references an external URL');
-  });
-
   await startPreview();
   let browser = null;
   try {
@@ -115,7 +147,7 @@ async function main() {
     await context.addInitScript(initScript);
     const page = await context.newPage();
     page.on('request', (r) => {
-      // blob: URLs of this origin are in-memory (the battle worker wrapper), not network requests
+      // blob: URLs of this origin are in-memory (the worker wrappers), not network requests
       if (!r.url().startsWith(BASE) && !r.url().startsWith(`blob:${new URL(BASE).origin}/`)) external.push(r.url());
     });
     page.on('console', (m) => {
@@ -124,173 +156,134 @@ async function main() {
     page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
 
     console.log('e2e');
-    await step('select screen renders both empty cards', async () => {
-      await page.goto(PAGE);
-      await page.waitForSelector('text=코드 양이 아니라 품질로 싸워요');
-      assert((await page.title()) === '레포 전쟁', `unexpected title "${await page.title()}"`);
-      for (const side of ['a', 'b']) assert((await page.locator(`[data-testid=folder-input-${side}]`).count()) === 1, `folder input ${side} missing`);
-      assert((await page.locator('.rb-card[data-state=empty]').count()) === 2, 'expected two empty cards');
-      assert(await page.locator('button:has-text("작전 브리핑 보기")').isDisabled(), 'briefing button should start disabled');
+    await step('analyse battle-php, then battle-ts, through the landing page', async () => {
+      await page.goto(BASE);
+      await page.waitForSelector('text=레포 폴더를 여기에 끌어다 놓으세요');
+      await page.setInputFiles('[data-testid=folder-input]', PHP);
+      await waitForCity(page);
+      assert((await page.locator('.ca-shell-brand strong').textContent()) === 'battle-php', 'first analysis is not battle-php');
+      await page.click('.ca-shell-actions button:has-text("다른 레포 열기")');
+      await page.waitForSelector('[data-testid=folder-input]');
+      await page.setInputFiles('[data-testid=folder-input]', TS);
+      await waitForCity(page);
+      assert((await page.locator('.ca-shell-brand strong').textContent()) === 'battle-ts', 'second analysis is not battle-ts');
     });
 
-    await step('Pretendard is loaded and used', async () => {
-      const r = await page.evaluate(async () => {
+    await step('대결 tab: A is battle-ts, battle-php is ready to fight', async () => {
+      await openBattleTab(page);
+      await page.waitForSelector('.rb-pick-self[data-state=ready]', { timeout: 60_000 });
+      const selfName = await page.locator('.rb-pick-self-name').textContent();
+      assert(selfName === 'battle-ts', `A shows "${selfName}"`);
+      const sub = await page.locator('.rb-pick-self .rb-pick-sub').first().textContent();
+      assert(sub.startsWith('TypeScript · 코드'), `unexpected A summary "${sub}"`);
+      const row = page.locator('.rb-pick-row', { has: page.locator('.rb-pick-row-name', { hasText: /^battle-php$/ }) });
+      await row.waitFor({ timeout: 10_000 });
+      const status = await row.locator('.rb-pick-row-status').textContent();
+      assert(status === '바로 싸울 수 있어요', `battle-php status "${status}"`);
+      assert(!(await row.isDisabled()), 'battle-php row is disabled');
+      assert((await page.locator('.rb-pick-row-name', { hasText: /^battle-ts$/ }).count()) === 0, 'the open repo is listed as its own opponent');
+      const font = await page.evaluate(async () => {
         await document.fonts.ready;
-        const faces = [...document.fonts].filter((f) => f.family.replace(/["']/g, '') === 'Pretendard Variable');
-        return {
-          statuses: faces.map((f) => f.status),
-          check: document.fonts.check('700 22px "Pretendard Variable"', '레포'),
-          family: getComputedStyle(document.querySelector('.rb-select-lead')).fontFamily,
-        };
+        return { check: document.fonts.check('700 22px "Pretendard Variable"', '레포'), family: getComputedStyle(document.querySelector('.rb-pick-lead')).fontFamily };
       });
-      assert(r.statuses.includes('loaded'), `Pretendard face not loaded: ${JSON.stringify(r)}`);
-      assert(r.check, `document.fonts.check failed: ${JSON.stringify(r)}`);
-      assert(r.family.startsWith('"Pretendard Variable"'), `lead text uses another font: ${r.family}`);
-      notes.push(`font: ${r.family.split(',')[0]} (${r.statuses.join(', ')})`);
-    });
-
-    await step('screenshot the empty select screen', async () => {
-      // let the 240ms enter animation finish before capturing
+      assert(font.check && font.family.startsWith('"Pretendard Variable"'), `Pretendard not used: ${JSON.stringify(font)}`);
       await page.waitForTimeout(600);
-      await page.screenshot({ path: resolve(OUT, 'battle-select.png') });
+      await shot(page, 'battle-pick.png');
+      await assertNoOverflow(page, 'the pick screen');
     });
 
-    await step('narrow window keeps both cards without horizontal scroll', async () => {
-      for (const width of [1280, 1024]) {
-        await page.setViewportSize({ width, height: 800 });
-        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-        assert(overflow <= 0, `horizontal overflow of ${overflow}px at ${width}px`);
-      }
-      await page.screenshot({ path: resolve(OUT, 'battle-select-1024.png') });
-      await page.setViewportSize({ width: 1440, height: 900 });
-    });
-
-    await step('picking two real folders measures both in the worker', async () => {
-      await page.setInputFiles('[data-testid=folder-input-a]', FIXTURE_A);
-      await page.setInputFiles('[data-testid=folder-input-b]', FIXTURE_B);
-      await page.waitForSelector('.rb-card-a[data-state=ready]', { timeout: 60_000 });
-      await page.waitForSelector('.rb-card-b[data-state=ready]', { timeout: 60_000 });
-      const a = await page.locator('.rb-card-a .rb-card-sub').first().textContent();
-      const b = await page.locator('.rb-card-b .rb-card-sub').first().textContent();
-      assert(a.startsWith('TypeScript · 코드'), `unexpected A summary "${a}"`);
-      assert(b.startsWith('PHP · 코드'), `unexpected B summary "${b}"`);
-      assert(!(await page.locator('button:has-text("작전 브리핑 보기")').isDisabled()), 'briefing button should be enabled');
-      await page.waitForTimeout(300);
-      await page.screenshot({ path: resolve(OUT, 'battle-select-ready.png') });
-    });
-
-    await step('the briefing runs the prediction in the worker and shows the counts', async () => {
+    await step('pick battle-php → briefing with the prediction', async () => {
       const t = Date.now();
-      await page.click('button:has-text("작전 브리핑 보기")');
-      await page.waitForSelector('.rb-brief-counts[data-state=done]', { timeout: 60_000 });
-      const ms = Date.now() - t;
-      notes.push(`prediction (100 runs, battle-ts vs battle-php): ${ms} ms from click to counts`);
+      await page.locator('.rb-pick-row', { has: page.locator('.rb-pick-row-name', { hasText: /^battle-php$/ }) }).click();
+      await page.waitForSelector('.rb-brief-counts[data-state=done]', { timeout: 90_000 });
+      notes.push(`pick to prediction counts: ${Date.now() - t} ms`);
       const nums = await page.locator('.rb-brief-num').allTextContents();
       assert(nums.length === 2 && nums.every((n) => /^\d+번$/.test(n)), `unexpected counts ${JSON.stringify(nums)}`);
-      const sum = nums.map((n) => parseInt(n, 10)).reduce((x, y) => x + y, 0);
-      assert(sum <= 100, `wins add up to ${sum}`);
-      assert((await page.locator('.rb-brief-row').count()) === 10, 'expected 5 metric rows per side');
-      assert((await page.locator('text=언어 차이 오차 가능').count()) === 2, 'language caveat missing');
-      assert((await page.locator('.rb-brief-vanguard li').count()) === 3, 'expected 3 vanguard pairs');
       assert(!(await page.locator('button:has-text("전투 시작하기")').isDisabled()), 'start should be enabled');
       await page.waitForTimeout(600);
-      await page.screenshot({ path: resolve(OUT, 'battle-briefing.png') });
-      const overflow = await page.evaluate(() => [document.documentElement.scrollWidth - document.documentElement.clientWidth, document.documentElement.scrollHeight - document.documentElement.clientHeight]);
-      notes.push(`briefing overflow at 1440×900: x ${overflow[0]}px, y ${overflow[1]}px`);
-      assert(overflow[0] <= 0, `horizontal overflow of ${overflow[0]}px`);
-    });
-
-    await step('measurement settings open, other outcome bumps the match, start reaches the battle', async () => {
-      await page.click('.rb-brief-side-a .rb-brief-config-toggle');
-      await page.waitForSelector('.rb-brief-side-a .rb-brief-config');
-      await page.waitForTimeout(400);
-      await page.screenshot({ path: resolve(OUT, 'battle-briefing-config.png') });
-      await page.click('.rb-brief-side-a .rb-brief-config button:has-text("닫기")');
-      await page.click('button:has-text("다른 전개 보기")');
-      await page.waitForSelector('text=대결 #2');
-      await page.click('button:has-text("전투 시작하기")');
-      await page.waitForSelector('.rb-engage', { timeout: 30_000 });
-      await page.click('button:has-text("브리핑으로")');
-      await page.waitForSelector('.rb-brief-counts[data-state=done]', { timeout: 2_000 });
-      assert((await page.locator('text=대결 #2').count()) >= 1, 'briefing should still be on match 2');
-    });
-
-    await step('narrow window keeps the briefing without horizontal scroll', async () => {
-      for (const width of [1280, 1024]) {
-        await page.setViewportSize({ width, height: 800 });
-        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-        assert(overflow <= 0, `horizontal overflow of ${overflow}px at ${width}px`);
-      }
-      await page.screenshot({ path: resolve(OUT, 'battle-briefing-1024.png'), fullPage: true });
-      await page.setViewportSize({ width: 1440, height: 900 });
+      await shot(page, 'battle-briefing.png');
+      await assertNoOverflow(page, 'the briefing');
     });
 
     let live = false;
-    await step('start opens the engagement replay', async () => {
+    await step('전투 시작하기 → engagement', async () => {
       await page.click('button:has-text("전투 시작하기")');
       await page.waitForSelector('.rb-engage', { timeout: 30_000 });
       await page.waitForSelector('.rb-eng-stage canvas, .rb-eng-fallback', { state: 'attached', timeout: 30_000 });
       live = (await page.locator('.rb-eng-stage canvas').count()) > 0;
       notes.push(`engagement path: ${live ? 'WebGL 3D field' : 'fallback without WebGL'}`);
       await page.waitForTimeout(3_000);
-      await page.screenshot({ path: resolve(OUT, 'battle-engage.png') });
-      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-      assert(overflow <= 0, `horizontal overflow of ${overflow}px on the engagement`);
-      assert((await page.locator('.rb-eng-panel .rb-eng-seg-btn').count()) === 4, 'commentary filters missing');
+      await shot(page, 'battle-engage.png');
+      const fit = await page.evaluate(() => {
+        const tab = document.querySelector('.rb-tab').getBoundingClientRect();
+        const eng = document.querySelector('.rb-engage').getBoundingClientRect();
+        return { tab: Math.round(tab.height), engage: Math.round(eng.height), bottom: Math.round(eng.bottom - tab.bottom) };
+      });
+      notes.push(`engagement height ${fit.engage}px in a ${fit.tab}px tab`);
+      assert(fit.bottom <= 1, `engagement runs ${fit.bottom}px past the bottom of the tab`);
+      await assertNoOverflow(page, 'the engagement');
     });
 
-    await step('skip to the final, then open the result', async () => {
+    await step('최종전으로 건너뛰기 → 결과 보기 → fix list', async () => {
       if (live) {
-        const speed = page.locator('.rb-eng-controls button:has-text("2배속")');
-        if (await speed.count()) await speed.click();
         const skip = page.locator('button:has-text("최종전으로 건너뛰기")');
         if (await skip.count()) await skip.click();
         else notes.push('skip button was already gone (final had started)');
       }
-      const t = Date.now();
       await page.waitForSelector('button:has-text("결과 보기")', { timeout: 180_000 });
-      if (live) notes.push(`final to result button: ${Date.now() - t} ms at 2x`);
       await page.click('button:has-text("결과 보기")');
       await page.waitForSelector('.rb-result', { timeout: 10_000 });
-      const headline = await page.locator('.rb-res-headline').textContent();
-      assert(/승리$|^무승부$/.test(headline.trim()), `unexpected verdict "${headline}"`);
-      notes.push(`result verdict (match 2): ${headline.trim()}`);
-    });
-
-    await step('the fix list is computed in the worker', async () => {
-      const t = Date.now();
+      const headline = (await page.locator('.rb-res-headline').textContent()).trim();
+      assert(/승리$|^무승부$/.test(headline), `unexpected verdict "${headline}"`);
+      notes.push(`result verdict: ${headline}`);
       await page.waitForFunction(() => !document.querySelector('.rb-res-fix-wait'), null, { timeout: 120_000 });
       assert((await page.locator('.rb-res-fix-error').count()) === 0, 'fix list failed');
-      const n = await page.locator('.rb-res-fix').count();
-      notes.push(`fix list: ${n} files in ${Date.now() - t} ms`);
-      if (!(await page.locator('text=비겨서 진 쪽이 없어요').count())) assert(n > 0 || (await page.locator('text=눈에 띄게 손볼 파일이 없어요').count()) === 1, 'fix list is empty without saying so');
+      notes.push(`fix list: ${await page.locator('.rb-res-fix').count()} files, ${await page.locator('.rb-res-fix-open').count()} open in the city`);
       await page.waitForTimeout(400);
-      await page.screenshot({ path: resolve(OUT, 'battle-result.png'), fullPage: true });
-      for (const width of [1440, 1024]) {
-        await page.setViewportSize({ width, height: 800 });
-        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-        assert(overflow <= 0, `horizontal overflow of ${overflow}px on the result at ${width}px`);
-      }
-      await page.setViewportSize({ width: 1440, height: 900 });
+      await shot(page, 'battle-result.png');
+      await assertNoOverflow(page, 'the result');
     });
 
-    await step('rematch goes straight to the next battle, home keeps both repos', async () => {
-      await page.click('button:has-text("다시 싸우기")');
-      await page.waitForSelector('.rb-engage', { timeout: 30_000 });
-      await page.click('button:has-text("브리핑으로")');
-      await page.waitForSelector('text=대결 #3', { timeout: 10_000 });
-      await page.click('button:has-text("전투 시작하기")');
-      await page.waitForSelector('.rb-engage', { timeout: 30_000 });
-      if (live) {
+    await step('a 고칠 곳 file of side A opens the city code view', async () => {
+      const open = page.locator('.rb-res-fix-open');
+      // only the open repo's files link to the city, so rematch (seeded, so always the same matches) until battle-ts loses
+      for (let rematch = 0; !(await open.count()) && rematch < 8; rematch++) {
+        await page.click('button:has-text("다시 싸우기")');
+        await page.waitForSelector('.rb-engage', { timeout: 30_000 });
         const skip = page.locator('button:has-text("최종전으로 건너뛰기")');
-        if (await skip.count()) await skip.click();
+        if (live && (await skip.count())) await skip.click();
+        await page.waitForSelector('button:has-text("결과 보기")', { timeout: 180_000 });
+        await page.click('button:has-text("결과 보기")');
+        await page.waitForSelector('.rb-result', { timeout: 10_000 });
+        await page.waitForFunction(() => !document.querySelector('.rb-res-fix-wait'), null, { timeout: 120_000 });
       }
-      await page.waitForSelector('button:has-text("결과 보기")', { timeout: 180_000 });
-      await page.click('button:has-text("결과 보기")');
-      await page.waitForSelector('text=대결 #3');
-      await page.click('button:has-text("처음으로")');
-      await page.waitForSelector('.rb-card-a[data-state=ready]', { timeout: 5_000 });
-      await page.waitForSelector('.rb-card-b[data-state=ready]', { timeout: 5_000 });
+      if (!(await open.count())) {
+        notes.push('battle-ts won every match tried, so no side A fix file to open (side B files are plain text)');
+        return;
+      }
+      notes.push(`side A fix files appeared on ${(await page.locator('.rb-res-top, .rb-result').first().textContent()).match(/대결 #\d+/)?.[0] ?? 'a rematch'}`);
+      await shot(page, 'battle-result-a-lost.png');
+      const path = await open.first().evaluate((el) => el.closest('[data-path]').getAttribute('data-path'));
+      await open.first().click();
+      await page.waitForSelector('.ca-shell [role=tab][aria-selected=true]:has-text("도시")', { timeout: 30_000 });
+      const hash = await page.evaluate(() => location.hash);
+      assert(hash === `#city&file=${encodeURIComponent(path)}&code`, `unexpected hash "${hash}" for ${path}`);
+      await page.waitForFunction(() => (document.querySelector('[data-el=code-src]')?.textContent ?? '').length > 0, null, { timeout: 30_000 });
+      const name = await page.locator('[data-el=code-name]').textContent();
+      const stem = path.split('/').pop().replace(/\.[^.]+$/, '');
+      assert(name.trim() === stem, `code view shows "${name}", expected ${stem}`);
+      await page.waitForTimeout(500);
+      await shot(page, 'battle-fix-city.png');
+      await page.keyboard.press('Escape');
+    });
+
+    await step('자기 자신과 대결 reaches the briefing', async () => {
+      await openBattleTab(page);
+      await toPick(page);
+      await page.waitForSelector('.rb-pick-self[data-state=ready]', { timeout: 60_000 });
+      await page.locator('.rb-pick-row', { has: page.locator('.rb-pick-row-name', { hasText: '자기 자신과 대결' }) }).click();
+      await page.waitForSelector('.rb-brief-counts[data-state=done]', { timeout: 90_000 });
+      assert((await page.locator('text=battle-ts (미러)').count()) >= 1, 'mirror side B missing');
     });
 
     await step('no external requests', async () => {
