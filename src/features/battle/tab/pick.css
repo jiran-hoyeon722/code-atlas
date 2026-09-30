@@ -1,0 +1,275 @@
+.rb-pick-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  padding: 24px 0 48px;
+}
+
+.rb-pick-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 640px;
+  text-align: center;
+}
+
+.rb-pick-lead {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.rb-pick-sub {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+}
+
+.rb-pick-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 360px) minmax(0, 640px);
+  align-items: start;
+  justify-content: center;
+  gap: 24px;
+  width: 100%;
+}
+
+.rb-pick-self,
+.rb-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 28px;
+  border-radius: 24px;
+  background: var(--rb-card);
+}
+
+.rb-pick-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+}
+
+.rb-pick-self-name {
+  overflow: hidden;
+  font-size: 22px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-pick-self-wait {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rb-pick-bar {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--rb-inner);
+  overflow: hidden;
+}
+
+.rb-pick-bar > div {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--rb-team-a);
+  animation: rb-pick-slide calc(var(--rb-slow) * 3) var(--rb-ease) infinite;
+}
+
+@keyframes rb-pick-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+.rb-pick-warns {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rb-pick-warns li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+}
+
+.rb-pick-error,
+.rb-pick-row-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: var(--rb-inner);
+}
+
+.rb-pick-row-error {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 12px 20px;
+}
+
+.rb-pick-error p,
+.rb-pick-row-error p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.rb-pick-error .rb-btn,
+.rb-pick-row-error .rb-btn {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 12px;
+  background: var(--rb-raised);
+  font-size: 14px;
+}
+
+.rb-pick-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rb-pick-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rb-pick-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 72px;
+  padding: 16px 20px;
+  border: none;
+  border-radius: 16px;
+  background: var(--rb-inner);
+  color: var(--rb-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--rb-fast) var(--rb-ease);
+}
+
+.rb-pick-row:hover:not(:disabled) {
+  background: var(--rb-raised);
+}
+
+.rb-pick-row:disabled {
+  cursor: default;
+}
+
+.rb-pick-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rb-pick-row-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rb-pick-row-name {
+  overflow: hidden;
+  font-size: 17px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-pick-chip {
+  flex: none;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--rb-card);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+}
+
+.rb-pick-row-meta {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-pick-row-status {
+  flex: none;
+  max-width: 45%;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+  text-align: right;
+}
+
+.rb-pick-row[data-tone='go'] .rb-pick-row-status {
+  color: var(--rb-text);
+}
+
+.rb-pick-row[data-tone='busy'] .rb-pick-row-status {
+  color: var(--rb-team-b);
+}
+
+.rb-pick-row:disabled:not([data-tone='busy']) .rb-pick-row-status {
+  color: var(--rb-text-3);
+}
+
+.rb-pick-row[data-tone='off'] .rb-pick-row-name,
+.rb-pick-row[data-tone='off'] .rb-pick-row-meta,
+.rb-pick-row[data-tone='off'] .rb-pick-row-status {
+  color: var(--rb-text-3);
+}
+
+.rb-pick-note {
+  padding: 20px;
+  border-radius: 16px;
+  background: var(--rb-inner);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+  text-align: center;
+}
+
+@media (max-width: 960px) {
+  .rb-pick-grid {
+    grid-template-columns: minmax(0, 640px);
+  }
+}

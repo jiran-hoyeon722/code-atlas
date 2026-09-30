@@ -8,7 +8,7 @@ import { briefingView, type CountsView, type SideView } from './view';
 import './briefing.css';
 
 export interface BriefingScreenProps {
-  deps: BattleDeps;
+  deps: Pick<BattleDeps, 'predict'>;
   a: Quality;
   b: Quality;
   match: number;
@@ -17,6 +17,8 @@ export interface BriefingScreenProps {
   onPrior(p: Prediction): void;
   onMatch(match: number): void;
   onBack(): void;
+  /** Label of the back button; the standalone page goes back to picking both repos. */
+  backLabel?: string;
   onStart(): void;
 }
 
@@ -158,7 +160,7 @@ function SideCard({ view }: { view: SideView }) {
   );
 }
 
-export function BriefingScreen({ deps, a, b, match, prior, onPrior, onMatch, onBack, onStart }: BriefingScreenProps) {
+export function BriefingScreen({ deps, a, b, match, prior, onPrior, onMatch, onBack, backLabel = '레포 다시 고르기', onStart }: BriefingScreenProps) {
   const [run, setRun] = useState<Run>(prior ? { kind: 'done' } : { kind: 'running', done: 0, runs: PREDICTION_RUNS });
   const [attempt, setAttempt] = useState(0);
   const view = useMemo(() => briefingView(a, b, prior, match), [a, b, prior, match]);
@@ -193,7 +195,7 @@ export function BriefingScreen({ deps, a, b, match, prior, onPrior, onMatch, onB
           <span className="rb-brief-match">{`대결 #${match}`}</span>
         </h1>
         <div className="rb-brief-actions">
-          <button type="button" className="rb-btn rb-btn-ghost" onClick={onBack}>레포 다시 고르기</button>
+          <button type="button" className="rb-btn rb-btn-ghost" onClick={onBack}>{backLabel}</button>
           <button type="button" className="rb-btn rb-btn-quiet" onClick={() => onMatch(match + 1)}>다른 전개 보기</button>
         </div>
       </header>

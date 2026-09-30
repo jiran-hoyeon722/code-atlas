@@ -30,8 +30,11 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'city', label: '도시' },
   { id: 'graph', label: '그래프' },
   { id: 'explorer', label: '탐색기' },
+  { id: 'battle', label: '대결' },
   { id: 'walk', label: '걷기 (시험)' },
 ];
+// the battle tab has its own fallback for the one 3D scene it shows
+const NEEDS_3D: ReadonlySet<TabId> = new Set(['city', 'graph', 'walk']);
 const NO_WEBGL = '이 브라우저에서는 3D 화면을 쓸 수 없어요. 탐색기에서 같은 정보를 볼 수 있어요.';
 const FAIL_REASON = { syntax: '구문 오류', read: '읽기 실패' } as const;
 const FRAMEWORK_LABEL = { laravel: 'Laravel', react: 'React' } as const;
@@ -47,7 +50,7 @@ function formatTime(iso: string): string {
 function initialState(webgl: boolean): { tab: TabId; sel: Selection } {
   const hash = location.hash;
   const parsed = parseHash(hash);
-  const explicit = /^#(city|graph|explorer|walk)(&|$)/.test(hash);
+  const explicit = /^#(city|graph|explorer|battle|walk)(&|$)/.test(hash);
   return { tab: explicit ? parsed.tab : webgl ? 'city' : 'explorer', sel: parsed.sel };
 }
 
@@ -99,7 +102,7 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
 
   useEffect(() => {
     const host = viewRef.current!;
-    if (!webgl && tab !== 'explorer') {
+    if (!webgl && NEEDS_3D.has(tab)) {
       setStatus('idle');
       return;
     }
@@ -152,7 +155,7 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
     setMountKey((k) => k + 1);
   };
 
-  const needs3d = !webgl && tab !== 'explorer';
+  const needs3d = !webgl && NEEDS_3D.has(tab);
 
   return (
     <div className="ca-shell">
