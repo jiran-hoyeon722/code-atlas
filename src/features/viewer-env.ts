@@ -5,6 +5,7 @@ export type TabId = 'city' | 'graph' | 'explorer';
 export interface Selection {
   file?: string;
   code?: boolean;
+  blast?: boolean;
 }
 
 export interface ViewerEnv {

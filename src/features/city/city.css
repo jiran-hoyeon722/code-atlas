@@ -81,6 +81,12 @@
 .cc-city .item small { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .cc-city .up { color: var(--danger); font-size: 10px; font-weight: 700; margin-left: 4px; }
 .cc-city .more { color: var(--faint); font-size: 11px; padding: 2px 6px; }
+.cc-city .actions [data-blast][aria-pressed=true] { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.cc-city .blast { margin-bottom: 12px; }
+.cc-city .blast-summary { font-weight: 700; font-size: 13px; }
+.cc-city .blast-routes { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
+.cc-city .blast-types { display: flex; align-items: center; gap: 6px; margin: 8px 0 4px; color: var(--muted); font-size: 12px; cursor: pointer; }
+.cc-city .blast h4 { margin-top: 10px; }
 
 .cc-city .cc-code { position: absolute; top: 14px; bottom: 14px; left: 14px; z-index: 15; width: min(820px, calc(100% - 424px)); display: none; flex-direction: column; overflow: hidden; background: rgba(13, 15, 20, .96); }
 .cc-city .cc-code.open { display: flex; }

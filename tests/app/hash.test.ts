@@ -26,4 +26,25 @@ describe('parseHash / formatHash', () => {
   test('malformed encoding does not throw', () => {
     expect(parseHash('#city&file=%E0%A4%A')).toEqual({ tab: 'city', sel: {} });
   });
+
+  test('formats blast after code', () => {
+    expect(formatHash('city', { file: 'a.ts', blast: true })).toBe('#city&file=a.ts&blast');
+    expect(formatHash('city', { file: 'a.ts', code: true, blast: true })).toBe('#city&file=a.ts&code&blast');
+  });
+
+  test('round-trips blast', () => {
+    for (const code of [true, false]) {
+      for (const blast of [true, false]) {
+        const sel: any = { file: 'a.ts' };
+        if (code) sel.code = true;
+        if (blast) sel.blast = true;
+        expect(parseHash(formatHash('city', sel))).toEqual({ tab: 'city', sel });
+      }
+    }
+  });
+
+  test('blast without file is dropped', () => {
+    expect(parseHash('#city&blast')).toEqual({ tab: 'city', sel: {} });
+    expect(formatHash('city', { blast: true })).toBe('#city');
+  });
 });

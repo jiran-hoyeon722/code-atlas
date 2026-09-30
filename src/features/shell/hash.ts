@@ -8,6 +8,7 @@ export function parseHash(h: string): { tab: TabId; sel: Selection } {
   const sel: Selection = {};
   for (const part of parts) {
     if (part === 'code') sel.code = true;
+    else if (part === 'blast') sel.blast = true;
     else if (part.startsWith('file=')) {
       try {
         sel.file = decodeURIComponent(part.slice(5));
@@ -16,11 +17,14 @@ export function parseHash(h: string): { tab: TabId; sel: Selection } {
       }
     }
   }
-  if (sel.file === undefined) delete sel.code;
+  if (sel.file === undefined) {
+    delete sel.code;
+    delete sel.blast;
+  }
   return { tab, sel };
 }
 
 export function formatHash(tab: TabId, sel: Selection): string {
   if (sel.file === undefined) return `#${tab}`;
-  return `#${tab}&file=${encodeURIComponent(sel.file)}${sel.code ? '&code' : ''}`;
+  return `#${tab}&file=${encodeURIComponent(sel.file)}${sel.code ? '&code' : ''}${sel.blast ? '&blast' : ''}`;
 }

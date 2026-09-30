@@ -4,7 +4,7 @@ import type { Architecture, ArchNode } from '../../src/engine/architecture';
 import type { ViewerEnv } from '../../src/features/viewer-env';
 
 // jsdom has no WebGL or 2D canvas: the renderer is faked, the raycaster reports a chosen hit, and label text is recorded
-const h = vi.hoisted(() => ({ hit: [] as { instanceId: number }[], labels: [] as string[] }));
+const h = vi.hoisted(() => ({ hit: [] as { instanceId: number }[], labels: [] as string[], loop: null as ((now: number) => void) | null }));
 vi.mock('three', async (importOriginal) => {
   const three = await importOriginal<typeof import('three')>();
   class WebGLRenderer {
@@ -12,7 +12,9 @@ vi.mock('three', async (importOriginal) => {
     shadowMap = { enabled: false, type: 0 };
     setPixelRatio() {}
     setSize() {}
-    setAnimationLoop() {}
+    setAnimationLoop(cb: ((now: number) => void) | null) {
+      if (cb) h.loop = cb;
+    }
     render() {}
     dispose() {}
     forceContextLoss() {}
@@ -109,4 +111,147 @@ test('hostile names render as text in labels, tooltip, panel, search and code vi
   expect(root.textContent).toContain('<b>role</b>');
   dispose();
   expect(root.children).toHaveLength(0);
+});
+
+const blastArch = (): Architecture => ({
+  ...arch(),
+  nodes: [node('lib/core.ts', 1, { fanIn: 2 }), node(HOSTILE, 1, { fanIn: 1, routeRefs: 2 }), node('a/Page.ts', 0), node('types/only.ts', 1)],
+  edges: [[1, 0, 1, { import: 1 }, 0], [2, 1, 1, { import: 1 }, 0], [3, 0, 1, { 'type-import': 1 }, 0]],
+});
+const mountBlast = (over: Partial<ViewerEnv> = {}, a = blastArch()) => {
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  const e = env({ selection: { file: 'lib/core.ts' }, ...over });
+  const dispose = mountCity(root, a, e);
+  const onSelect = e.onSelect as ReturnType<typeof vi.fn>;
+  return { root, e, dispose, onSelect, last: () => onSelect.mock.calls.at(-1)?.[0], section: () => root.querySelector('[data-el="blast"]'), button: () => root.querySelector<HTMLElement>('[data-blast]')! };
+};
+
+test('blast button shows summary and levels', () => {
+  const { root, section, button, last, dispose } = mountBlast();
+  fireEvent.click(button());
+  expect(root.querySelector('.blast-summary')!.textContent).toBe('직접 2 · 간접 1 · 도시의 100% · 최대 2단계');
+  expect(root.querySelector('.blast-routes')!.textContent).toBe('영향권 중 라우트가 직접 쓰는 파일 1개');
+  expect(section()!.textContent).toContain(HOSTILE);
+  expect(root.querySelector('img')).toBeNull();
+  expect(button().getAttribute('aria-pressed')).toBe('true');
+  expect(last()).toEqual({ file: 'lib/core.ts', blast: true });
+  dispose();
+});
+
+test('blast type toggle recomputes', () => {
+  const { root, button, dispose } = mountBlast();
+  fireEvent.click(button());
+  const toggle = root.querySelector<HTMLInputElement>('input[data-blast-types]')!;
+  toggle.focus();
+  toggle.checked = true;
+  fireEvent.change(toggle);
+  expect(document.activeElement).toBe(root.querySelector('input[data-blast-types]'));
+  expect(root.querySelector('.blast-summary')!.textContent).toBe('직접 1 · 간접 1 · 도시의 67% · 최대 2단계');
+  expect(root.querySelector<HTMLInputElement>('input[data-blast-types]')!.checked).toBe(true);
+  dispose();
+});
+
+test('blast pulse survives a frame timestamp earlier than the click', () => {
+  const { button, dispose } = mountBlast();
+  fireEvent.click(button());
+  expect(() => h.loop!(-1000)).not.toThrow();
+  dispose();
+});
+
+test('blast on an unused file says nothing is affected', () => {
+  const { button, section, dispose } = mountBlast({ selection: { file: 'a/Page.ts' } });
+  fireEvent.click(button());
+  expect(section()!.textContent).toContain('이 파일을 쓰는 곳이 없습니다 — 고쳐도 다른 파일에 번지지 않습니다');
+  dispose();
+});
+
+test('blast is released by the button, the close button and picking another file', () => {
+  const { root, button, section, last, dispose } = mountBlast();
+  fireEvent.click(button());
+  fireEvent.click(button());
+  expect(section()).toBeNull();
+  expect(button().getAttribute('aria-pressed')).toBe('false');
+  expect(last()).toEqual({ file: 'lib/core.ts' });
+
+  fireEvent.click(button());
+  fireEvent.click(root.querySelector('[data-el="close"]')!);
+  expect(section()).toBeNull();
+
+  fireEvent.click(root.querySelector('[data-el="panel-body"] .item')!);
+  fireEvent.click(button());
+  const target = section()!.querySelector<HTMLElement>('.item')!;
+  fireEvent.click(target);
+  expect(section()).toBeNull();
+  expect(last()).toEqual({ file: expect.any(String) });
+  dispose();
+});
+
+test('changing the color metric keeps blast on', () => {
+  const { root, button, section, dispose } = mountBlast();
+  fireEvent.click(button());
+  const color = root.querySelector<HTMLSelectElement>('[data-el="color"]')!;
+  color.value = 'maxComplexity';
+  fireEvent.change(color);
+  expect(section()).not.toBeNull();
+  expect(button().getAttribute('aria-pressed')).toBe('true');
+  dispose();
+});
+
+test('escape closes the code viewer first and keeps blast', async () => {
+  const { root, section, last, dispose } = mountBlast({ selection: { file: 'lib/core.ts', code: true, blast: true }, readSource: async () => 'x' });
+  await waitFor(() => expect(root.querySelector('[data-el="code-src"]')!.textContent).toBe('x'));
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(root.querySelector('[data-el="code"]')!.classList.contains('open')).toBe(false);
+  expect(section()).not.toBeNull();
+  expect(last()).toEqual({ file: 'lib/core.ts', blast: true });
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(root.querySelector('[data-el="panel"]')!.classList.contains('open')).toBe(false);
+  dispose();
+});
+
+test('deep link starts with blast on without echoing the selection', () => {
+  const { section, onSelect, dispose } = mountBlast({ selection: { file: 'lib/core.ts', blast: true } });
+  expect(section()).not.toBeNull();
+  expect(onSelect).not.toHaveBeenCalled();
+  dispose();
+});
+
+test('deep link to a missing file with blast leaves the panel closed', () => {
+  const { root, dispose } = mountBlast({ selection: { file: 'nope.ts', blast: true } });
+  expect(root.querySelector('[data-el="panel"]')!.classList.contains('open')).toBe(false);
+  dispose();
+});
+
+test('a hub level lists 40 files and counts the rest', () => {
+  const users = Array.from({ length: 45 }, (_, k) => node(`u/U${k}.ts`, 0));
+  const hub: Architecture = { ...arch(), nodes: [node('lib/core.ts', 1), ...users], edges: users.map((_, k) => [k + 1, 0, 1, { import: 1 }, 0]) };
+  const { button, section, dispose } = mountBlast({}, hub);
+  fireEvent.click(button());
+  expect(section()!.querySelectorAll('.item')).toHaveLength(40);
+  expect(section()!.textContent).toContain('외 5개');
+  dispose();
+});
+
+test('reduced motion paints final state at once', () => {
+  vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce') }));
+  const { root, button, dispose } = mountBlast();
+  fireEvent.click(button());
+  expect(root.dataset.blastDone).toBe('1');
+  fireEvent.click(button());
+  expect(root.dataset.blastDone).toBeUndefined();
+  dispose();
+});
+
+test('re-selecting the same building keeps blast on', () => {
+  const { root, button, section, last, dispose } = mountBlast();
+  fireEvent.click(button());
+  const q = root.querySelector<HTMLInputElement>('[data-el="q"]')!;
+  q.value = 'lib/core';
+  fireEvent.input(q);
+  fireEvent.keyDown(q, { key: 'Enter' });
+  expect(section()).not.toBeNull();
+  expect(button().getAttribute('aria-pressed')).toBe('true');
+  expect(last()).toEqual({ file: 'lib/core.ts', blast: true });
+  dispose();
 });
