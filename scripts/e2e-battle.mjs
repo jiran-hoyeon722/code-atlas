@@ -8,7 +8,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = 'http://localhost:4173/';
 const PAGE = `${BASE}battle.html`;
 const OUT = resolve(ROOT, 'test-results/e2e');
-const REACT = resolve(ROOT, 'tests/fixtures/react-mini');
+const FIXTURE_A = resolve(ROOT, 'tests/fixtures/battle-ts');
+const FIXTURE_B = resolve(ROOT, 'tests/fixtures/battle-php');
 const CSP = "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; worker-src 'self' blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'";
 
 let preview = null;
@@ -112,7 +113,8 @@ async function main() {
     await context.addInitScript(initScript);
     const page = await context.newPage();
     page.on('request', (r) => {
-      if (!r.url().startsWith(BASE)) external.push(r.url());
+      // blob: URLs of this origin are in-memory (the battle worker wrapper), not network requests
+      if (!r.url().startsWith(BASE) && !r.url().startsWith(`blob:${new URL(BASE).origin}/`)) external.push(r.url());
     });
     page.on('console', (m) => {
       if (m.type() === 'error') consoleErrors.push(`${m.text()} @ ${m.location().url}:${m.location().lineNumber}`);
@@ -161,12 +163,64 @@ async function main() {
       await page.setViewportSize({ width: 1440, height: 900 });
     });
 
-    await step('picking a real folder reads it and reports the unwired measure step', async () => {
-      await page.setInputFiles('[data-testid=folder-input-a]', REACT);
-      await page.waitForSelector('.rb-card-a[data-state=error]', { timeout: 30_000 });
-      const msg = await page.locator('.rb-card-a [role=alert]').textContent();
-      assert(msg.includes('아직 연결되지 않았어요'), `unexpected message "${msg}"`);
-      await page.screenshot({ path: resolve(OUT, 'battle-select-error.png') });
+    await step('picking two real folders measures both in the worker', async () => {
+      await page.setInputFiles('[data-testid=folder-input-a]', FIXTURE_A);
+      await page.setInputFiles('[data-testid=folder-input-b]', FIXTURE_B);
+      await page.waitForSelector('.rb-card-a[data-state=ready]', { timeout: 60_000 });
+      await page.waitForSelector('.rb-card-b[data-state=ready]', { timeout: 60_000 });
+      const a = await page.locator('.rb-card-a .rb-card-sub').first().textContent();
+      const b = await page.locator('.rb-card-b .rb-card-sub').first().textContent();
+      assert(a.startsWith('TypeScript · 코드'), `unexpected A summary "${a}"`);
+      assert(b.startsWith('PHP · 코드'), `unexpected B summary "${b}"`);
+      assert(!(await page.locator('button:has-text("작전 브리핑 보기")').isDisabled()), 'briefing button should be enabled');
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: resolve(OUT, 'battle-select-ready.png') });
+    });
+
+    await step('the briefing runs the prediction in the worker and shows the counts', async () => {
+      const t = Date.now();
+      await page.click('button:has-text("작전 브리핑 보기")');
+      await page.waitForSelector('.rb-brief-counts[data-state=done]', { timeout: 60_000 });
+      const ms = Date.now() - t;
+      notes.push(`prediction (100 runs, battle-ts vs battle-php): ${ms} ms from click to counts`);
+      const nums = await page.locator('.rb-brief-num').allTextContents();
+      assert(nums.length === 2 && nums.every((n) => /^\d+번$/.test(n)), `unexpected counts ${JSON.stringify(nums)}`);
+      const sum = nums.map((n) => parseInt(n, 10)).reduce((x, y) => x + y, 0);
+      assert(sum <= 100, `wins add up to ${sum}`);
+      assert((await page.locator('.rb-brief-row').count()) === 10, 'expected 5 metric rows per side');
+      assert((await page.locator('text=언어 차이 오차 가능').count()) === 2, 'language caveat missing');
+      assert((await page.locator('.rb-brief-vanguard li').count()) === 3, 'expected 3 vanguard pairs');
+      assert(!(await page.locator('button:has-text("전투 시작하기")').isDisabled()), 'start should be enabled');
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: resolve(OUT, 'battle-briefing.png') });
+      const overflow = await page.evaluate(() => [document.documentElement.scrollWidth - document.documentElement.clientWidth, document.documentElement.scrollHeight - document.documentElement.clientHeight]);
+      notes.push(`briefing overflow at 1440×900: x ${overflow[0]}px, y ${overflow[1]}px`);
+      assert(overflow[0] <= 0, `horizontal overflow of ${overflow[0]}px`);
+    });
+
+    await step('measurement settings open, other outcome bumps the match, start reaches the battle', async () => {
+      await page.click('.rb-brief-side-a .rb-brief-config-toggle');
+      await page.waitForSelector('.rb-brief-side-a .rb-brief-config');
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: resolve(OUT, 'battle-briefing-config.png') });
+      await page.click('.rb-brief-side-a .rb-brief-config button:has-text("닫기")');
+      await page.click('button:has-text("다른 전개 보기")');
+      await page.waitForSelector('text=대결 #2');
+      await page.click('button:has-text("전투 시작하기")');
+      await page.waitForSelector('h1:has-text("전투")');
+      assert((await page.locator('text=대결 #2').count()) === 1, 'battle placeholder should show match 2');
+      await page.click('button:has-text("브리핑으로")');
+      await page.waitForSelector('.rb-brief-counts[data-state=done]', { timeout: 2_000 });
+    });
+
+    await step('narrow window keeps the briefing without horizontal scroll', async () => {
+      for (const width of [1280, 1024]) {
+        await page.setViewportSize({ width, height: 800 });
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        assert(overflow <= 0, `horizontal overflow of ${overflow}px at ${width}px`);
+      }
+      await page.screenshot({ path: resolve(OUT, 'battle-briefing-1024.png'), fullPage: true });
+      await page.setViewportSize({ width: 1440, height: 900 });
     });
 
     await step('no external requests', async () => {

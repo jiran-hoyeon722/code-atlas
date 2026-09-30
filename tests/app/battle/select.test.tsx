@@ -1,57 +1,12 @@
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
-import type { Quality } from '../../../src/engine/battle/types';
-import type { RepoInput } from '../../../src/engine/types';
 import { BattleApp } from '../../../src/features/battle/BattleApp';
-import { defaultDeps, MEASURE_NOT_READY, type BattleDeps } from '../../../src/features/battle/deps';
+import { defaultDeps, MEASURE_MSG } from '../../../src/features/battle/deps';
 import { MSG } from '../../../src/features/battle/select/useSlot';
+import type { ToWorker } from '../../../src/features/battle/worker/protocol';
+import { fakes, FakeWorker, quality } from './fakes';
 
 afterEach(cleanup);
-
-function quality(name: string, over: Partial<Quality> = {}): Quality {
-  return {
-    ruleVersion: '1.4',
-    name,
-    lang: 'ts',
-    fingerprint: 'f',
-    config: { sourceDir: '', exclude: [], testPatterns: [], excludedLines: 0 },
-    totals: { prodLines: 184_321, testLines: 0, testFiles: 0 },
-    files: [],
-    clones: [],
-    cycles: [],
-    commander: { files: [], display: '' },
-    scores: { readability: 0, complexityExcess: 0, lengthExcess: 0, tangle: 0, duplication: 0, duplicationExcess: 0, tests: 0, hotspot: null },
-    warnings: [],
-    ...over,
-  };
-}
-
-interface Run {
-  input: RepoInput;
-  progress(step: string): void;
-  resolve(q: Quality): void;
-  reject(e: unknown): void;
-  cancel: ReturnType<typeof vi.fn>;
-}
-
-function fakes(pickDirectory: BattleDeps['pickDirectory'] = null) {
-  const runs: Run[] = [];
-  const deps: BattleDeps = {
-    pickDirectory,
-    measure(input, onProgress) {
-      let resolve!: (q: Quality) => void;
-      let reject!: (e: unknown) => void;
-      const result = new Promise<Quality>((ok, fail) => {
-        resolve = ok;
-        reject = fail;
-      });
-      const cancel = vi.fn();
-      runs.push({ input, progress: onProgress, resolve, reject, cancel });
-      return { result, cancel };
-    },
-  };
-  return { deps, runs };
-}
 
 function file(path: string, text: string): File {
   const f = new File([text], path.split('/').pop()!, { lastModified: 1 });
@@ -104,10 +59,10 @@ test('pick A and B through the folder input, measure, then open the briefing', a
   expect(brief().disabled).toBe(false);
 
   fireEvent.click(brief());
-  const heading = screen.getByRole('heading', { name: '작전 브리핑' });
+  const heading = screen.getByRole('heading', { name: '레포 전쟁 대결 #1' });
   expect(document.activeElement).toBe(heading);
-  expect(screen.getByText('alpha')).toBeTruthy();
-  expect(screen.getByText('beta')).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'alpha' })).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'beta' })).toBeTruthy();
 
   fireEvent.click(screen.getByRole('button', { name: '레포 다시 고르기' }));
   expect(within(card('레포 A')).getByText('alpha')).toBeTruthy();
@@ -115,8 +70,8 @@ test('pick A and B through the folder input, measure, then open the briefing', a
   expect(brief().disabled).toBe(false);
 });
 
-test('the same folder can fight itself, through briefing → battle → result and back', async () => {
-  const { deps, runs } = fakes();
+test('the same folder can fight itself, through briefing → battle → result and back, keeping the prediction', async () => {
+  const { deps, runs, predictions } = fakes();
   render(<BattleApp deps={deps} />);
   choose('a', repo('twin'));
   choose('b', repo('twin'));
@@ -127,8 +82,19 @@ test('the same folder can fight itself, through briefing → battle → result a
   });
   expect(brief().disabled).toBe(false);
   fireEvent.click(brief());
+  await waitFor(() => expect(predictions).toHaveLength(1));
+  await act(async () => predictions[0].resolve({ runs: 100, aWins: 48, bWins: 49, draws: 3 }));
+  expect(screen.getByText('박빙이에요')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '다른 전개 보기' }));
+  expect(screen.getByRole('heading', { name: '레포 전쟁 대결 #2' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '전투 시작하기' }));
   expect(screen.getByRole('heading', { name: '전투' })).toBeTruthy();
+  expect(screen.getByText('대결 #2')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '브리핑으로' }));
+  expect(screen.getByRole('heading', { name: '레포 전쟁 대결 #2' })).toBeTruthy();
+  expect(screen.getByText('박빙이에요')).toBeTruthy();
+  expect(predictions).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: '전투 시작하기' }));
   fireEvent.click(screen.getByRole('button', { name: '결과 보기' }));
   expect(screen.getByRole('heading', { name: '결과' })).toBeTruthy();
   expect(screen.getAllByText('twin')).toHaveLength(2);
@@ -158,12 +124,42 @@ test('warnings show as chips', async () => {
   expect(a.getByText('측정에서 뺀 코드가 10%를 넘어요')).toBeTruthy();
 });
 
-test('measure failure shows a plain message; the default stub says it is not wired yet', async () => {
-  render(<BattleApp deps={{ ...defaultDeps(), pickDirectory: null }} />);
+function workerDeps(reply: (m: ToWorker, w: FakeWorker) => void) {
+  return { ...defaultDeps({ createWorker: () => new FakeWorker(reply as (m: unknown, w: FakeWorker) => void) as unknown as Worker }), pickDirectory: null };
+}
+
+test('the real measure wiring turns worker progress into Korean steps and resolves the quality', async () => {
+  let worker!: FakeWorker;
+  render(<BattleApp deps={workerDeps((m, w) => {
+    worker = w;
+    expect(m.type).toBe('quality');
+  })} />);
+  choose('a', repo('alpha'));
+  await waitFor(() => expect(worker).toBeTruthy());
+  const a = within(card('레포 A'));
+  act(() => worker.emit({ type: 'progress', progress: { phase: 'analyze', step: { phase: 'link' } } }));
+  expect(a.getByText('구조를 읽는 중')).toBeTruthy();
+  act(() => worker.emit({ type: 'progress', progress: { phase: 'functions', done: 3, total: 12 } }));
+  expect(a.getByText('함수 재는 중 · 파일 3/12개')).toBeTruthy();
+  act(() => worker.emit({ type: 'progress', progress: { phase: 'clones' } }));
+  expect(a.getByText('복붙한 코드 찾는 중')).toBeTruthy();
+  act(() => worker.emit({ type: 'progress', progress: { phase: 'graph' } }));
+  expect(a.getByText('얽힌 코드 찾는 중')).toBeTruthy();
+  await act(async () => worker.emit({ type: 'done', quality: quality('alpha') }));
+  expect(a.getByText('TypeScript · 코드 18만 4천 줄')).toBeTruthy();
+  expect(worker.terminate).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  ['too-small', MEASURE_MSG.tooSmall],
+  ['unsupported', MEASURE_MSG.unsupported],
+  ['failed', MEASURE_MSG.failed],
+] as const)('worker error %s shows a plain message', async (code, message) => {
+  render(<BattleApp deps={workerDeps((_m, w) => w.emit({ type: 'error', code, message: 'engine detail' }))} />);
   choose('a', repo('alpha'));
   const alert = await within(card('레포 A')).findByRole('alert');
-  expect(within(alert).getByText(MSG.measureFailed)).toBeTruthy();
-  expect(within(alert).getByText(MEASURE_NOT_READY)).toBeTruthy();
+  expect(within(alert).getByText(message)).toBeTruthy();
+  expect(within(alert).queryByText('engine detail') !== null).toBe(code === 'failed');
   expect(within(card('레포 A')).getByRole('button', { name: '다시 고르기' })).toBeTruthy();
 });
 
@@ -262,6 +258,6 @@ test('repo names are rendered as text, never as markup', async () => {
   expect(within(card('레포 A')).getByText(evil)).toBeTruthy();
   expect(container.querySelector('img')).toBeNull();
   fireEvent.click(brief());
-  expect(screen.getByText(evil)).toBeTruthy();
+  expect(screen.getAllByText(evil).length).toBeGreaterThan(0);
   expect(container.querySelector('img')).toBeNull();
 });

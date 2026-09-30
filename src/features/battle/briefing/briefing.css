@@ -1,0 +1,629 @@
+.rb-brief-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.rb-brief-match {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--rb-text-3);
+}
+
+.rb-brief-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.rb-btn-quiet,
+.rb-btn-ghost {
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 12px;
+  color: #c9ced6;
+}
+
+.rb-btn-quiet {
+  background: var(--rb-card);
+}
+
+.rb-btn-ghost {
+  background: transparent;
+  color: var(--rb-text-2);
+}
+
+.rb-btn-quiet:hover,
+.rb-btn-ghost:hover {
+  background: var(--rb-inner);
+  color: var(--rb-text);
+}
+
+.rb-brief-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 48px;
+  padding: 32px 0 8px;
+}
+
+/* counts */
+
+.rb-brief-counts {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  width: 720px;
+  max-width: 100%;
+  min-height: 144px;
+}
+
+.rb-brief-caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--rb-text-2);
+}
+
+.rb-brief-score {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 16px;
+  width: 100%;
+}
+
+.rb-brief-team {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rb-brief-team-b {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.rb-brief-team-name {
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-brief-team-a .rb-brief-team-name {
+  color: var(--rb-team-a);
+}
+
+.rb-brief-team-b .rb-brief-team-name {
+  color: var(--rb-team-b);
+}
+
+.rb-brief-num {
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.rb-brief-num span {
+  margin-left: 2px;
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+}
+
+.rb-brief-verdict {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding-bottom: 6px;
+  color: var(--rb-text-3);
+  text-align: center;
+}
+
+.rb-brief-draws {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.rb-brief-split,
+.rb-brief-wait {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  height: 8px;
+}
+
+.rb-brief-split > div {
+  border-radius: 4px;
+  transition: width var(--rb-slow) var(--rb-ease);
+}
+
+.rb-brief-split-a {
+  background: var(--rb-team-a);
+}
+
+.rb-brief-split-draw {
+  background: var(--rb-raised);
+}
+
+.rb-brief-split-b {
+  flex-grow: 1;
+  background: var(--rb-team-b);
+}
+
+.rb-brief-wait {
+  width: 360px;
+  max-width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--rb-inner);
+  overflow: hidden;
+}
+
+.rb-brief-wait > div {
+  border-radius: 2px;
+  background: var(--rb-text-2);
+  transition: width var(--rb-fast) var(--rb-ease);
+}
+
+/* layout */
+
+.rb-brief-grid {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr) 360px;
+  gap: 24px;
+  width: 100%;
+  max-width: 1344px;
+}
+
+.rb-brief-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 576px;
+  max-width: 100%;
+  margin-top: -32px;
+}
+
+/* side cards */
+
+.rb-brief-side {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  min-height: 480px;
+  padding: 28px;
+  border-radius: 24px;
+  background: var(--rb-card);
+}
+
+.rb-brief-side-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rb-brief-side-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rb-brief-side-name {
+  overflow: hidden;
+  font-size: 22px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-brief-side-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rb-brief-side-sub {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+}
+
+.rb-brief-config-toggle {
+  flex: none;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: var(--rb-text-3);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--rb-divider);
+  text-underline-offset: 4px;
+  transition: color var(--rb-fast) var(--rb-ease);
+}
+
+.rb-brief-config-toggle:hover,
+.rb-brief-config-toggle[aria-expanded='true'] {
+  color: var(--rb-text);
+}
+
+.rb-brief-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+}
+
+.rb-brief-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rb-brief-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rb-brief-row-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rb-brief-row-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  color: #c9ced6;
+}
+
+.rb-brief-row-note {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--rb-text-3);
+  white-space: nowrap;
+}
+
+.rb-brief-row-value {
+  flex: none;
+  font-weight: 700;
+}
+
+.rb-brief-row-muted .rb-brief-row-label {
+  color: var(--rb-text-3);
+}
+
+.rb-brief-row-muted .rb-brief-row-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-3);
+}
+
+.rb-brief-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #2a2e37;
+}
+
+.rb-brief-bar > div {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.rb-brief-side-a .rb-brief-bar > div {
+  background: var(--rb-team-a);
+}
+
+.rb-brief-side-b .rb-brief-bar > div {
+  background: var(--rb-team-b);
+}
+
+.rb-brief-commander {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: var(--rb-inner);
+}
+
+.rb-brief-commander-label {
+  flex: none;
+  font-size: 14px;
+  color: var(--rb-text-2);
+}
+
+.rb-brief-commander-name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-brief-config {
+  position: absolute;
+  inset: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 18px;
+  overflow: auto;
+  border-radius: 18px;
+  background: var(--rb-inner);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  animation: rb-enter var(--rb-mid) var(--rb-ease);
+}
+
+.rb-brief-config-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.rb-brief-config h3 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.rb-brief-config dl {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.rb-brief-config dt {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-3);
+}
+
+.rb-brief-config dt:first-child {
+  margin-top: 0;
+}
+
+.rb-brief-config dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.rb-brief-config code {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--rb-raised);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+/* center field */
+
+.rb-brief-field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 480px;
+  padding: 24px 28px;
+  overflow: hidden;
+  border-radius: 24px;
+  background: #16181d;
+}
+
+.rb-brief-field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rb-brief-field-head h2 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.rb-brief-field-head p {
+  font-size: 13px;
+  color: var(--rb-text-3);
+}
+
+.rb-field {
+  position: relative;
+  flex: 1;
+  min-height: 300px;
+  margin: 0 -28px;
+  perspective: 1000px;
+}
+
+.rb-field-plane {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: min(500px, calc(100% - 32px));
+  aspect-ratio: 500 / 320;
+  border-radius: 14px;
+  background-color: #1d2027;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 40px 40px;
+  transform: translateX(-50%) rotateX(54deg);
+  transform-origin: 50% 68%;
+}
+
+.rb-field-line {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.rb-field-line-h {
+  right: 0;
+  left: 0;
+  height: 1px;
+}
+
+.rb-field-line-v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.rb-field-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  opacity: 0.35;
+}
+
+.rb-field-dot-lead {
+  opacity: 1;
+}
+
+.rb-field-dot-a,
+.rb-field-commander-a {
+  background: var(--rb-team-a);
+}
+
+.rb-field-dot-b,
+.rb-field-commander-b {
+  background: var(--rb-team-b);
+}
+
+.rb-field-commander {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+
+.rb-field-commander-a {
+  box-shadow: 0 0 0 6px rgba(60, 196, 180, 0.18);
+}
+
+.rb-field-commander-b {
+  box-shadow: 0 0 0 6px rgba(242, 165, 65, 0.18);
+}
+
+.rb-brief-vanguard {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rb-brief-vanguard li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #1f2229;
+}
+
+.rb-brief-vanguard-label {
+  font-size: 12px;
+  color: var(--rb-text-3);
+}
+
+.rb-brief-vanguard-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.rb-brief-vanguard-name > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-brief-vanguard-name .rb-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+}
+
+@media (max-width: 1199px) {
+  .rb-brief-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rb-brief-field {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .rb-brief-foot {
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .rb-top {
+    flex-wrap: wrap;
+    height: auto;
+    gap: 8px;
+  }
+
+  .rb-brief-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rb-brief-side,
+  .rb-brief-field {
+    min-height: 0;
+    padding: 24px;
+  }
+
+  .rb-field {
+    min-height: 220px;
+    margin: 0 -24px;
+  }
+
+  .rb-brief-vanguard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rb-brief-num {
+    font-size: 40px;
+  }
+}
