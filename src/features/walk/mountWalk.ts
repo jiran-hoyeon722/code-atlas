@@ -14,6 +14,8 @@ import { BUILDING_FRAG, BUILDING_VERT, SKY_FRAG, SKY_VERT } from './walkShaders'
 import { createModelHero, type Emote } from './walkHero';
 import { createTraffic } from './walkTraffic';
 import { createRain } from './walkRain';
+import { RIVALS, createBattle } from './walkBattle';
+import { createHeli } from './walkHeli';
 import robotUrl from './assets/RobotExpressive.glb?url';
 
 const WALK = 4.2;
@@ -33,12 +35,15 @@ const fmt = (n: number) => Number(n).toLocaleString('ko-KR');
 const MARKUP = `
 <div class="wk-hud glass">
     <h1 data-el="title"></h1>
-    <div class="keys"><b>WASD</b> 이동 · <b>Shift</b> 달리기 · <b>Space</b> 점프 · <b>클릭</b> 후 마우스로 시점 · <b>휠</b> 거리 · <b>E</b> 들어가기 · <b>/</b> 검색 · <b>R</b> 비 · <b>1~3</b> 인사·엄지·춤</div>
+    <div class="keys"><b>WASD</b> 이동 · <b>Shift</b> 달리기 · <b>Space</b> 점프 · <b>클릭</b> 후 마우스로 시점 · <b>휠</b> 거리 · <b>E</b> 들어가기 · <b>/</b> 검색 · <b>R</b> 비 · <b>1~3</b> 인사·엄지·춤 · <b>F</b> 주먹 · <b>H</b> 헬기</div>
     <div class="search"><input data-el="q" type="search" placeholder="파일 이름으로 순간 이동 ( / )" autocomplete="off"></div>
 </div>
 <canvas class="wk-map glass" data-el="map" width="200" height="200" title="클릭하면 그 위치로 이동"></canvas>
 <div class="wk-prompt glass" data-el="prompt"></div>
 <div class="wk-fade" data-el="fade"></div>
+<div class="wk-hurt" data-el="hurt"></div>
+<div class="wk-battle glass"><div class="hp"><i data-el="hp"></i></div><div class="rivals" data-el="rivals"></div></div>
+<div class="wk-toast" data-el="toast"></div>
 <section class="wk-detail glass" data-el="detail" aria-label="건물 상세">
     <div class="head"><div class="title"><b data-el="d-name"></b><div class="path" data-el="d-path"></div></div><button data-el="d-close">나가기 (Esc)</button></div>
     <div class="metrics" data-el="d-metrics"></div>
@@ -429,6 +434,108 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   camera.position.set(pos.x - Math.sin(heading) * 8, 4, pos.z - Math.cos(heading) * 8);
   const keys = new Set<string>();
 
+  // ---- easter egg: four roaming rivals, a respawning player, and a helicopter for catching all of them ----
+  const spawnPoint = pos.clone();
+  const spawnHeading = heading;
+  let hp = 100;
+  let alive = true;
+  let respawnAt = 0;
+  let punchAt = 0;
+  let punchCooldown = 0;
+  let hurt = 0;
+  let mode: 'walk' | 'fly' = 'walk';
+  let toastTimer = 0;
+  const caughtNames = new Set<string>();
+  const toast = (text: string, ms = 2600) => {
+    const el = $('toast');
+    el.textContent = text;
+    el.classList.add('open');
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => el.classList.remove('open'), ms);
+  };
+  const renderBattle = () => {
+    $('hp').style.width = `${Math.max(0, hp)}%`;
+    $('rivals').innerHTML = RIVALS.map((r) => `<span class="${caughtNames.has(r.name) ? 'got' : ''}" style="--c:${esc(r.tint)}">${esc(r.name)}</span>`).join('') + `<b>${caughtNames.size}/${RIVALS.length}</b>`;
+  };
+  function freeSpotNear(x: number, z: number, min: number, max: number) {
+    for (let r = min; r <= max; r += 1.5)
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+        const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
+        if (![[0, 0], [3.5, 0], [-3.5, 0], [0, 3.5], [0, -3.5]].some(([dx, dz]) => blocked(px + dx, pz + dz))) return new THREE.Vector3(px, 0, pz);
+      }
+    return new THREE.Vector3(x, 0, z);
+  }
+  const heli = createHeli(scene, bounds);
+  const battle = createBattle(scene, robotUrl, pos, {
+    blocked,
+    random,
+    onPlayerHit(damage, fx, fz) {
+      if (!alive) return;
+      hp -= damage;
+      hurt = 1;
+      const dx = pos.x - fx, dz = pos.z - fz;
+      const d = Math.hypot(dx, dz) || 1;
+      vel.x += (dx / d) * 7;
+      vel.z += (dz / d) * 7;
+      if (hp <= 0) {
+        alive = false;
+        hero.die();
+        respawnAt = performance.now() + 2600;
+        toast('쓰러졌어요 — 잠시 후 처음 자리에서 다시 시작해요', 2400);
+      }
+      renderBattle();
+    },
+    onCaught(name, n, total) {
+      caughtNames.add(name);
+      renderBattle();
+      if (n < total) { toast(`${name} 잡았다! (${n}/${total})`); return; }
+      toast('모두 잡았어요! 헬기가 내려옵니다 — 가까이 가서 H', 5000);
+      const spot = freeSpotNear(pos.x, pos.z, 9, 30);
+      heli.arrive(spot.x, spot.z, Math.atan2((bounds.minX + bounds.maxX) / 2 - spot.x, (bounds.minZ + bounds.maxZ) / 2 - spot.z));
+    },
+  });
+  renderBattle();
+  const punch = () => {
+    if (punchCooldown > 0 || !alive || mode !== 'walk') return;
+    hero.emote('Punch');
+    punchAt = 0.22;
+    punchCooldown = 0.45;
+  };
+  const floorAt = (x: number, z: number) => {
+    let floor = 0;
+    for (const b of nearby(x, z, 4)) if (gap(b, x, z) < 3) floor = Math.max(floor, b.h + 0.16 + 1.2);
+    return floor;
+  };
+  function toggleHeli() {
+    if (mode === 'walk') {
+      const hpos = heli.root.position;
+      if (heli.state === 'parked' && Math.hypot(hpos.x - pos.x, hpos.z - pos.z) < 7) {
+        heli.board();
+        mode = 'fly';
+        keys.clear();
+        hero.root.visible = false;
+        blob.visible = false;
+        setFocus(null);
+        toast('비행 시작 — W/S 앞뒤 · A/D 회전 · Space/C 위아래 · Shift 가속 · 낮게 내려와 H로 착륙', 5000);
+      } else if (heli.state === 'hidden') {
+        toast(`헬기는 ${RIVALS.length}명을 모두 잡으면 나타나요 (${battle.caught}/${RIVALS.length})`);
+      } else if (heli.state === 'parked') {
+        toast('헬기에 더 가까이 가야 탈 수 있어요');
+      }
+      return;
+    }
+    if (!heli.land()) { toast('더 낮게 내려와야 착륙할 수 있어요'); return; }
+    mode = 'walk';
+    keys.clear();
+    const hpos = heli.root.position;
+    pos.copy(freeSpotNear(hpos.x, hpos.z, 4, 20));
+    vel.set(0, 0, 0);
+    heading = heli.heading;
+    yaw = heading + Math.PI;
+    hero.root.visible = true;
+    blob.visible = true;
+  }
+
   // ---- entering a building ----
   let focus: WalkBuilding | null = null;
   let detailOpen = false;
@@ -488,6 +595,15 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     if (typing()) { if (e.key === 'Escape') (document.activeElement as HTMLElement).blur(); return; }
     if (e.key === 'Escape' && (detailOpen || entering)) { leave(); return; }
     if (detailOpen || entering) return;
+    if (e.code === 'KeyH') { toggleHeli(); return; }
+    if (mode === 'fly') {
+      if (e.code === 'KeyR') { rain.set(!rain.enabled); applyWeather(); return; }
+      keys.add(e.code);
+      if (e.code === 'Space') e.preventDefault();
+      return;
+    }
+    if (!alive) return;
+    if (e.code === 'KeyF') { punch(); return; }
     if (e.key === '/') { e.preventDefault(); $('q').focus(); return; }
     if ((e.key === 'e' || e.key === 'E' || e.key === 'ㄷ') && focus) { enter(focus); return; }
     if (e.code === 'KeyR') { rain.set(!rain.enabled); applyWeather(); return; }
@@ -503,7 +619,10 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   });
   listen(window, 'keyup', (e) => keys.delete(e.code));
   listen(window, 'blur', () => keys.clear());
-  listen(renderer.domElement, 'click', () => { if (!detailOpen && !entering) renderer.domElement.requestPointerLock?.(); });
+  listen(renderer.domElement, 'click', () => {
+    if (document.pointerLockElement === renderer.domElement) { punch(); return; }
+    if (!detailOpen && !entering) renderer.domElement.requestPointerLock?.();
+  });
   let dragging = false;
   listen(renderer.domElement, 'pointerdown', () => (dragging = true));
   listen(window, 'pointerup', () => (dragging = false));
@@ -563,6 +682,18 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   function drawMap() {
     if (!mapCtx) return;
     mapCtx.drawImage(base, 0, 0);
+    battle.positions().forEach((r) => {
+      const [x, y] = toMap(r.x, r.z);
+      mapCtx.fillStyle = r.down ? '#5c6270' : r.tint;
+      mapCtx.beginPath();
+      mapCtx.arc(x, y, 3.4, 0, Math.PI * 2);
+      mapCtx.fill();
+    });
+    if (heli.state !== 'hidden' && mode === 'walk') {
+      const [x, y] = toMap(heli.root.position.x, heli.root.position.z);
+      mapCtx.fillStyle = '#ffd43b';
+      mapCtx.fillRect(x - 4, y - 4, 8, 8);
+    }
     const [x, y] = toMap(pos.x, pos.z);
     mapCtx.save();
     mapCtx.translate(x, y);
@@ -597,6 +728,12 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   updateLampLights(pos.x, pos.z);
 
   (window as unknown as { __walkView?: (y: number, p: number, d: number) => void }).__walkView = (y, p, d) => { yaw += y; pitch = p; distance = d; };
+  (window as unknown as { __walkTest?: unknown }).__walkTest = {
+    rivals: () => battle.positions(),
+    goTo: (x: number, z: number) => teleport(new THREE.Vector3(x, 0, z)),
+    face: (x: number, z: number) => { heading = Math.atan2(x - pos.x, z - pos.z); yaw = heading + Math.PI; },
+    state: () => ({ hp, alive, mode, heli: heli.state, caught: battle.caught, pos: [pos.x, pos.z], heliPos: heli.root.position.toArray() }),
+  };
   let disposed = false;
   let last = performance.now();
   let slowClock = 0;
@@ -615,7 +752,9 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
     forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
     right.set(-forward.z, 0, forward.x);
-    wish.set(0, 0, 0).addScaledVector(forward, fz).addScaledVector(right, fx);
+    const flying = mode === 'fly';
+    wish.set(0, 0, 0);
+    if (alive && !flying) wish.addScaledVector(forward, fz).addScaledVector(right, fx);
     if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(running ? RUN : WALK);
     const airborne = footY > 0.001 || vy > 0;
     vel.lerp(wish, Math.min(1, dt * (airborne ? ACCEL * 0.15 : ACCEL) / Math.max(1, vel.distanceTo(wish))));
@@ -639,6 +778,25 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     hero.root.rotation.y = heading;
     blob.position.set(pos.x, 0.18, pos.z);
     blob.scale.setScalar(1 / (1 + footY * 0.6));
+    heli.update(dt, time, flying ? { forward: fz, turn: -fx, lift: input(['Space'], ['KeyC', 'ControlLeft']), boost: running } : { forward: 0, turn: 0, lift: 0, boost: false }, floorAt);
+    if (flying) pos.set(heli.root.position.x, 0, heli.root.position.z);
+    if (!alive && now >= respawnAt) {
+      alive = true;
+      hp = 100;
+      hero.revive();
+      teleport(spawnPoint);
+      heading = spawnHeading;
+      yaw = heading + Math.PI;
+      renderBattle();
+    }
+    punchCooldown -= dt;
+    if (punchAt > 0) {
+      punchAt -= dt;
+      if (punchAt <= 0) battle.strike(pos, heading);
+    }
+    battle.update(dt, pos, alive && !flying && !detailOpen && !entering);
+    hurt = Math.max(0, hurt - dt * 1.6);
+    $('hurt').style.opacity = String(hurt * 0.85);
 
     if (entering) {
       const b = entering.b;
@@ -651,6 +809,15 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       camera.lookAt(lookAt);
       $('fade').style.opacity = String(Math.max(0, (t - 0.55) / 0.45) * 0.55);
       if (t === 1 && !detailOpen) void openDetail(b);
+    } else if (flying) {
+      $('fade').style.opacity = '0';
+      const hpos = heli.root.position;
+      const want = heli.heading + Math.PI;
+      yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * Math.min(1, dt * 2.5);
+      camPos.set(Math.sin(yaw) * Math.cos(0.3), Math.sin(0.3), Math.cos(yaw) * Math.cos(0.3)).multiplyScalar(17 + heli.speed * 0.15).add(v.set(hpos.x, hpos.y + 2.5, hpos.z));
+      camera.position.lerp(camPos, Math.min(1, dt * 5));
+      lookAt.lerp(v.set(hpos.x, hpos.y + 2, hpos.z), Math.min(1, dt * 10));
+      camera.lookAt(lookAt);
     } else {
       $('fade').style.opacity = '0';
       let reach = distance;
@@ -663,7 +830,7 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       lookAt.lerp(v.set(pos.x, 1.6 + footY * 0.4, pos.z), Math.min(1, dt * 14));
       camera.lookAt(lookAt);
     }
-    const targetFov = 58 + run * 10;
+    const targetFov = flying ? 62 + (heli.speed / 52) * 14 : 58 + run * 10;
     if (Math.abs(targetFov - fov) > 0.01) {
       fov += (targetFov - fov) * Math.min(1, dt * 4);
       camera.fov = fov;
@@ -681,7 +848,11 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       slowClock = 0.2;
       updateSigns(pos.x, pos.z);
       updateLampLights(pos.x, pos.z);
-      if (!entering && !detailOpen) {
+      let near: WalkBuilding | null = null;
+      let nearGap = 20;
+      if (!flying) for (const b of nearby(pos.x, pos.z, 21)) { const g = gap(b, pos.x, pos.z); if (g < nearGap) { nearGap = g; near = b; } }
+      traffic.setFocus(near ? near.i : null);
+      if (!entering && !detailOpen && !flying) {
         let best: WalkBuilding | null = null;
         let bestGap = REACH;
         for (const b of nearby(pos.x, pos.z, REACH + 1)) {
@@ -692,7 +863,7 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       }
       drawMap();
     }
-    traffic.update(dt, pos);
+    traffic.update(dt, flying ? heli.root.position : pos);
     rain.update(time, camera.position);
     clearView(camera.position, v.set(pos.x, 1.4 + footY, pos.z));
     composer.render();
@@ -705,6 +876,9 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     resizeObserver.disconnect();
     cleanups.forEach((fn) => fn());
     hero.dispose();
+    battle.dispose();
+    heli.dispose();
+    window.clearTimeout(toastTimer);
     traffic.dispose();
     rain.dispose();
     lampLights.forEach((l) => l.dispose());

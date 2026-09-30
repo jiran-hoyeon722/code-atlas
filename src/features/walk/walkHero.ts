@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { spawnRobot, type Robot } from './walkRobot';
 
 export interface HeroPose {
   speed: number;
@@ -124,10 +125,12 @@ export function createHero(): Hero {
   };
 }
 
-export type Emote = 'Wave' | 'ThumbsUp' | 'Dance';
+export type Emote = 'Wave' | 'ThumbsUp' | 'Dance' | 'Punch';
 
 export interface ModelHero extends Hero {
   emote(name: Emote): void;
+  die(): void;
+  revive(): void;
   readonly ready: boolean;
 }
 
@@ -136,75 +139,53 @@ export function createModelHero(url: string, onError: () => void): ModelHero {
   const fallback = createHero();
   const root = new THREE.Group();
   root.add(fallback.root);
-  let mixer: THREE.AnimationMixer | null = null;
-  let actions: Record<string, THREE.AnimationAction> = {};
-  let current: THREE.AnimationAction | null = null;
+  let robot: Robot | null = null;
   let emoting: THREE.AnimationAction | null = null;
+  let dead = false;
   let disposed = false;
-  let model: THREE.Object3D | null = null;
 
-  const play = (next: THREE.AnimationAction, fade = 0.25) => {
-    if (next === current) return;
-    next.reset().setEffectiveWeight(1).fadeIn(fade).play();
-    current?.fadeOut(fade);
-    current = next;
-  };
-
-  void import('three/examples/jsm/loaders/GLTFLoader.js').then(({ GLTFLoader }) => new GLTFLoader().loadAsync(url)).then((gltf) => {
-    if (disposed) return;
-    model = gltf.scene;
-    const box = new THREE.Box3().setFromObject(model);
-    model.scale.setScalar(1.75 / Math.max(0.01, box.max.y - box.min.y));
-    model.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
-    mixer = new THREE.AnimationMixer(model);
-    actions = Object.fromEntries(gltf.animations.map((clip) => [clip.name, mixer!.clipAction(clip)]));
-    for (const name of ['Jump', 'Wave', 'ThumbsUp']) {
-      const a = actions[name];
-      if (a) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
-    }
-    mixer.addEventListener('finished', (e) => {
-      if (e.action === emoting) emoting = null;
-    });
+  void spawnRobot(url, 1.75).then((r) => {
+    if (disposed) { r.dispose(); return; }
+    robot = r;
+    r.mixer.addEventListener('finished', (e) => { if (e.action === emoting) emoting = null; });
     root.remove(fallback.root);
-    root.add(model);
-    if (actions.Idle) play(actions.Idle, 0);
+    root.add(r.root);
+    r.play('Idle', 0);
   }).catch(() => { if (!disposed) onError(); });
 
   return {
     root,
-    get ready() { return !!mixer; },
+    get ready() { return !!robot; },
     emote(name) {
-      const a = actions[name];
-      if (!a) return;
-      emoting = a;
-      play(a, 0.2);
+      if (!robot || dead) return;
+      emoting = robot.play(name, name === 'Punch' ? 0.08 : 0.2);
+    },
+    die() {
+      dead = true;
+      emoting = null;
+      robot?.play('Death', 0.15);
+    },
+    revive() {
+      dead = false;
+      robot?.play('Idle', 0.1);
     },
     animate(p) {
-      if (!mixer) { fallback.animate(p); return; }
-      const moving = p.speed > 0.4;
-      if (moving || p.airborne) emoting = null;
-      if (!emoting) {
-        const next = p.airborne ? actions.Jump : !moving ? actions.Idle : p.run > 0.35 ? actions.Running : actions.Walking;
-        if (next) play(next, p.airborne ? 0.12 : 0.28);
+      if (!robot) { fallback.animate(p); return; }
+      if (!dead) {
+        const moving = p.speed > 0.4;
+        if ((moving || p.airborne) && emoting && emoting !== robot.actions.Punch) emoting = null;
+        if (!emoting) robot.play(p.airborne ? 'Jump' : !moving ? 'Idle' : p.run > 0.35 ? 'Running' : 'Walking', p.airborne ? 0.12 : 0.28);
+        const cur = robot.current;
+        if (cur === robot.actions.Walking) cur.timeScale = Math.max(0.6, p.speed / 3.2);
+        if (cur === robot.actions.Running) cur.timeScale = Math.max(0.8, p.speed / 9);
+        robot.root.rotation.z = -p.turn * 0.05 * (0.4 + p.run);
       }
-      if (current === actions.Walking) current.timeScale = Math.max(0.6, p.speed / 3.2);
-      if (current === actions.Running) current.timeScale = Math.max(0.8, p.speed / 9);
-      if (model) model.rotation.z = -p.turn * 0.05 * (0.4 + p.run);
-      mixer.update(p.dt);
+      robot.mixer.update(p.dt);
     },
     dispose() {
       disposed = true;
       fallback.dispose();
-      mixer?.stopAllAction();
-      model?.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        mesh.geometry?.dispose();
-        const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
-        mats.forEach((m) => {
-          Object.values(m).forEach((val) => { if (val instanceof THREE.Texture) val.dispose(); });
-          m.dispose();
-        });
-      });
+      robot?.dispose();
     },
   };
 }
