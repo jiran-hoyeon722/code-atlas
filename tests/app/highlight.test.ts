@@ -31,3 +31,12 @@ test('skips highlighting for sources over the size limit', () => {
   expect(e.textContent).toBe(big);
   expect(HIGHLIGHT_LIMIT).toBe(500 * 1024);
 });
+
+test('highlights the newly supported languages', () => {
+  const e = el();
+  renderCode(e, 'def run():\n    return 1\n', 'py');
+  expect(e.innerHTML).toContain('hljs-keyword');
+  const g = el();
+  renderCode(g, 'package main\nfunc main() {}\n', 'go');
+  expect(g.innerHTML).toContain('hljs-keyword');
+});

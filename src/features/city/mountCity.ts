@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import 'highlight.js/styles/github-dark.css';
 import './city.css';
 import type { ArchNode } from '../../engine/architecture';
+import { LANGS } from '../../engine/langs';
 import type { MountViewer, Selection } from '../viewer-env';
 import { esc } from '../escape';
 import { LAYER_TINT, roleColors } from '../palette';
@@ -554,7 +555,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     $('code-path').textContent = `${n.path} · ${fmt(n.lines)}줄`;
     $('code-vscode').innerHTML = vscodeAction(n.path);
     const code = $('code-src');
-    code.className = `hljs language-${arch.lang === 'ts' ? 'typescript' : 'php'}`;
+    code.className = `hljs language-${LANGS[arch.lang].hljs}`;
     code.textContent = '불러오는 중…';
     $('code-gutter').textContent = '';
     let source: string | null;

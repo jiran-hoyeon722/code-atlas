@@ -220,7 +220,7 @@ export function Landing({
         >
           <div className="ca-land-icon" aria-hidden="true">📁</div>
           <h2 id="ca-land-title">{TITLE}</h2>
-          <p className="ca-land-sub">PHP (Laravel) · TypeScript / JavaScript (React)</p>
+          <p className="ca-land-sub">PHP · TypeScript/JavaScript · Python · Go · Java · Kotlin · Swift · Shell</p>
           <button type="button" className="ca-land-pick" onClick={pick}>폴더 선택</button>
           <p className="ca-land-lock">🔒 파일은 브라우저 밖으로 나가지 않아요</p>
           <FolderInput onFiles={onFiles} inputRef={input} testId="folder-input" />

@@ -116,6 +116,29 @@ describe('cache', () => {
     expect((await listAnalyses()).length).toBe(2);
   });
 
+  test('cached php/ts entries still open', async () => {
+    const old = (key: string, lang: 'php' | 'ts', framework: string) => ({
+      key, name: `old-${lang}`, framework, lang, files: arch.nodes.length, analyzedAt: '2026-01-01T00:00:00Z',
+      architecture: { ...arch, lang, framework },
+    });
+    const records = [old('old-php', 'php', 'laravel'), old('old-ts', 'ts', 'react')];
+    await new Promise<void>((resolve, reject) => {
+      const open = indexedDB.open('code-atlas', 1);
+      open.onupgradeneeded = () => open.result.createObjectStore('analyses', { keyPath: 'key' });
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const tx = open.result.transaction('analyses', 'readwrite');
+        for (const r of records) tx.objectStore('analyses').put(r);
+        tx.oncomplete = () => { open.result.close(); resolve(); };
+        tx.onerror = () => reject(tx.error);
+      };
+    });
+    const list = await listAnalyses();
+    expect(list.map((s) => [s.key, s.lang, s.framework]).sort()).toEqual([['old-php', 'php', 'laravel'], ['old-ts', 'ts', 'react']]);
+    expect(await loadAnalysis('old-php')).toEqual(records[0]);
+    expect(await loadAnalysis('old-ts')).toEqual(records[1]);
+  });
+
   test('stored record never contains source text', async () => {
     expect(JSON.stringify(arch)).not.toContain(MARKER);
     await saveAnalysis(summary('k1', '2026-01-01T00:00:00Z', arch));

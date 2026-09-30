@@ -1,7 +1,7 @@
 import { isSourcePath } from '../collect';
 import type { Detection } from '../detect';
 import { compileGlob, type GlobSyntax } from '../glob';
-import { sourcesFor } from '../sources';
+import { isBuildScript, sourcesFor } from '../sources';
 import type { RepoInput, SourceFile } from '../types';
 import { codeLines } from './lines';
 import { DEFAULT_EXCLUDE, DEFAULT_TEST_PATTERNS } from './rules';
@@ -30,7 +30,7 @@ export function splitScope(detection: Detection, input: RepoInput): Scope {
   const isExcluded = anyOf(exclude);
 
   const prod = sourcesFor(detection, input.files).filter((f) => !isTest(f.path) && !isExcluded(f.path));
-  const sameLang = input.files.filter((f) => isSourcePath(f.path) === detection.lang);
+  const sameLang = input.files.filter((f) => isSourcePath(f.path) === detection.lang && !isBuildScript(f.path));
   const tests = sameLang.filter((f) => isTest(f.path)).sort(byPath);
 
   const prefix = detection.sourceDir === '' ? '' : detection.sourceDir + '/';

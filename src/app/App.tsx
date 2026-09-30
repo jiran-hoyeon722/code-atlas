@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { ChoiceDialog, FolderInput, Landing } from '../features/landing/Landing';
 import { LoadingScreen } from '../features/loading/LoadingScreen';
 import { ViewerShell } from '../features/shell/ViewerShell';
+import { LANGS } from '../engine/langs';
 import type { Lang } from '../engine/types';
 import { useRepoSession, type SessionDeps } from './useRepoSession';
 
-const LANG_QUESTION = '이 폴더에는 PHP 와 TypeScript 가 함께 있어요. 어느 쪽으로 볼까요?';
+const LANG_QUESTION = '이 폴더에는 여러 언어가 함께 있어요. 어느 쪽으로 볼까요?';
 
 export function App({ deps }: { deps?: Partial<SessionDeps> }) {
   const s = useRepoSession(deps);
@@ -43,6 +44,7 @@ export function App({ deps }: { deps?: Partial<SessionDeps> }) {
   }
 
   const counts = state.langCounts;
+  const choices = state.langChoices;
   return (
     <Landing
       recent={state.recent}
@@ -68,14 +70,11 @@ export function App({ deps }: { deps?: Partial<SessionDeps> }) {
           onChoose={(v) => s.onConfirmTooMany(v === 'yes')}
         />
       )}
-      {state.phase === 'chooseLang' && counts && (
+      {state.phase === 'chooseLang' && counts && choices && (
         <ChoiceDialog
           title={LANG_QUESTION}
-          choices={[
-            { label: `PHP · ${(counts.php ?? 0).toLocaleString('ko-KR')}개`, value: 'php' },
-            { label: `TypeScript · ${(counts.ts ?? 0).toLocaleString('ko-KR')}개`, value: 'ts' },
-          ]}
-          initial={(counts.php ?? 0) >= (counts.ts ?? 0) ? 'php' : 'ts'}
+          choices={choices.map((l) => ({ label: `${LANGS[l].label} · ${(counts[l] ?? 0).toLocaleString('ko-KR')}개`, value: l }))}
+          initial={choices[0]}
           onChoose={(v) => s.onChooseLang(v as Lang | null)}
         />
       )}

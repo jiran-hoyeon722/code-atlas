@@ -9,6 +9,8 @@ const BASE = 'http://localhost:4173/';
 const OUT = resolve(ROOT, 'test-results/e2e');
 const REACT = resolve(ROOT, 'tests/fixtures/react-mini');
 const LARAVEL = resolve(ROOT, 'tests/fixtures/laravel-mini');
+const PY = resolve(ROOT, 'tests/fixtures/py-mini');
+const GO = resolve(ROOT, 'tests/fixtures/go-mini');
 
 let preview = null;
 const results = [];
@@ -287,6 +289,37 @@ async function main() {
       assert(meta.startsWith('Laravel'), `expected Laravel detection, got "${meta}"`);
       await shot(page, 'laravel-city.png');
     });
+
+    const newLangCity = async (dir, name, label, query, codeText, hljs, shotPrefix) => {
+      await page.click('.ca-shell-actions button:has-text("다른 레포 열기")');
+      await page.waitForSelector('[data-testid=folder-input]');
+      const r = await openFolder(page, dir, null);
+      assert(r.seen, `loading screen never appeared for ${name}`);
+      const brand = await page.locator('.ca-shell-brand strong').textContent();
+      assert(brand === name, `unexpected repo name "${brand}"`);
+      const meta = await page.locator('.ca-shell-brand span').textContent();
+      assert(meta.startsWith(`${label} · `), `expected ${label} detection, got "${meta}"`);
+      await page.locator('.ca-shell-mount canvas').first().click({ position: { x: 5, y: 5 } }).catch(() => {});
+      await page.keyboard.press('/');
+      await page.keyboard.type(query);
+      await page.waitForSelector('[data-el=results].open button');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('[data-el=panel-body] [data-open-code]');
+      await page.waitForTimeout(1500);
+      await shot(page, `${shotPrefix}-city.png`);
+      await page.click('[data-el=panel-body] [data-open-code]');
+      await page.waitForFunction((t) => document.querySelector('[data-el=code-src]')?.textContent?.includes(t), codeText, { timeout: 10_000 });
+      const cls = await page.locator('[data-el=code-src]').getAttribute('class');
+      assert(cls.includes(`language-${hljs}`), `code view class "${cls}" lacks language-${hljs}`);
+      assert(await page.locator('[data-el=code-src] .hljs-keyword').count() > 0, `${label} code is not highlighted`);
+      await page.waitForTimeout(500);
+      await shot(page, `${shotPrefix}-code.png`);
+      await page.keyboard.press('Escape');
+    };
+
+    await step('py-mini: city', () => newLangCity(PY, 'py-mini', 'Python', 'order', 'class Order', 'python', 'py'));
+
+    await step('go-mini: city', () => newLangCity(GO, 'go-mini', 'Go', 'item', 'func (i Item) Label', 'go', 'go'));
 
     await step('landing: GitHub form and sample gallery', async () => {
       await page.click('.ca-shell-actions button:has-text("다른 레포 열기")');

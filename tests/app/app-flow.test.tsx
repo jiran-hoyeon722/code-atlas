@@ -150,6 +150,8 @@ function fakes() {
   return { deps, store, runs, saved };
 }
 
+const LANG_QUESTION = '이 폴더에는 여러 언어가 함께 있어요. 어느 쪽으로 볼까요?';
+
 const zone = () => screen.getByRole('region', { name: '레포 폴더를 여기에 끌어다 놓으세요' });
 const drop = (list: DataTransferItemList) => fireEvent.drop(zone(), { dataTransfer: { items: list, types: ['Files'] } });
 
@@ -185,7 +187,7 @@ test('folder without supported files shows notice', async () => {
   const { deps } = fakes();
   render(<App deps={deps} />);
   drop(items(dirHandle('docs', { 'README.md': '# hi', img: { 'a.png': 'x' } })));
-  expect(await screen.findByText('PHP·TS/JS 파일을 찾지 못했어요.')).toBeTruthy();
+  expect(await screen.findByText('분석할 수 있는 소스 파일을 찾지 못했어요.')).toBeTruthy();
   expect(deps.startAnalysis).not.toHaveBeenCalled();
   expect(zone()).toBeTruthy();
 });
@@ -257,7 +259,7 @@ test('mixed php+ts folder asks which language and passes prefer', async () => {
   const { deps, runs } = fakes();
   render(<App deps={deps} />);
   drop(items(dirHandle('mixed', { app: { 'A.php': '<?php', 'B.php': '<?php' }, 'vite.config.js': 'export default {}' })));
-  const dialog = await screen.findByRole('dialog', { name: '이 폴더에는 PHP 와 TypeScript 가 함께 있어요. 어느 쪽으로 볼까요?' });
+  const dialog = await screen.findByRole('dialog', { name: LANG_QUESTION });
   expect(runs).toHaveLength(0);
   const php = within(dialog).getByRole('button', { name: /PHP/ });
   const ts = within(dialog).getByRole('button', { name: /TypeScript/ });
@@ -370,7 +372,7 @@ test('failed reconnects keep the viewer and show why', async () => {
 
   deps.pickDirectory = vi.fn(async () => dirHandle('shop-api', { 'README.md': 'x' }));
   await act(async () => h.shell!.onReconnect());
-  expect((await screen.findByRole('alert')).textContent).toContain('폴더를 다시 연결하지 못했어요. PHP·TS/JS 파일을 찾지 못했어요.');
+  expect((await screen.findByRole('alert')).textContent).toContain('폴더를 다시 연결하지 못했어요. 분석할 수 있는 소스 파일을 찾지 못했어요.');
   expect(screen.getByTestId('viewer')).toBeTruthy();
   fireEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: '닫기' }));
   expect(screen.queryByRole('alert')).toBeNull();
@@ -450,6 +452,39 @@ test('react folder with stray php files opens as ts without asking', async () =>
   expect(runs[0].prefer).toBe('ts');
 });
 
+test('java+kotlin folder asks with the bigger language first and focused', async () => {
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  drop(items(dirHandle('mobile', {
+    'build.gradle.kts': 'plugins {}',
+    'settings.gradle.kts': '',
+    src: { 'A.java': 'class A {}', 'B.kt': 'class B', 'C.kt': 'class C', 'D.kt': 'class D' },
+  })));
+  const dialog = await screen.findByRole('dialog', { name: LANG_QUESTION });
+  expect(runs).toHaveLength(0);
+  const labels = within(dialog).getAllByRole('button').map((b) => b.textContent).filter((t) => t?.includes('개'));
+  expect(labels).toEqual(['Kotlin · 3개', 'Java · 1개']);
+  expect(document.activeElement?.textContent).toBe('Kotlin · 3개');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Java · 1개' }));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(runs[0].prefer).toBe('java');
+});
+
+test('go folder with helper shell scripts opens as go without asking', async () => {
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  drop(items(dirHandle('svc', {
+    'go.mod': 'module example.com/svc',
+    'main.go': 'package main',
+    scripts: { 'build.sh': 'echo hi', 'test.sh': 'echo hi', 'lint.sh': 'echo hi' },
+  })));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(runs[0].input.configs['go.mod']).toBe('module example.com/svc');
+  await finish(runs[0], 'go');
+  expect(await screen.findByText('viewer:svc:go')).toBeTruthy();
+});
+
 test('folder with both laravel and react still asks', async () => {
   const { deps, runs } = fakes();
   render(<App deps={deps} />);
@@ -459,7 +494,7 @@ test('folder with both laravel and react still asks', async () => {
     app: { 'User.php': '<?php' },
     resources: { js: { 'App.tsx': '' } },
   })));
-  const dialog = await screen.findByRole('dialog', { name: '이 폴더에는 PHP 와 TypeScript 가 함께 있어요. 어느 쪽으로 볼까요?' });
+  const dialog = await screen.findByRole('dialog', { name: LANG_QUESTION });
   expect(runs).toHaveLength(0);
   fireEvent.click(within(dialog).getByRole('button', { name: /PHP/ }));
   await waitFor(() => expect(runs).toHaveLength(1));

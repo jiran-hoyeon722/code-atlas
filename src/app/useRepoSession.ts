@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Architecture } from '../engine/architecture';
 import { isSourcePath } from '../engine/collect';
 import { detect } from '../engine/detect';
+import { countLangs, pickLang } from '../engine/pick';
 import { presetFor, type Role } from '../engine/presets';
 import { sourcesFor } from '../engine/sources';
 import type { Lang } from '../engine/types';
@@ -41,6 +42,8 @@ export interface SessionState {
   loading?: LoadingInfo;
   tooMany?: number;
   langCounts?: Partial<Record<Lang, number>>;
+  /** languages to offer, most files first; the first is the default */
+  langChoices?: Lang[];
   viewer?: { arch: Architecture; skipped: number; canReconnect: boolean; id: number; origin?: GithubOrigin };
   samples: SampleRepo[];
   /** the GitHub spec behind the current notice, so the landing can offer a ZIP download instead */
@@ -49,7 +52,7 @@ export interface SessionState {
 
 export const NOTICE = {
   notFolder: '폴더를 끌어다 놓아 주세요. 파일 하나로는 분석할 수 없어요.',
-  noFiles: 'PHP·TS/JS 파일을 찾지 못했어요.',
+  noFiles: '분석할 수 있는 소스 파일을 찾지 못했어요.',
   readFailed: '폴더를 읽지 못했어요. 다시 시도해 주세요.',
   analyzeFailed: '분석하지 못했어요. 다시 시도해 주세요.',
   missing: '저장된 분석을 찾지 못했어요.',
@@ -309,23 +312,20 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
       if (!ok) return toLanding();
     }
 
-    const counts: Partial<Record<Lang, number>> = {};
-    for (const e of listing.sources) {
-      const lang = isSourcePath(e.path);
-      if (lang) counts[lang] = (counts[lang] ?? 0) + 1;
-    }
+    const counts = countLangs(listing.sources.map((e) => e.path));
+    const { ask: choices } = pickLang(counts);
     const phpTs = (counts.php ?? 0) > 0 && (counts.ts ?? 0) > 0;
     let prefer: Lang | undefined;
     if (phpTs) prefer = await frameworkLang(listing);
     if (!alive()) return;
-    if (phpTs && !prefer) {
-      const choice = await ask<Lang | null>({ phase: 'chooseLang', langCounts: counts });
+    if (choices.length >= 2 && !prefer) {
+      const choice = await ask<Lang | null>({ phase: 'chooseLang', langCounts: counts, langChoices: choices });
       if (!alive()) return;
       if (!choice) return toLanding();
       prefer = choice;
     }
 
-    setState((s) => ({ ...s, phase: 'reading', tooMany: undefined, langCounts: undefined }));
+    setState((s) => ({ ...s, phase: 'reading', tooMany: undefined, langCounts: undefined, langChoices: undefined }));
     const onRead = throttled((v: { done: number; total: number }) => setStep({ phase: 'read', ...v }));
     const input = await loadRepo(listing, (done, total) => onRead({ done, total }));
     if (!alive()) return;
