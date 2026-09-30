@@ -64,6 +64,7 @@ function fakeEnv(battle?: BattleAccess): ViewerEnv {
     selection: {},
     onSelect: vi.fn(),
     goto: vi.fn(),
+    collapse: vi.fn(),
     battle,
   };
 }

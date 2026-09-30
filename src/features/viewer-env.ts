@@ -17,6 +17,8 @@ export interface ViewerEnv {
   selection: Selection;
   onSelect(sel: Selection): void;
   goto(tab: TabId, sel?: Selection): void;
+  /** The repo was destroyed in play: forget its cached analysis and go back to the landing screen. */
+  collapse(): void;
   /** Present when the session can supply battle data (the current repo and the registered ones). */
   battle?: BattleAccess;
 }

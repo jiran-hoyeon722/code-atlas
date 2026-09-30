@@ -15,6 +15,8 @@ export interface ViewerShellProps {
   onReconnect(): void;
   onReanalyze(): void;
   onOpenOther(): void;
+  /** the walk tab's virus destroyed the repo: drop its cached analysis and leave */
+  onCollapse(): void;
   /** the analysis is of a public GitHub repo at this commit */
   origin?: GithubOrigin;
   /** battle data for the open repo and the registered ones; the battle tab explains its absence */
@@ -58,7 +60,7 @@ function initialState(webgl: boolean): { tab: TabId; sel: Selection } {
 
 const treeUrl = (o: GithubOrigin) => `https://github.com/${o.owner}/${o.repo}/tree/${o.sha}${o.subdir ? `/${o.subdir.split('/').map(encodeURIComponent).join('/')}` : ''}`;
 
-export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onReanalyze, onOpenOther, origin, battle }: ViewerShellProps) {
+export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onReanalyze, onOpenOther, onCollapse, origin, battle }: ViewerShellProps) {
   const webgl = useMemo(() => hasWebGL(), []);
   const initial = useMemo(() => initialState(webgl), [webgl]);
   const [tab, setTab] = useState<TabId>(initial.tab);
@@ -73,6 +75,8 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
   readSourceRef.current = readSource;
   const battleRef = useRef(battle);
   battleRef.current = battle;
+  const collapseRef = useRef(onCollapse);
+  collapseRef.current = onCollapse;
   const viewRef = useRef<HTMLDivElement>(null);
 
   const go = (next: TabId, sel: Selection) => {
@@ -126,6 +130,9 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
       },
       goto: (next, sel) => {
         if (live) go(next, sel ?? {});
+      },
+      collapse: () => {
+        if (live) collapseRef.current();
       },
       ...(battleRef.current && { battle: battleRef.current }),
     };
