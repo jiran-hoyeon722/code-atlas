@@ -23,6 +23,7 @@ const LOADERS: Record<TabId, () => Promise<MountViewer>> = {
   city: () => import('../city/mountCity').then((m) => m.mountCity),
   graph: () => import('../graph/mountGraph').then((m) => m.mountGraph),
   explorer: () => import('../explorer/mountExplorer').then((m) => m.mountExplorer),
+  battle: () => import('../battle/tab/mountBattle').then((m) => m.mountBattle),
   walk: () => import('../walk/mountWalk').then((m) => m.mountWalk),
 };
 const TABS: { id: TabId; label: string }[] = [
