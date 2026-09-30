@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { spawnRobot, type Robot } from './walkRobot';
+import { nextGait, type Gait } from './walkMotion';
 
 export interface HeroPose {
   speed: number;
@@ -147,6 +148,7 @@ export function createModelHero(url: string, onError: () => void): ModelHero {
   let dead = false;
   let seated = false;
   let disposed = false;
+  let gait: Gait = 'Idle';
 
   void spawnRobot(url, 1.75).then((r) => {
     if (disposed) { r.dispose(); return; }
@@ -163,7 +165,7 @@ export function createModelHero(url: string, onError: () => void): ModelHero {
     get rig() { return robot?.root ?? null; },
     emote(name) {
       if (!robot || dead) return;
-      emoting = robot.play(name, name === 'Punch' ? 0.08 : 0.2);
+      emoting = robot.play(name, name === 'Punch' ? 0.08 : 0.2, true);
     },
     die() {
       dead = true;
@@ -182,12 +184,13 @@ export function createModelHero(url: string, onError: () => void): ModelHero {
     animate(p) {
       if (!robot) { fallback.animate(p); return; }
       if (!dead && !seated) {
-        const moving = p.speed > 0.4;
-        if ((moving || p.airborne) && emoting && emoting !== robot.actions.Punch) emoting = null;
-        if (!emoting) robot.play(p.airborne ? 'Jump' : !moving ? 'Idle' : p.run > 0.35 ? 'Running' : 'Walking', p.airborne ? 0.12 : 0.28);
-        const cur = robot.current;
-        if (cur === robot.actions.Walking) cur.timeScale = Math.max(0.6, p.speed / 3.2);
-        if (cur === robot.actions.Running) cur.timeScale = Math.max(0.8, p.speed / 9);
+        gait = nextGait(gait, p.speed);
+        if ((gait !== 'Idle' || p.airborne) && emoting && emoting !== robot.actions.Punch) emoting = null;
+        if (!emoting) robot.play(p.airborne ? 'Jump' : gait, p.airborne ? 0.12 : 0.28);
+        const { Walking, Running } = robot.actions;
+        const ease = Math.min(1, p.dt * 8);
+        if (Walking) Walking.timeScale += (Math.min(1.7, Math.max(0.6, p.speed / 3.2)) - Walking.timeScale) * ease;
+        if (Running) Running.timeScale += (Math.max(0.8, p.speed / 9) - Running.timeScale) * ease;
         robot.root.rotation.z = -p.turn * 0.05 * (0.4 + p.run);
       }
       robot.mixer.update(p.dt);

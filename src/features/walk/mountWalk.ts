@@ -21,6 +21,7 @@ import { THEMES, type Theme } from './walkThemes';
 import { createMarkers, createSparks } from './walkFx';
 import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type WeaponId } from './walkWeapons';
 import { createVirus, pickOrigin } from './walkVirus';
+import { turnToward } from './walkMotion';
 import type { RideCar } from './walkTraffic';
 import robotUrl from './assets/RobotExpressive.glb?url';
 
@@ -502,6 +503,8 @@ const mount: MountViewer = (root, arch, env) => {
     ?? [...layout.buildings].sort((a, c) => arch.nodes[c.i].centrality - arch.nodes[a.i].centrality)[0];
   const pos = start ? frontOf(start) : new THREE.Vector3(0, 0, bounds.maxZ - 10);
   const vel = new THREE.Vector3();
+  // Hits shove the player through their own decaying impulse, so steering and facing never fight the knockback.
+  const knock = new THREE.Vector3();
   let vy = 0;
   let footY = 0;
   let heading = start ? (start.face > 0 ? Math.PI : 0) : Math.PI;
@@ -509,6 +512,8 @@ const mount: MountViewer = (root, arch, env) => {
   let yaw = heading + Math.PI;
   let pitch = 0.3;
   let distance = 7.5;
+  let camReach = distance;
+  let bob = 0;
   let fov = 58;
   const camPos = new THREE.Vector3();
   const lookAt = new THREE.Vector3(pos.x, 1.6, pos.z);
@@ -562,8 +567,8 @@ const mount: MountViewer = (root, arch, env) => {
     shake = Math.max(shake, Math.min(1, damage / 30));
     const dx = pos.x - fx, dz = pos.z - fz;
     const d = Math.hypot(dx, dz) || 1;
-    vel.x += (dx / d) * push;
-    vel.z += (dz / d) * push;
+    knock.x += (dx / d) * push;
+    knock.z += (dz / d) * push;
     if (hp <= 0) {
       if (mode === 'drive') leaveVehicle();
       alive = false;
@@ -633,7 +638,6 @@ const mount: MountViewer = (root, arch, env) => {
       punchAt = 0.22;
       return;
     }
-    heading = yaw + Math.PI;
     aimHold = 0.7;
     pendingShot = true;
   };
@@ -1122,8 +1126,10 @@ const mount: MountViewer = (root, arch, env) => {
     const airborne = footY > 0.001 || vy > 0;
     vel.lerp(wish, Math.min(1, dt * (airborne ? ACCEL * 0.15 : ACCEL) / Math.max(1, vel.distanceTo(wish))));
     if (vel.lengthSq() < 0.0004 && wish.lengthSq() === 0) vel.set(0, 0, 0);
-    if (!blockedWalker(pos.x + vel.x * dt, pos.z)) pos.x += vel.x * dt; else vel.x = 0;
-    if (!blockedWalker(pos.x, pos.z + vel.z * dt)) pos.z += vel.z * dt; else vel.z = 0;
+    if (onFoot) knock.multiplyScalar(Math.exp(-dt * (airborne ? 1.5 : 7))); else knock.set(0, 0, 0);
+    const stepX = (vel.x + knock.x) * dt, stepZ = (vel.z + knock.z) * dt;
+    if (!blockedWalker(pos.x + stepX, pos.z)) pos.x += stepX; else { vel.x = 0; knock.x = 0; }
+    if (!blockedWalker(pos.x, pos.z + stepZ)) pos.z += stepZ; else { vel.z = 0; knock.z = 0; }
     vy -= GRAVITY * dt;
     footY = Math.max(0, footY + vy * dt);
     if (footY === 0 && vy < 0) vy = 0;
@@ -1131,23 +1137,20 @@ const mount: MountViewer = (root, arch, env) => {
     const prev = heading;
     aimHold = Math.max(0, aimHold - dt);
     if (triggerHeld && weapon.auto) attack();
-    if (aimHold > 0 && onFoot) heading = yaw + Math.PI;
-    else if (speed > 0.3) {
-      const target = Math.atan2(vel.x, vel.z);
-      const delta = Math.atan2(Math.sin(target - heading), Math.cos(target - heading));
-      heading += delta * Math.min(1, dt * 10);
-    }
+    const aimHeading = yaw + Math.PI;
+    if (aimHold > 0 && onFoot) heading = turnToward(heading, aimHeading, dt, 22, 26);
+    else if (speed > 0.3) heading = turnToward(heading, Math.atan2(vel.x, vel.z), dt, 10, 12);
     turnRate += ((Math.atan2(Math.sin(heading - prev), Math.cos(heading - prev)) / Math.max(dt, 1e-3)) - turnRate) * Math.min(1, dt * 8);
     const run = Math.max(0, Math.min(1, (speed - WALK) / (RUN - WALK)));
     hero.animate({ speed, run, airborne: footY > 0.05, turn: turnRate, dt, time });
     hero.root.position.set(pos.x, footY + 0.16, pos.z);
     hero.root.rotation.y = heading;
     const gun = weapon.kind === 'gun';
-    heroHeld.follow(hero.rig, gun && (aimHold > 0 || triggerHeld) ? aimVec.set(Math.sin(heading), 0, Math.cos(heading)) : null, hero.root.visible && onFoot && alive);
+    heroHeld.follow(hero.rig, gun && (aimHold > 0 || triggerHeld) ? aimVec.set(Math.sin(aimHold > 0 ? aimHeading : heading), 0, Math.cos(aimHold > 0 ? aimHeading : heading)) : null, hero.root.visible && onFoot && alive);
     if (pendingShot) {
       pendingShot = false;
       heroHeld.tip(muzzle);
-      battle.shoot(pos, heading, weapon, shotEnd);
+      battle.shoot(pos, aimHeading, weapon, shotEnd);
       const pellets = weapon.id === 'shotgun' ? 6 : 1;
       for (let k = 0; k < pellets; k++) {
         const end = pellets > 1 ? v.copy(shotEnd).add(s.set((Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 1.6)) : shotEnd;
@@ -1268,12 +1271,14 @@ const mount: MountViewer = (root, arch, env) => {
       camera.lookAt(lookAt);
     } else {
       $('fade').style.opacity = '0';
+      const orbit = (r: number) => camPos.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(r).add(v.set(pos.x, 1.7 + footY * 0.5, pos.z));
       let reach = distance;
-      do {
-        camPos.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(reach).add(v.set(pos.x, 1.7 + footY * 0.5, pos.z));
-        reach -= 0.5;
-      } while (reach > 1.5 && insideBuilding(camPos));
-      camPos.y = Math.max(0.6, camPos.y) + (reduceMotion ? 0 : Math.sin(time * speed * 2.6) * 0.035 * run);
+      while (reach > 1.5 && insideBuilding(orbit(reach))) reach -= 0.5;
+      // Pull in at once so walls never cut the view, but ease back out so the camera does not pump along a wall.
+      camReach = reach < camReach ? reach : camReach + (reach - camReach) * Math.min(1, dt * 3);
+      orbit(camReach);
+      bob += dt * speed * 2.6;
+      camPos.y = Math.max(0.6, camPos.y) + (reduceMotion ? 0 : Math.sin(bob) * 0.035 * run);
       camera.position.lerp(camPos, Math.min(1, dt * 9));
       lookAt.lerp(v.set(pos.x, 1.6 + footY * 0.4, pos.z), Math.min(1, dt * 14));
       camera.lookAt(lookAt);
