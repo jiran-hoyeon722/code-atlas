@@ -25,6 +25,10 @@ test('config paths at any depth, not inside skipped dirs', () => {
   expect(isConfigPath('node_modules/x/package.json')).toBe(false);
   expect(isConfigPath('a/vendor/composer.json')).toBe(false);
   expect(isConfigPath('other.json')).toBe(false);
+  expect(isConfigPath('go.mod')).toBe(true);
+  expect(isConfigPath('tools/go.mod')).toBe(true);
+  expect(isConfigPath('vendor/x/go.mod')).toBe(false);
+  expect(isConfigPath('go.sum')).toBe(false);
 });
 test('MAX_FILES', () => { expect(MAX_FILES).toBe(20000); });
 test('gitignore rules', () => {

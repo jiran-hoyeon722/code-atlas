@@ -3,6 +3,7 @@ import type { Parsers } from './parsers';
 import { extractPhpProject } from './php/project';
 import { extractTsProject } from './ts/project';
 import { extractProject, type LangModule } from './link';
+import { goModule } from './go/module';
 import { pyModule } from './py/module';
 import type { Extraction, Lang, RepoInput } from './types';
 
@@ -14,7 +15,7 @@ export type Extractor = (
   onLink?: () => void,
 ) => Extraction;
 
-const MODULES: Partial<Record<Lang, LangModule>> = { py: pyModule };
+const MODULES: Partial<Record<Lang, LangModule>> = { py: pyModule, go: goModule };
 
 const EXTRACTORS: Partial<Record<Lang, Extractor>> = { php: extractPhpProject, ts: extractTsProject };
 

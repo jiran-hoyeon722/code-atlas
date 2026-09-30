@@ -28,7 +28,7 @@ function loadRepo(name: string): RepoInput {
 const NOW = new Date('2026-01-01T00:00:00Z');
 let parsers: Parsers;
 beforeAll(async () => {
-  parsers = await loadParsers(nodeLocate, ['php', 'ts', 'py']);
+  parsers = await loadParsers(nodeLocate, ['php', 'ts', 'py', 'go']);
 });
 
 describe('analyze', () => {
@@ -78,6 +78,41 @@ describe('analyze', () => {
     });
     expect(a.nodes.find((n) => n.path === 'tests/test_views.py')!.kind).toBe('test');
     expect(a.nodes.find((n) => n.path === 'shop/api/__init__.py')!.name).toBe('api/__init__');
+  });
+
+  test('go fixture end to end', () => {
+    const input = loadRepo('go-mini');
+    expect(Object.keys(input.configs).sort()).toEqual(['go.mod', 'tools/go.mod']);
+    const a = analyze(input, parsers, { now: NOW });
+    expect(a.lang).toBe('go');
+    expect(a.framework).toBeNull();
+    expect(a.nodes.length).toBe(8);
+    const path = (i: number) => a.nodes[i].path;
+    expect(a.edges.map(([from, to]) => `${path(from)}→${path(to)}`).sort()).toEqual([
+      'cmd/shop/main.go→internal/service/order.go',
+      'cmd/shop/main.go→pkg/util/strings.go',
+      'internal/service/order.go→internal/model/item.go',
+      'internal/service/order.go→internal/model/order.go',
+      'internal/service/order_test.go→internal/model/item.go',
+      'internal/service/order_test.go→internal/model/order.go',
+      'tools/gen/main.go→tools/lint/lint.go',
+    ]);
+    expect(a.unresolved).toBe(1);
+    expect(a.failed).toEqual([]);
+    const byRole: Record<string, string[]> = {};
+    for (const n of a.nodes) (byRole[a.roles[n.role].name] ??= []).push(n.path);
+    expect(byRole).toEqual({
+      테스트: ['internal/service/order_test.go'],
+      진입점: ['cmd/shop/main.go', 'tools/gen/main.go'],
+      애플리케이션: ['internal/service/order.go'],
+      도메인: ['internal/model/item.go', 'internal/model/order.go'],
+      기반: ['pkg/util/strings.go'],
+      기타: ['tools/lint/lint.go'],
+    });
+    const kind = (p: string) => a.nodes.find((n) => n.path === p)!.kind;
+    expect(kind('internal/service/order_test.go')).toBe('test');
+    expect(kind('cmd/shop/main.go')).toBe('main');
+    expect(kind('internal/model/order.go')).toBe('module');
   });
 
   test('progress events', () => {

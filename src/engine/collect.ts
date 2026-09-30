@@ -25,7 +25,7 @@ export function isConfigPath(path: string): boolean {
   const parts = path.split('/');
   const base = parts[parts.length - 1];
   if (parts.slice(0, -1).some(shouldSkipDir)) return false;
-  return base === 'composer.json' || base === 'package.json' || base === 'jsconfig.json'
+  return base === 'composer.json' || base === 'package.json' || base === 'jsconfig.json' || base === 'go.mod'
     || /^tsconfig.*\.json$/.test(base);
 }
 

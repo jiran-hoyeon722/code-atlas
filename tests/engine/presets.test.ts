@@ -127,9 +127,27 @@ describe('presetFor', () => {
     expect(roleOf('a/b/db/session.py')).toBe('모델/데이터');
     expect(roleOf('shop/core/base.py')).toBe('공용/설정');
     expect(roleOf('tests/test_a.py')).toBe('테스트');
-    expect(roleOf('tests/api/test_b.py')).toBe('진입점');
+    expect(roleOf('tests/api/test_b.py')).toBe('테스트');
     expect(roleOf('shop/myapi/x.py')).toBe('기타');
     expect(roleOf('shop/oldviews.py')).toBe('기타');
+    expect(p.layers.map((l) => l.label)).toEqual(['진입점', '애플리케이션', '도메인', '기반']);
+    expect(p.roles[p.roles.length - 1]).toMatchObject({ name: '기타', patterns: [''] });
+  });
+  test('go preset: tests first, then entry, application, domain, foundation', () => {
+    const d: Detection = { lang: 'go', framework: null, sourceDir: '', routeDirs: [] };
+    const p = presetFor(d, []);
+    const m = compileRoles(p.roles);
+    const roleOf = (path: string) => p.roles[m(path)].name;
+    expect(p.roles[0].name).toBe('테스트');
+    expect(roleOf('internal/handler/user_test.go')).toBe('테스트');
+    expect(roleOf('main.go')).toBe('진입점');
+    expect(roleOf('cmd/api/run.go')).toBe('진입점');
+    expect(roleOf('internal/handler/user.go')).toBe('진입점');
+    expect(roleOf('app/services/pay.go')).toBe('애플리케이션');
+    expect(roleOf('internal/store/db.go')).toBe('도메인');
+    expect(roleOf('internal/auth/token.go')).toBe('기반');
+    expect(roleOf('pkg/util/strings.go')).toBe('기반');
+    expect(roleOf('tools/lint.go')).toBe('기타');
     expect(p.layers.map((l) => l.label)).toEqual(['진입점', '애플리케이션', '도메인', '기반']);
     expect(p.roles[p.roles.length - 1]).toMatchObject({ name: '기타', patterns: [''] });
   });

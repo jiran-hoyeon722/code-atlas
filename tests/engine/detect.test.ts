@@ -40,7 +40,7 @@ test('languages without an extractor are not counted', () => {
   expect(detect({ name: 'x', configs: {}, files })).toEqual({ lang: 'php', framework: null, sourceDir: '', routeDirs: [] });
 });
 test('a repo with only unsupported sources → null', () => {
-  expect(detect({ name: 'x', configs: {}, files: [{ path: 'm/a.swift', text: '' }, { path: 'm/b.swift', text: '' }] })).toBeNull();
+  expect(detect({ name: 'x', configs: {}, files: [{ path: 'm/a.rb', text: '' }, { path: 'm/b.rb', text: '' }] })).toBeNull();
 });
 test('a python-only repo is detected once python has an extractor', () => {
   expect(detect({ name: 'x', configs: {}, files: [{ path: 'm/a.py', text: '' }, { path: 'm/b.py', text: '' }] })).toEqual({ lang: 'py', framework: null, sourceDir: '', routeDirs: [] });
