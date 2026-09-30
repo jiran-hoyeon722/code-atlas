@@ -1,0 +1,552 @@
+{
+  "generatedAt": "2026-09-30",
+  "repos": [
+    {
+      "id": "alan2207-bulletproof-react",
+      "owner": "alan2207",
+      "repo": "bulletproof-react",
+      "sha": "9506629ed003a561c6627735480cce4994244bb4",
+      "subdir": "apps/react-vite",
+      "blurb": "확장하기 좋은 React 앱 구조의 교과서",
+      "lang": "ts",
+      "framework": "react",
+      "files": 128,
+      "edges": 331,
+      "stars": 35912,
+      "roles": [
+        {
+          "name": "라우트/페이지",
+          "layer": 0
+        },
+        {
+          "name": "레이아웃",
+          "layer": 0
+        },
+        {
+          "name": "진입 파일",
+          "layer": 0
+        },
+        {
+          "name": "기능 모듈",
+          "layer": 1
+        },
+        {
+          "name": "기능 훅",
+          "layer": 1
+        },
+        {
+          "name": "훅",
+          "layer": 1
+        },
+        {
+          "name": "UI 컴포넌트",
+          "layer": 3
+        },
+        {
+          "name": "공용 컴포넌트",
+          "layer": 3
+        },
+        {
+          "name": "기능 컴포넌트",
+          "layer": 1
+        },
+        {
+          "name": "상태 관리",
+          "layer": 2
+        },
+        {
+          "name": "서비스/API",
+          "layer": 2
+        },
+        {
+          "name": "API 클라이언트",
+          "layer": 2
+        },
+        {
+          "name": "타입",
+          "layer": 3
+        },
+        {
+          "name": "상수",
+          "layer": 3
+        },
+        {
+          "name": "유틸/라이브러리",
+          "layer": 3
+        },
+        {
+          "name": "기타",
+          "layer": 3
+        }
+      ],
+      "roleCounts": [
+        15,
+        0,
+        1,
+        28,
+        0,
+        2,
+        49,
+        0,
+        8,
+        0,
+        0,
+        0,
+        1,
+        2,
+        7,
+        15
+      ]
+    },
+    {
+      "id": "excalidraw-excalidraw",
+      "owner": "excalidraw",
+      "repo": "excalidraw",
+      "sha": "35e854ecf7a1ace3467922965ce07ec1a6f0ea54",
+      "subdir": "",
+      "blurb": "손그림 느낌의 협업 화이트보드",
+      "lang": "ts",
+      "framework": null,
+      "files": 699,
+      "edges": 3605,
+      "stars": 133266,
+      "roles": [
+        {
+          "name": "dev-docs",
+          "layer": 3
+        },
+        {
+          "name": "examples",
+          "layer": 3
+        },
+        {
+          "name": "excalidraw-app",
+          "layer": 3
+        },
+        {
+          "name": "packages",
+          "layer": 3
+        },
+        {
+          "name": "public",
+          "layer": 3
+        },
+        {
+          "name": "scripts",
+          "layer": 3
+        },
+        {
+          "name": "기타",
+          "layer": 3
+        }
+      ],
+      "roleCounts": [
+        10,
+        12,
+        43,
+        618,
+        1,
+        13,
+        2
+      ]
+    },
+    {
+      "id": "shadcn-ui-taxonomy",
+      "owner": "shadcn-ui",
+      "repo": "taxonomy",
+      "sha": "298a8857c7128a0d121e7f699dfd729f23b3966d",
+      "subdir": "",
+      "blurb": "Next.js App Router 로 만든 실전 예제 앱",
+      "lang": "ts",
+      "framework": "react",
+      "files": 131,
+      "edges": 270,
+      "stars": 19293,
+      "roles": [
+        {
+          "name": "라우트/페이지",
+          "layer": 0
+        },
+        {
+          "name": "레이아웃",
+          "layer": 0
+        },
+        {
+          "name": "진입 파일",
+          "layer": 0
+        },
+        {
+          "name": "기능 모듈",
+          "layer": 1
+        },
+        {
+          "name": "기능 훅",
+          "layer": 1
+        },
+        {
+          "name": "훅",
+          "layer": 1
+        },
+        {
+          "name": "UI 컴포넌트",
+          "layer": 3
+        },
+        {
+          "name": "공용 컴포넌트",
+          "layer": 3
+        },
+        {
+          "name": "기능 컴포넌트",
+          "layer": 1
+        },
+        {
+          "name": "상태 관리",
+          "layer": 2
+        },
+        {
+          "name": "서비스/API",
+          "layer": 2
+        },
+        {
+          "name": "API 클라이언트",
+          "layer": 2
+        },
+        {
+          "name": "타입",
+          "layer": 3
+        },
+        {
+          "name": "상수",
+          "layer": 3
+        },
+        {
+          "name": "유틸/라이브러리",
+          "layer": 3
+        },
+        {
+          "name": "기타",
+          "layer": 3
+        }
+      ],
+      "roleCounts": [
+        36,
+        0,
+        0,
+        0,
+        0,
+        2,
+        37,
+        0,
+        30,
+        0,
+        0,
+        0,
+        2,
+        5,
+        12,
+        7
+      ]
+    },
+    {
+      "id": "honojs-hono",
+      "owner": "honojs",
+      "repo": "hono",
+      "sha": "37ce06904e732d4bc11c9075adf362c76049a594",
+      "subdir": "",
+      "blurb": "어느 런타임에서나 도는 가벼운 웹 프레임워크",
+      "lang": "ts",
+      "framework": null,
+      "files": 423,
+      "edges": 957,
+      "stars": 32387,
+      "roles": [
+        {
+          "name": "adapters",
+          "layer": 3
+        },
+        {
+          "name": "benchmarks",
+          "layer": 3
+        },
+        {
+          "name": "perf-measures",
+          "layer": 3
+        },
+        {
+          "name": "runtime-tests",
+          "layer": 3
+        },
+        {
+          "name": "src",
+          "layer": 3
+        },
+        {
+          "name": "기타",
+          "layer": 3
+        }
+      ],
+      "roleCounts": [
+        72,
+        21,
+        4,
+        13,
+        311,
+        2
+      ]
+    },
+    {
+      "id": "koel-koel",
+      "owner": "koel",
+      "repo": "koel",
+      "sha": "1a23ae71d9ec2cd6bf86fcf0dd004c10fe89315d",
+      "subdir": "",
+      "blurb": "Laravel 로 만든 개인 음악 스트리밍 서버",
+      "lang": "php",
+      "framework": "laravel",
+      "files": 958,
+      "edges": 2732,
+      "stars": 17266,
+      "roles": [
+        {
+          "name": "Controller",
+          "layer": 0
+        },
+        {
+          "name": "Middleware",
+          "layer": 0
+        },
+        {
+          "name": "Request",
+          "layer": 0
+        },
+        {
+          "name": "Resource",
+          "layer": 0
+        },
+        {
+          "name": "Console",
+          "layer": 0
+        },
+        {
+          "name": "Provider",
+          "layer": 0
+        },
+        {
+          "name": "Job",
+          "layer": 1
+        },
+        {
+          "name": "Listener",
+          "layer": 1
+        },
+        {
+          "name": "Observer",
+          "layer": 1
+        },
+        {
+          "name": "Mail",
+          "layer": 1
+        },
+        {
+          "name": "Notification",
+          "layer": 1
+        },
+        {
+          "name": "Policy",
+          "layer": 1
+        },
+        {
+          "name": "Actions",
+          "layer": 1
+        },
+        {
+          "name": "Services",
+          "layer": 1
+        },
+        {
+          "name": "Model",
+          "layer": 2
+        },
+        {
+          "name": "Event",
+          "layer": 2
+        },
+        {
+          "name": "Repository",
+          "layer": 2
+        },
+        {
+          "name": "Enum",
+          "layer": 3
+        },
+        {
+          "name": "Exception",
+          "layer": 3
+        },
+        {
+          "name": "Cast",
+          "layer": 3
+        },
+        {
+          "name": "Rule",
+          "layer": 3
+        },
+        {
+          "name": "기타",
+          "layer": 3
+        }
+      ],
+      "roleCounts": [
+        164,
+        19,
+        106,
+        29,
+        29,
+        14,
+        9,
+        9,
+        9,
+        4,
+        0,
+        12,
+        0,
+        128,
+        39,
+        9,
+        22,
+        15,
+        42,
+        14,
+        13,
+        272
+      ]
+    },
+    {
+      "id": "bookstackapp-bookstack",
+      "owner": "BookStackApp",
+      "repo": "BookStack",
+      "sha": "066240e8330cb489ba2385f646ef617c154348fe",
+      "subdir": "",
+      "blurb": "Laravel 기반 위키·문서 플랫폼",
+      "lang": "php",
+      "framework": "laravel",
+      "files": 522,
+      "edges": 1773,
+      "stars": 19065,
+      "roles": [
+        {
+          "name": "Controller",
+          "layer": 0
+        },
+        {
+          "name": "Middleware",
+          "layer": 0
+        },
+        {
+          "name": "Request",
+          "layer": 0
+        },
+        {
+          "name": "Resource",
+          "layer": 0
+        },
+        {
+          "name": "Console",
+          "layer": 0
+        },
+        {
+          "name": "Provider",
+          "layer": 0
+        },
+        {
+          "name": "Job",
+          "layer": 1
+        },
+        {
+          "name": "Listener",
+          "layer": 1
+        },
+        {
+          "name": "Observer",
+          "layer": 1
+        },
+        {
+          "name": "Mail",
+          "layer": 1
+        },
+        {
+          "name": "Notification",
+          "layer": 1
+        },
+        {
+          "name": "Policy",
+          "layer": 1
+        },
+        {
+          "name": "Actions",
+          "layer": 1
+        },
+        {
+          "name": "Services",
+          "layer": 1
+        },
+        {
+          "name": "Model",
+          "layer": 2
+        },
+        {
+          "name": "Event",
+          "layer": 2
+        },
+        {
+          "name": "Repository",
+          "layer": 2
+        },
+        {
+          "name": "Enum",
+          "layer": 3
+        },
+        {
+          "name": "Exception",
+          "layer": 3
+        },
+        {
+          "name": "Cast",
+          "layer": 3
+        },
+        {
+          "name": "Rule",
+          "layer": 3
+        },
+        {
+          "name": "기타",
+          "layer": 3
+        }
+      ],
+      "roleCounts": [
+        0,
+        21,
+        0,
+        0,
+        18,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        32,
+        0,
+        0,
+        451
+      ]
+    }
+  ]
+}

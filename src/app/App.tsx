@@ -23,6 +23,7 @@ export function App({ deps }: { deps?: Partial<SessionDeps> }) {
           onReconnect={s.onReconnect}
           onReanalyze={() => void s.onReanalyze()}
           onOpenOther={s.onOpenOther}
+          origin={v.origin}
         />
         {v.skipped > 0 && <SkippedNote key={v.id} count={v.skipped} />}
         {state.notice && (
@@ -38,7 +39,7 @@ export function App({ deps }: { deps?: Partial<SessionDeps> }) {
 
   if ((state.phase === 'listing' || state.phase === 'reading' || state.phase === 'analyzing') && state.loading) {
     const l = state.loading;
-    return <LoadingScreen name={l.name} framework={l.framework} sourceDir={l.sourceDir} roles={l.roles} step={l.step} onCancel={s.onCancel} />;
+    return <LoadingScreen name={l.name} framework={l.framework} sourceDir={l.sourceDir} roles={l.roles} step={l.step} remote={l.remote} onCancel={s.onCancel} />;
   }
 
   const counts = state.langCounts;
@@ -46,6 +47,10 @@ export function App({ deps }: { deps?: Partial<SessionDeps> }) {
     <Landing
       recent={state.recent}
       notice={state.notice}
+      failedGithub={state.failedGithub}
+      samples={state.samples}
+      onOpenGithub={s.onOpenGithub}
+      onOpenSample={s.onOpenSample}
       hasPicker={s.hasPicker}
       blocked={state.phase === 'confirmTooMany' || state.phase === 'chooseLang'}
       onPickFolder={s.onPickFolder}

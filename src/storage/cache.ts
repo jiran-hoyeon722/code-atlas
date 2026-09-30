@@ -1,5 +1,6 @@
 import type { Architecture } from '../engine/architecture';
 import type { Lang } from '../engine/types';
+import type { GithubOrigin } from '../app/files/github';
 import type { Listing } from '../app/files/types';
 
 export interface CacheSummary {
@@ -9,6 +10,8 @@ export interface CacheSummary {
   lang: Lang;
   files: number;
   analyzedAt: string;
+  /** set when the analysis came from a public GitHub repo; code is fetched again from that commit */
+  origin?: GithubOrigin;
 }
 
 export interface CacheEntry extends CacheSummary {
@@ -18,6 +21,8 @@ export interface CacheEntry extends CacheSummary {
 
 const DB_NAME = 'code-atlas';
 const STORE = 'analyses';
+
+export const githubKey = (o: GithubOrigin) => `gh:${o.owner}/${o.repo}@${o.sha}/${o.subdir}`;
 
 export async function cacheKey(listing: Listing): Promise<string> {
   const lines = [...listing.sources, ...listing.configs]
@@ -80,7 +85,7 @@ export async function saveAnalysis(e: CacheEntry): Promise<void> {
 export async function listAnalyses(): Promise<CacheSummary[]> {
   const all = await run<CacheEntry[]>('readonly', (s) => s.getAll());
   return all
-    .map(({ key, name, framework, lang, files, analyzedAt }) => ({ key, name, framework, lang, files, analyzedAt }))
+    .map(({ key, name, framework, lang, files, analyzedAt, origin }) => ({ key, name, framework, lang, files, analyzedAt, ...(origin && { origin }) }))
     .sort((a, b) => (a.analyzedAt < b.analyzedAt ? 1 : a.analyzedAt > b.analyzedAt ? -1 : 0));
 }
 
