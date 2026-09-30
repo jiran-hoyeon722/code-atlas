@@ -20,11 +20,13 @@ const LOADERS: Record<TabId, () => Promise<MountViewer>> = {
   city: () => import('../city/mountCity').then((m) => m.mountCity),
   graph: () => import('../graph/mountGraph').then((m) => m.mountGraph),
   explorer: () => import('../explorer/mountExplorer').then((m) => m.mountExplorer),
+  walk: () => import('../walk/mountWalk').then((m) => m.mountWalk),
 };
 const TABS: { id: TabId; label: string }[] = [
   { id: 'city', label: '도시' },
   { id: 'graph', label: '그래프' },
   { id: 'explorer', label: '탐색기' },
+  { id: 'walk', label: '걷기 (시험)' },
 ];
 const NO_WEBGL = '이 브라우저에서는 3D 화면을 쓸 수 없어요. 탐색기에서 같은 정보를 볼 수 있어요.';
 const FAIL_REASON = { syntax: '구문 오류', read: '읽기 실패' } as const;
@@ -41,7 +43,7 @@ function formatTime(iso: string): string {
 function initialState(webgl: boolean): { tab: TabId; sel: Selection } {
   const hash = location.hash;
   const parsed = parseHash(hash);
-  const explicit = /^#(city|graph|explorer)(&|$)/.test(hash);
+  const explicit = /^#(city|graph|explorer|walk)(&|$)/.test(hash);
   return { tab: explicit ? parsed.tab : webgl ? 'city' : 'explorer', sel: parsed.sel };
 }
 

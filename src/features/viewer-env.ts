@@ -1,6 +1,6 @@
 import type { Architecture } from '../engine/architecture';
 
-export type TabId = 'city' | 'graph' | 'explorer';
+export type TabId = 'city' | 'graph' | 'explorer' | 'walk';
 
 export interface Selection {
   file?: string;

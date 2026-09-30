@@ -1,6 +1,6 @@
 import type { Selection, TabId } from '../viewer-env';
 
-const TABS: readonly TabId[] = ['city', 'graph', 'explorer'];
+const TABS: readonly TabId[] = ['city', 'graph', 'explorer', 'walk'];
 
 export function parseHash(h: string): { tab: TabId; sel: Selection } {
   const [head, ...parts] = h.replace(/^#/, '').split('&');
