@@ -133,6 +133,8 @@ export interface ModelHero extends Hero {
   revive(): void;
   sit(on: boolean): void;
   readonly ready: boolean;
+  /** The loaded model, for attaching things to its bones; null while the fallback rig shows. */
+  readonly rig: THREE.Object3D | null;
 }
 
 // Shows the procedural rig until the glTF arrives, then cross-fades between the model's own clips by speed.
@@ -158,6 +160,7 @@ export function createModelHero(url: string, onError: () => void): ModelHero {
   return {
     root,
     get ready() { return !!robot; },
+    get rig() { return robot?.root ?? null; },
     emote(name) {
       if (!robot || dead) return;
       emoting = robot.play(name, name === 'Punch' ? 0.08 : 0.2);

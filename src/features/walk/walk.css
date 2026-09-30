@@ -16,19 +16,65 @@
 }
 .wk-walk canvas:first-child { display: block; outline: none; }
 .wk-walk .glass { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; backdrop-filter: blur(12px); }
-.wk-walk .wk-hud { position: absolute; top: 14px; left: 14px; width: 330px; padding: 12px 14px; }
-.wk-walk .wk-hud h1 { margin: 0 0 4px; font-size: 15px; }
-.wk-walk .wk-hud .keys { color: var(--muted); font-size: 12px; }
-.wk-walk .wk-hud .keys b { color: var(--text); font-weight: 600; }
-.wk-walk .wk-hud input { margin-top: 8px; width: 100%; box-sizing: border-box; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: rgba(255, 255, 255, .05); color: var(--text); }
+.wk-walk .wk-hud { position: absolute; top: 14px; left: 14px; width: 300px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.wk-walk .wk-hud .hud-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.wk-walk .wk-hud h1 { margin: 0; font-size: 16px; letter-spacing: .01em; }
+.wk-walk .wk-hud .repo { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 230px; }
+.wk-walk .wk-hud .help-btn { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border); background: rgba(255, 255, 255, .05); color: var(--text); font-weight: 700; cursor: pointer; }
+.wk-walk .wk-hud input { width: 100%; box-sizing: border-box; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: rgba(255, 255, 255, .05); color: var(--text); }
+.wk-walk .wk-hud .field { display: flex; flex-direction: column; gap: 5px; }
+.wk-walk .wk-hud .lbl { color: var(--muted); font-size: 11px; }
+.wk-walk .wk-hud .weather { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.wk-walk .wk-hud .weather button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 4px; border-radius: 9px; border: 1px solid var(--border); background: rgba(255, 255, 255, .03); color: var(--muted); font-size: 11px; cursor: pointer; }
+.wk-walk .wk-hud .weather button svg { width: 18px; height: 18px; }
+.wk-walk .wk-hud .weather button:hover { color: var(--text); }
+.wk-walk .wk-hud .weather button.on { color: #0b0d12; background: var(--accent); border-color: var(--accent); }
+.wk-walk .virus-btn { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(57, 255, 122, .35); background: rgba(57, 255, 122, .08); color: #8dffb4; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; }
+.wk-walk .virus-btn svg { width: 18px; height: 18px; flex: none; }
+.wk-walk .virus-btn span { flex: 1; }
+.wk-walk .virus-btn.on { background: rgba(57, 255, 122, .2); color: #d4ffe2; }
+.wk-walk kbd { display: inline-block; min-width: 16px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--border); background: rgba(255, 255, 255, .06); color: var(--muted); font: 600 10px/16px ui-monospace, Menlo, monospace; text-align: center; }
+.wk-walk .wk-hud .tips { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.wk-walk .wk-hud .tips b { color: var(--text); font-weight: 600; }
+.wk-walk .wk-virus { position: absolute; top: 14px; right: 14px; width: 250px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; border-color: rgba(57, 255, 122, .3); }
+.wk-walk .wk-virus[hidden], .wk-walk .wk-help[hidden] { display: none; }
+.wk-walk .wk-virus .v-head { display: flex; align-items: center; gap: 8px; color: #8dffb4; }
+.wk-walk .wk-virus .v-head svg { width: 18px; height: 18px; animation: wk-spin 4s linear infinite; }
+.wk-walk .wk-virus .v-head b { flex: 1; }
+.wk-walk .wk-virus .v-head span { font: 600 13px ui-monospace, Menlo, monospace; color: var(--text); }
+.wk-walk .wk-virus .v-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.wk-walk .wk-virus .v-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #39ff7a, #b8ff5c); transition: width .3s ease; }
+.wk-walk .wk-virus .v-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); }
+.wk-walk .wk-virus .v-row b { color: var(--text); }
+.wk-walk .wk-virus .signal { display: flex; align-items: flex-end; gap: 3px; height: 14px; }
+.wk-walk .wk-virus .signal i { width: 5px; border-radius: 1px; background: rgba(255, 255, 255, .15); }
+.wk-walk .wk-virus .signal i:nth-child(1) { height: 20%; } .wk-walk .wk-virus .signal i:nth-child(2) { height: 40%; } .wk-walk .wk-virus .signal i:nth-child(3) { height: 60%; } .wk-walk .wk-virus .signal i:nth-child(4) { height: 80%; } .wk-walk .wk-virus .signal i:nth-child(5) { height: 100%; }
+.wk-walk .wk-virus .signal i.on { background: #39ff7a; }
+.wk-walk .wk-virus p { margin: 0; color: var(--muted); font-size: 11px; }
+.wk-walk .wk-virus p b { color: var(--text); }
+@keyframes wk-spin { to { transform: rotate(360deg); } }
+.wk-walk .wk-weapons { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 4px; padding: 5px; }
+.wk-walk .wk-weapons button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 68px; padding: 7px 0 5px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
+.wk-walk .wk-weapons button svg { width: 24px; height: 24px; }
+.wk-walk .wk-weapons button:hover { color: var(--text); background: rgba(255, 255, 255, .05); }
+.wk-walk .wk-weapons button.on { color: var(--text); border-color: var(--accent); background: rgba(124, 147, 245, .18); }
+.wk-walk .wk-weapons button kbd { position: absolute; top: 3px; left: 4px; min-width: 0; padding: 0 3px; border: 0; background: none; font-size: 9px; line-height: 12px; }
+.wk-walk .wk-help { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; padding: 16px 18px; z-index: 5; }
+.wk-walk .wk-help .h-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 15px; }
+.wk-walk .wk-help .h-head button { border: 1px solid var(--border); background: rgba(255, 255, 255, .04); color: var(--text); border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.wk-walk .wk-help .h-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px 20px; }
+.wk-walk .wk-help h2 { margin: 0 0 6px; font-size: 12px; color: var(--accent); }
+.wk-walk .wk-help section div { display: flex; align-items: baseline; gap: 10px; padding: 3px 0; font-size: 12px; }
+.wk-walk .wk-help section kbd { flex: none; min-width: 64px; color: var(--text); }
+.wk-walk.inside .wk-virus, .wk-walk.inside .wk-weapons, .wk-walk.inside .wk-battle { opacity: 0; pointer-events: none; }
 .wk-walk .wk-map { position: absolute; left: 14px; bottom: 14px; width: 200px; height: 200px; padding: 0; cursor: crosshair; }
-.wk-walk .wk-prompt { position: absolute; left: 50%; bottom: 40px; transform: translate(-50%, 8px); padding: 8px 16px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
+.wk-walk .wk-prompt { position: absolute; left: 50%; bottom: 100px; transform: translate(-50%, 8px); padding: 8px 16px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
 .wk-walk .wk-prompt.open { opacity: 1; transform: translate(-50%, 0); }
 .wk-walk .wk-prompt b { display: inline-block; min-width: 18px; padding: 0 6px; margin-right: 6px; border-radius: 5px; background: var(--accent); color: #0b0d12; text-align: center; }
 .wk-walk .wk-detail { position: absolute; top: 14px; right: 14px; bottom: 14px; width: min(760px, max(320px, calc(100% - 380px))); display: flex; flex-direction: column; overflow: hidden; opacity: 0; transform: translateX(40px) scale(.98); pointer-events: none; transition: opacity .35s ease, transform .45s cubic-bezier(.2, .8, .2, 1); }
 .wk-walk .wk-detail.open { opacity: 1; transform: none; pointer-events: auto; }
 .wk-walk .wk-fade { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 40% 50%, transparent 30%, #05060a 100%); opacity: 0; }
-.wk-walk .wk-hud, .wk-walk .wk-map { transition: opacity .4s ease; }
+.wk-walk .wk-hud, .wk-walk .wk-map, .wk-walk .wk-virus, .wk-walk .wk-weapons, .wk-walk .wk-battle { transition: opacity .4s ease; }
 .wk-walk.entering .wk-hud, .wk-walk.entering .wk-map { opacity: .25; }
 @media (prefers-reduced-motion: reduce) { .wk-walk .wk-detail { transition: none; } }
 .wk-walk .wk-detail .head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
@@ -50,11 +96,9 @@
 .wk-walk .wk-battle .hp { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .08); overflow: hidden; }
 .wk-walk .wk-battle .hp i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ff5c5c, #ffd43b); transition: width .2s ease; }
 .wk-walk .wk-battle .rivals { display: flex; gap: 8px; align-items: center; font-size: 12px; }
+.wk-walk .wk-battle .rivals small { opacity: .7; font-size: 10px; }
 .wk-walk .wk-battle .rivals span { color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 50%, transparent); border-radius: 999px; padding: 0 8px; }
 .wk-walk .wk-battle .rivals span.got { opacity: .45; text-decoration: line-through; }
 .wk-walk .wk-battle .rivals b { margin-left: auto; }
 .wk-walk .wk-toast { position: absolute; top: 90px; left: 50%; transform: translate(-50%, -6px); padding: 10px 18px; border-radius: 12px; background: rgba(12, 14, 20, .9); border: 1px solid var(--border); font-size: 14px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity .25s ease, transform .25s ease; }
 .wk-walk .wk-toast.open { opacity: 1; transform: translate(-50%, 0); }
-.wk-walk .wk-hud .themes { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-.wk-walk .wk-hud .themes button { border: 1px solid var(--border); background: rgba(255, 255, 255, .04); color: var(--muted); border-radius: 999px; padding: 2px 10px; font-size: 11px; cursor: pointer; }
-.wk-walk .wk-hud .themes button.on { color: #0b0d12; background: var(--accent); border-color: var(--accent); }

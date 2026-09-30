@@ -19,6 +19,8 @@ import { createHeli } from './walkHeli';
 import { createVehicles, type Vehicle } from './walkVehicles';
 import { THEMES, type Theme } from './walkThemes';
 import { createMarkers, createSparks } from './walkFx';
+import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type WeaponId } from './walkWeapons';
+import { createVirus, pickOrigin } from './walkVirus';
 import type { RideCar } from './walkTraffic';
 import robotUrl from './assets/RobotExpressive.glb?url';
 
@@ -35,13 +37,44 @@ const GRID = 16;
 const HORIZON = new THREE.Color('#1a1d36');
 const ZENITH = new THREE.Color('#030409');
 const fmt = (n: number) => Number(n).toLocaleString('ko-KR');
+const VIRUS_SPREAD = 150;
+const CURE_TIME = 2.5;
+const clock = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const icon = (body: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+const WEATHER_ICONS: Record<string, string> = {
+  night: icon('<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="currentColor"/>'),
+  rain: icon('<path d="M7 14a4 4 0 0 1 .5-8 5.5 5.5 0 0 1 10.3 1.6A3.3 3.3 0 0 1 17.5 14z" fill="currentColor"/><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'),
+  day: icon('<circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'),
+  sunset: icon('<path d="M6 16a6 6 0 0 1 12 0z" fill="currentColor"/><path d="M2 19h20M12 4v3M4.5 8.5l2 2M19.5 8.5l-2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'),
+  fog: icon('<path d="M3 8h13M6 12h15M3 16h12M8 20h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'),
+};
+const VIRUS_ICON = icon('<circle cx="12" cy="12" r="5" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.8 2.8M16.2 16.2L19 19M5 19l2.8-2.8M16.2 7.8L19 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>');
+const HELP = [
+  ['이동', [['W A S D', '걷기'], ['Shift', '달리기'], ['Space', '점프'], ['클릭', '마우스로 시점 돌리기 (Esc 로 풀기)'], ['휠', '카메라 거리']]],
+  ['전투', [['1 ~ 6', '무기 고르기'], ['F · 클릭', '공격 (기관단총은 누르고 있기)'], ['G', '감정 표현']]],
+  ['행동', [['E', '건물 들어가기 · 차 타기 · 바이러스 치료'], ['H', '헬기 (라이벌 4명을 다 잡으면)']]],
+  ['화면', [['/', '파일 이름으로 순간 이동'], ['T', '날씨 바꾸기'], ['V', '바이러스 모드'], ['?', '이 도움말']]],
+] as const;
 
 const MARKUP = `
 <div class="wk-hud glass">
-    <h1 data-el="title"></h1>
-    <div class="keys"><b>WASD</b> 이동 · <b>Shift</b> 달리기 · <b>Space</b> 점프 · <b>클릭</b> 후 마우스로 시점 · <b>휠</b> 거리 · <b>E</b> 들어가기·타기 · <b>/</b> 검색 · <b>R</b> 비 · <b>1~3</b> 인사·엄지·춤 · <b>F</b> 주먹 · <b>H</b> 헬기 · <b>T</b> 테마</div>
-    <div class="themes" data-el="themes"></div>
-    <div class="search"><input data-el="q" type="search" placeholder="파일 이름으로 순간 이동 ( / )" autocomplete="off"></div>
+    <div class="hud-head"><div><h1>코드시티GTA</h1><div class="repo" data-el="repo"></div></div><button class="help-btn" data-el="help-btn" aria-label="조작법 보기" title="조작법 (?)">?</button></div>
+    <input data-el="q" type="search" placeholder="파일 이름으로 순간 이동 ( / )" autocomplete="off">
+    <div class="field"><span class="lbl">날씨</span><div class="weather" data-el="themes" role="radiogroup" aria-label="날씨"></div></div>
+    <button class="virus-btn" data-el="virus-btn">${VIRUS_ICON}<span data-el="virus-label">바이러스 모드 시작</span><kbd>V</kbd></button>
+    <div class="tips"><b>WASD</b> 이동 · <b>클릭</b> 시점 · <b>F</b> 공격 · <b>E</b> 행동 · <b>1~6</b> 무기 · <b>?</b> 전체 조작법</div>
+</div>
+<div class="wk-virus glass" data-el="virus" hidden>
+    <div class="v-head">${VIRUS_ICON}<b>바이러스 확산 중</b><span data-el="v-time">00:00</span></div>
+    <div class="v-bar"><i data-el="v-bar"></i></div>
+    <div class="v-row"><span>감염된 건물</span><b data-el="v-count"></b></div>
+    <div class="v-row"><span>근원지 신호</span><span class="signal" data-el="v-signal"><i></i><i></i><i></i><i></i><i></i></span></div>
+    <p>초록빛으로 맥박치는 건물이 근원지예요. 신호가 세지는 쪽으로 가서 건물 앞에서 <b>E</b>.</p>
+</div>
+<div class="wk-weapons glass" data-el="weapons" role="toolbar" aria-label="무기"></div>
+<div class="wk-help glass" data-el="help" hidden role="dialog" aria-label="조작법">
+    <div class="h-head"><b>조작법</b><button data-el="help-close">닫기 (Esc)</button></div>
+    <div class="h-body" data-el="help-body"></div>
 </div>
 <canvas class="wk-map glass" data-el="map" width="200" height="200" title="클릭하면 그 위치로 이동"></canvas>
 <div class="wk-prompt glass" data-el="prompt"></div>
@@ -83,7 +116,8 @@ const mount: MountViewer = (root, arch, env) => {
     target.addEventListener(type, fn as EventListener);
     cleanups.push(() => target.removeEventListener(type, fn as EventListener));
   };
-  $('title').textContent = `${arch.name} — 걷기 (시험)`;
+  $('repo').textContent = arch.name;
+  $('help-body').innerHTML = HELP.map(([group, rows]) => `<section><h2>${esc(group)}</h2>${rows.map(([k, what]) => `<div><kbd>${esc(k)}</kbd><span>${esc(what)}</span></div>`).join('')}</section>`).join('');
   const reduceMotion = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
   const palette = roleColors(arch);
@@ -266,7 +300,7 @@ const mount: MountViewer = (root, arch, env) => {
   const bgeo = keep(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0));
   const pc = parts.length;
   const attr = (size: number) => new Float32Array(Math.max(1, pc) * size);
-  const aSize = attr(3), aColor = attr(3), aSeed = attr(1), aFace = attr(1), aBase = attr(1);
+  const aSize = attr(3), aColor = attr(3), aSeed = attr(1), aFace = attr(1), aBase = attr(1), aInfect = attr(1), aCap = attr(1);
   const tmpColor = new THREE.Color();
   parts.forEach((p, j) => {
     aSize.set([p.w, p.h, p.d], j * 3);
@@ -275,13 +309,18 @@ const mount: MountViewer = (root, arch, env) => {
     aSeed[j] = p.k;
     aFace[j] = p.b.face;
     aBase[j] = p.base;
+    aCap[j] = parts[j + 1]?.k === p.k ? 0 : 1;
   });
   bgeo.setAttribute('aSize', new THREE.InstancedBufferAttribute(aSize, 3));
   bgeo.setAttribute('aColor', new THREE.InstancedBufferAttribute(aColor, 3));
   bgeo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(aSeed, 1));
   bgeo.setAttribute('aFace', new THREE.InstancedBufferAttribute(aFace, 1));
   bgeo.setAttribute('aBase', new THREE.InstancedBufferAttribute(aBase, 1));
-  const uniforms = { uFog: { value: fogColor }, uFocus: { value: -1 }, uTime: { value: 0 }, uDay: { value: 0 }, uLit: { value: 0.5 }, uSunDir: { value: moonDir }, uSky: { value: new THREE.Color() } };
+  bgeo.setAttribute('aCap', new THREE.InstancedBufferAttribute(aCap, 1));
+  const infectAttr = new THREE.InstancedBufferAttribute(aInfect, 1);
+  infectAttr.setUsage(THREE.DynamicDrawUsage);
+  bgeo.setAttribute('aInfect', infectAttr);
+  const uniforms = { uFog: { value: fogColor }, uFocus: { value: -1 }, uTime: { value: 0 }, uDay: { value: 0 }, uLit: { value: 0.5 }, uSunDir: { value: moonDir }, uSky: { value: new THREE.Color() }, uOrigin: { value: -1 } };
   const bmat = keep(new THREE.ShaderMaterial({ vertexShader: BUILDING_VERT, fragmentShader: BUILDING_FRAG, uniforms }));
   const buildings = new THREE.InstancedMesh(bgeo, bmat, Math.max(1, pc));
   buildings.count = pc;
@@ -363,6 +402,14 @@ const mount: MountViewer = (root, arch, env) => {
         if (propGrid.get(key(gx, gz))?.some((p) => Math.hypot(p.x - x, p.z - z) < p.r + r)) return true;
     return false;
   };
+  const clearLine = (ax: number, az: number, bx: number, bz: number) => {
+    const steps = Math.ceil(Math.hypot(bx - ax, bz - az) / 0.8);
+    for (let k = 1; k < steps; k++) {
+      const x = ax + ((bx - ax) * k) / steps, z = az + ((bz - az) * k) / steps;
+      for (const b of nearby(x, z, 0.5)) if (gap(b, x, z) < 0.05) return false;
+    }
+    return true;
+  };
   const blocked = (x: number, z: number, r = RADIUS) => {
     if (propHit(x, z, r)) return true;
     for (const b of nearby(x, z, r + 1)) if (gap(b, x, z) < r) return true;
@@ -434,7 +481,6 @@ const mount: MountViewer = (root, arch, env) => {
     stars.visible = theme.stars && !rain.enabled;
     moonDisc.visible = !!theme.disc && !rain.enabled;
   };
-  const toggleRain = () => { rain.set(!rain.enabled); refreshSky(); };
   const blobTex = (() => {
     const c = document.createElement('canvas');
     c.width = c.height = 64;
@@ -492,7 +538,8 @@ const mount: MountViewer = (root, arch, env) => {
   };
   const renderBattle = () => {
     $('hp').style.width = `${Math.max(0, hp)}%`;
-    $('rivals').innerHTML = RIVALS.map((r) => `<span class="${caughtNames.has(r.name) ? 'got' : ''}" style="--c:${esc(r.tint)}">${esc(r.name)}</span>`).join('') + `<b>${caughtNames.size}/${RIVALS.length}</b>`;
+      const armed = new Map(battle.roster().map((r) => [r.name, r.weapon.name]));
+    $('rivals').innerHTML = RIVALS.map((r) => `<span class="${caughtNames.has(r.name) ? 'got' : ''}" style="--c:${esc(r.tint)}">${esc(r.name)}${armed.has(r.name) ? ` <small>${esc(armed.get(r.name)!)}</small>` : ''}</span>`).join('') + `<b>${caughtNames.size}/${RIVALS.length}</b>`;
   };
   function freeSpotNear(x: number, z: number, min: number, max: number) {
     for (let r = min; r <= max; r += 1.5)
@@ -526,9 +573,13 @@ const mount: MountViewer = (root, arch, env) => {
     }
     renderBattle();
   }
-  const battle = createBattle(scene, robotUrl, pos, {
+  const kit = createWeaponKit();
+  const tracers = createTracers(scene);
+  const battle = createBattle(scene, robotUrl, pos, kit, {
     blocked: blockedWalker,
+    clear: clearLine,
     random,
+    shot: (from, to, color) => tracers.fire(from, to, color),
     onPlayerHit(damage, fx, fz) {
       hurtPlayer(damage, fx, fz);
     },
@@ -542,12 +593,107 @@ const mount: MountViewer = (root, arch, env) => {
     },
   });
   renderBattle();
-  const punch = () => {
-    if (punchCooldown > 0 || !alive || mode !== 'walk') return;
-    hero.emote('Punch');
-    punchAt = 0.22;
-    punchCooldown = 0.45;
+
+  // ---- weapons: the hero may pick any of them, rivals were dealt one each ----
+  const heroHeld = kit.hold(scene, 'fist');
+  let weapon: Weapon = weaponById('fist');
+  let triggerHeld = false;
+  let aimHold = 0;
+  let pendingShot = false;
+  let aimed = -1;
+  const shotEnd = new THREE.Vector3();
+  const muzzle = new THREE.Vector3();
+  const aimVec = new THREE.Vector3();
+  const reticle = new THREE.Mesh(keep(new THREE.RingGeometry(0.75, 0.95, 32).rotateX(-Math.PI / 2)), keep(new THREE.MeshBasicMaterial({ color: new THREE.Color('#ff4d4d').multiplyScalar(2), transparent: true, opacity: 0.85, depthWrite: false })));
+  reticle.visible = false;
+  scene.add(reticle);
+  const weaponsBar = $('weapons');
+  weaponsBar.innerHTML = WEAPONS.map((w, k) => `<button data-weapon="${esc(w.id)}" title="${esc(w.name)} (${k + 1})" aria-pressed="false">${w.icon}<span>${esc(w.name)}</span><kbd>${k + 1}</kbd></button>`).join('');
+  function selectWeapon(w: Weapon) {
+    weapon = w;
+    heroHeld.set(w.id);
+    weaponsBar.querySelectorAll<HTMLElement>('[data-weapon]').forEach((b) => {
+      const on = b.dataset.weapon === w.id;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+  }
+  selectWeapon(weapon);
+  listen(weaponsBar, 'click', (e) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>('[data-weapon]')?.dataset.weapon as WeaponId | undefined;
+    if (id) selectWeapon(weaponById(id));
+    (e.target as HTMLElement).closest('button')?.blur();
+  });
+  const attack = () => {
+    if (punchCooldown > 0 || !alive || mode !== 'walk' || detailOpen || entering) return;
+    punchCooldown = weapon.cooldown;
+    heroHeld.kick();
+    if (weapon.kind === 'melee') {
+      hero.emote('Punch');
+      punchAt = 0.22;
+      return;
+    }
+    heading = yaw + Math.PI;
+    aimHold = 0.7;
+    pendingShot = true;
   };
+
+  // ---- virus mode: spreads out from a random building until the player cures it at the source ----
+  const virus = createVirus(layout.buildings.map((b) => ({ x: b.x, z: b.z })), VIRUS_SPREAD, Math.random);
+  let curing = 0;
+  let nearOrigin = false;
+  const core = new THREE.Group();
+  const coreMat = glow('#39ff7a', 2.6);
+  const coreShell = new THREE.Mesh(keep(new THREE.IcosahedronGeometry(0.75, 1)), keep(new THREE.MeshBasicMaterial({ color: new THREE.Color('#39ff7a').multiplyScalar(1.6), wireframe: true })));
+  core.add(new THREE.Mesh(keep(new THREE.IcosahedronGeometry(0.38, 0)), coreMat), coreShell);
+  const coreLight = new THREE.PointLight('#39ff7a', 0, 18, 1.6);
+  core.add(coreLight);
+  core.visible = false;
+  scene.add(core);
+  const originBuilding = () => (virus.origin >= 0 ? layout.buildings[virus.origin] : null);
+  function startVirus() {
+    const o = pickOrigin(layout.buildings.map((b) => ({ x: b.x, z: b.z })), { x: pos.x, z: pos.z }, Math.random);
+    if (o < 0) return;
+    virus.start(o);
+    const b = layout.buildings[o];
+    core.position.set(b.x, 1.6, b.z + b.face * (b.d / 2 + 1.4));
+    core.visible = true;
+    coreLight.intensity = 10;
+    uniforms.uOrigin.value = o;
+    toast('바이러스가 퍼지기 시작했어요! 근원지 건물을 찾아 그 앞에서 E 로 치료하세요', 5000);
+    renderVirus();
+  }
+  function endVirus(cured: boolean) {
+    const seconds = virus.elapsed;
+    const saved = virus.infected;
+    virus.cure();
+    curing = 0;
+    core.visible = false;
+    coreLight.intensity = 0;
+    uniforms.uOrigin.value = -1;
+    if (cured) {
+      sparks.burst(core.position.x, 1.6, core.position.z, 60);
+      toast(`바이러스 퇴치! ${clock(seconds)} 만에 건물 ${fmt(saved)}개를 되살렸어요`, 5000);
+    }
+    renderVirus();
+  }
+  const toggleVirus = () => (virus.state === 'spreading' ? endVirus(false) : virus.state === 'off' ? startVirus() : undefined);
+  function renderVirus() {
+    const on = virus.state === 'spreading';
+    $('virus').hidden = !on;
+    $('virus-btn').classList.toggle('on', on);
+    $('virus-label').textContent = on ? '바이러스 모드 그만두기' : '바이러스 모드 시작';
+    if (!on) return;
+    const total = layout.buildings.length;
+    $('v-time').textContent = clock(virus.elapsed);
+    $('v-count').textContent = `${fmt(virus.infected)} / ${fmt(total)}`;
+    $('v-bar').style.width = `${(virus.infected / Math.max(1, total)) * 100}%`;
+    const b = originBuilding();
+    const strength = b ? Math.max(0, 1 - Math.hypot(b.x - pos.x, b.z - pos.z) / Math.max(40, span * 0.8)) : 0;
+    const bars = Math.max(1, Math.ceil(strength * 5));
+    $('v-signal').querySelectorAll('i').forEach((el, k) => el.classList.toggle('on', k < bars));
+  }
+  listen($('virus-btn'), 'click', (e) => { toggleVirus(); (e.currentTarget as HTMLElement).blur(); });
   const floorAt = (x: number, z: number) => {
     let floor = 0;
     for (const b of nearby(x, z, 4)) if (gap(b, x, z) < 3) floor = Math.max(floor, b.h + 0.16 + 1.2);
@@ -606,7 +752,9 @@ const mount: MountViewer = (root, arch, env) => {
     else if (mode === 'ride' && traffic.riding) html = `<b>E</b> 먼저 내리기 — ${name(traffic.riding.t)}(으)로 가는 중`;
     else if (mode === 'walk' && alive && !detailOpen && !entering) {
       const hpos = heli.root.position;
-      if (heli.state === 'parked' && Math.hypot(hpos.x - pos.x, hpos.z - pos.z) < 7) html = '<b>H</b> 헬기 타기';
+      if (curing > 0) html = `백신 주입 중… ${Math.round((curing / CURE_TIME) * 100)}% — 자리를 지키세요`;
+      else if (nearOrigin) html = '<b>E</b> 백신 주입 — 바이러스 근원지를 찾았어요!';
+      else if (heli.state === 'parked' && Math.hypot(hpos.x - pos.x, hpos.z - pos.z) < 7) html = '<b>H</b> 헬기 타기';
       else if (nearVehicle) html = `<b>E</b> 운전 — ${nearVehicle.kind === 'car' ? '자동차' : '오토바이'}`;
       else if (nearCar) html = `<b>E</b> 탑승 — ${name(nearCar.f)} → ${name(nearCar.t)}`;
       else if (focus) html = `<b>E</b> 들어가기 — ${name(focus.i)}`;
@@ -669,7 +817,8 @@ const mount: MountViewer = (root, arch, env) => {
     updatePrompt();
   }
   function interact() {
-    if (nearVehicle) driveVehicle(nearVehicle);
+    if (nearOrigin) { if (curing <= 0) curing = 0.001; updatePrompt(); }
+    else if (nearVehicle) driveVehicle(nearVehicle);
     else if (nearCar) hitch(nearCar);
     else if (focus) enter(focus);
   }
@@ -685,6 +834,7 @@ const mount: MountViewer = (root, arch, env) => {
   async function openDetail(b: WalkBuilding) {
     const n = arch.nodes[b.i];
     detailOpen = true;
+    root.classList.add('inside');
     $('d-name').textContent = n.name;
     $('d-path').textContent = n.path;
     const metric = (value: number, label: string) => `<div class="metric"><b>${esc(fmt(value))}</b><span>${esc(label)}</span></div>`;
@@ -708,25 +858,33 @@ const mount: MountViewer = (root, arch, env) => {
     detailOpen = false;
     entering = null;
     codeRequest++;
-    root.classList.remove('entering');
+    root.classList.remove('entering', 'inside');
     $('detail').classList.remove('open');
     setFocus(focus);
   }
   listen($('d-close'), 'click', leave);
+  const helpOpen = () => !$('help').hidden;
+  const setHelp = (on: boolean) => { $('help').hidden = !on; if (on) keys.clear(); };
+  listen($('help-btn'), 'click', (e) => { setHelp(!helpOpen()); (e.currentTarget as HTMLElement).blur(); });
+  listen($('help-close'), 'click', () => setHelp(false));
 
   // ---- input ----
   const typing = () => document.activeElement instanceof HTMLInputElement;
+  const EMOTES: Emote[] = ['Wave', 'ThumbsUp', 'Dance'];
+  let emoteIndex = 0;
   listen(window, 'keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (typing()) { if (e.key === 'Escape') (document.activeElement as HTMLElement).blur(); return; }
+    if (helpOpen()) { if (e.key === 'Escape' || e.key === '?') setHelp(false); return; }
     if (e.key === 'Escape' && (detailOpen || entering)) { leave(); return; }
     if (detailOpen || entering) return;
+    if (e.key === '?') { setHelp(true); return; }
     const isE = e.key === 'e' || e.key === 'E' || e.key === 'ㄷ';
     if (e.code === 'KeyT') { applyTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]); return; }
+    if (e.code === 'KeyV') { toggleVirus(); return; }
     if (e.code === 'KeyH' && alive && (mode === 'walk' || mode === 'fly')) { toggleHeli(); return; }
     if (mode === 'drive' || mode === 'ride') {
       if (isE) { if (mode === 'drive') leaveVehicle(); else hopOff(); return; }
-      if (e.code === 'KeyR') { toggleRain(); return; }
       if (mode === 'drive') {
         keys.add(e.code);
         if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
@@ -734,18 +892,17 @@ const mount: MountViewer = (root, arch, env) => {
       return;
     }
     if (mode === 'fly') {
-      if (e.code === 'KeyR') { toggleRain(); return; }
       keys.add(e.code);
       if (e.code === 'Space') e.preventDefault();
       return;
     }
+    const slot = /^Digit([1-9])$/.exec(e.code);
+    if (slot && WEAPONS[Number(slot[1]) - 1]) { selectWeapon(WEAPONS[Number(slot[1]) - 1]); return; }
     if (!alive) return;
-    if (e.code === 'KeyF') { punch(); return; }
+    if (e.code === 'KeyF') { if (!e.repeat) { triggerHeld = true; attack(); } return; }
     if (e.key === '/') { e.preventDefault(); $('q').focus(); return; }
     if (isE) { interact(); return; }
-    if (e.code === 'KeyR') { toggleRain(); return; }
-    const emote = ({ Digit1: 'Wave', Digit2: 'ThumbsUp', Digit3: 'Dance' } as Record<string, Emote>)[e.code];
-    if (emote) { hero.emote(emote); return; }
+    if (e.code === 'KeyG') { hero.emote(EMOTES[emoteIndex++ % EMOTES.length]); return; }
     if (e.code === 'Space') {
       e.preventDefault();
       if (footY <= 0.001) vy = JUMP;
@@ -754,12 +911,18 @@ const mount: MountViewer = (root, arch, env) => {
     keys.add(e.code);
     if (e.code.startsWith('Arrow')) e.preventDefault();
   });
-  listen(window, 'keyup', (e) => keys.delete(e.code));
-  listen(window, 'blur', () => keys.clear());
+  listen(window, 'keyup', (e) => { keys.delete(e.code); if (e.code === 'KeyF') triggerHeld = false; });
+  listen(window, 'blur', () => { keys.clear(); triggerHeld = false; });
   listen(renderer.domElement, 'click', () => {
-    if (document.pointerLockElement === renderer.domElement) { punch(); return; }
+    if (document.pointerLockElement === renderer.domElement) return;
     if (!detailOpen && !entering) Promise.resolve(renderer.domElement.requestPointerLock?.()).catch(() => {});
   });
+  listen(renderer.domElement, 'pointerdown', (e) => {
+    if (document.pointerLockElement !== renderer.domElement || e.button !== 0) return;
+    triggerHeld = true;
+    attack();
+  });
+  listen(window, 'pointerup', () => { if (document.pointerLockElement === renderer.domElement) triggerHeld = false; });
   let dragging = false;
   listen(renderer.domElement, 'pointerdown', () => (dragging = true));
   listen(window, 'pointerup', () => (dragging = false));
@@ -825,7 +988,17 @@ const mount: MountViewer = (root, arch, env) => {
   });
   function drawMap() {
     if (!mapCtx) return;
+    // During an outbreak the role colours fade back so the infected area reads at a glance.
+    mapCtx.globalAlpha = virus.state === 'off' ? 1 : 0.3;
     mapCtx.drawImage(base, 0, 0);
+    mapCtx.globalAlpha = 1;
+    if (virus.state !== 'off') layout.buildings.forEach((b, k) => {
+      const level = virus.levels[k];
+      if (level < 0.02) return;
+      const [x, y] = toMap(b.x - b.w / 2, b.z - b.d / 2);
+      mapCtx.fillStyle = `rgba(90, 255, 140, ${0.3 + level * 0.7})`;
+      mapCtx.fillRect(x, y, Math.max(1.5, (b.w / span) * 200), Math.max(1.5, (b.d / span) * 200));
+    });
     battle.positions().forEach((r) => {
       const [x, y] = toMap(r.x, r.z);
       mapCtx.fillStyle = r.down ? '#5c6270' : r.tint;
@@ -892,14 +1065,18 @@ const mount: MountViewer = (root, arch, env) => {
     rain.set(t.rain);
     refreshSky();
     updateLampLights(pos.x, pos.z);
-    $('themes').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.theme === t.id));
+    $('themes').querySelectorAll('button').forEach((b) => {
+      b.classList.toggle('on', b.dataset.theme === t.id);
+      b.setAttribute('aria-checked', String(b.dataset.theme === t.id));
+    });
     try { localStorage.setItem(themeKey, t.id); } catch { /* storage may be blocked */ }
   }
-  $('themes').innerHTML = THEMES.map((t) => `<button data-theme="${esc(t.id)}">${esc(t.label)}</button>`).join('');
+  $('themes').innerHTML = THEMES.map((t) => `<button role="radio" aria-checked="false" data-theme="${esc(t.id)}" title="${esc(t.label)} (T)">${WEATHER_ICONS[t.id] ?? ''}<span>${esc(t.short)}</span></button>`).join('');
   listen($('themes'), 'click', (e) => {
     const id = (e.target as HTMLElement).closest<HTMLElement>('[data-theme]')?.dataset.theme;
     const t = THEMES.find((x) => x.id === id);
     if (t) applyTheme(t);
+    (e.target as HTMLElement).closest('button')?.blur();
   });
   let saved: string | null = null;
   try { saved = localStorage.getItem(themeKey); } catch { saved = null; }
@@ -952,7 +1129,10 @@ const mount: MountViewer = (root, arch, env) => {
     if (footY === 0 && vy < 0) vy = 0;
     const speed = Math.hypot(vel.x, vel.z);
     const prev = heading;
-    if (speed > 0.3) {
+    aimHold = Math.max(0, aimHold - dt);
+    if (triggerHeld && weapon.auto) attack();
+    if (aimHold > 0 && onFoot) heading = yaw + Math.PI;
+    else if (speed > 0.3) {
       const target = Math.atan2(vel.x, vel.z);
       const delta = Math.atan2(Math.sin(target - heading), Math.cos(target - heading));
       heading += delta * Math.min(1, dt * 10);
@@ -962,6 +1142,27 @@ const mount: MountViewer = (root, arch, env) => {
     hero.animate({ speed, run, airborne: footY > 0.05, turn: turnRate, dt, time });
     hero.root.position.set(pos.x, footY + 0.16, pos.z);
     hero.root.rotation.y = heading;
+    const gun = weapon.kind === 'gun';
+    heroHeld.follow(hero.rig, gun && (aimHold > 0 || triggerHeld) ? aimVec.set(Math.sin(heading), 0, Math.cos(heading)) : null, hero.root.visible && onFoot && alive);
+    if (pendingShot) {
+      pendingShot = false;
+      heroHeld.tip(muzzle);
+      battle.shoot(pos, heading, weapon, shotEnd);
+      const pellets = weapon.id === 'shotgun' ? 6 : 1;
+      for (let k = 0; k < pellets; k++) {
+        const end = pellets > 1 ? v.copy(shotEnd).add(s.set((Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 1.6)) : shotEnd;
+        tracers.fire(muzzle, end);
+      }
+      sparks.burst(shotEnd.x, shotEnd.y, shotEnd.z, 6);
+      shake = Math.max(shake, weapon.id === 'shotgun' ? 0.35 : 0.08);
+    }
+    aimed = gun && onFoot && alive ? battle.aimTarget(pos, yaw + Math.PI, weapon) : -1;
+    const target = aimed >= 0 ? battle.positions().find((r) => r.name === RIVALS[aimed].name) : undefined;
+    reticle.visible = !!target;
+    if (target) {
+      reticle.position.set(target.x, 0.22, target.z);
+      reticle.rotation.y = time * 2;
+    }
     blob.position.set(pos.x, 0.18, pos.z);
     blob.scale.setScalar(1 / (1 + footY * 0.6));
     heli.update(dt, time, flying ? { forward: fz, turn: -fx, lift: input(['Space'], ['KeyC', 'ControlLeft']), boost: running } : { forward: 0, turn: 0, lift: 0, boost: false }, floorAt);
@@ -1007,9 +1208,26 @@ const mount: MountViewer = (root, arch, env) => {
     punchCooldown -= dt;
     if (punchAt > 0) {
       punchAt -= dt;
-      if (punchAt <= 0) battle.strike(pos, heading);
+      if (punchAt <= 0) battle.strike(pos, heading, weapon);
     }
     battle.update(dt, pos, alive && onFoot && !detailOpen && !entering);
+    if (virus.update(dt)) {
+      parts.forEach((p, j) => { aInfect[j] = virus.levels[p.k]; });
+      infectAttr.needsUpdate = true;
+    }
+    if (core.visible) {
+      core.rotation.y = time * 1.4;
+      coreShell.rotation.x = time * 0.9;
+      core.position.y = 1.6 + Math.sin(time * 2.2) * 0.2;
+    }
+    if (curing > 0) {
+      if (!nearOrigin || !alive || mode !== 'walk') { curing = 0; toast('치료가 끊겼어요 — 근원지 앞에 머물러야 해요'); }
+      else {
+        curing += dt;
+        if (curing >= CURE_TIME) endVirus(true);
+      }
+      updatePrompt();
+    }
     hurt = Math.max(0, hurt - dt * 1.6);
     $('hurt').style.opacity = String(hurt * 0.85);
 
@@ -1089,6 +1307,9 @@ const mount: MountViewer = (root, arch, env) => {
       if (mode !== 'ride') traffic.setFocus(near ? near.i : null, pos);
       nearVehicle = onFoot && alive ? vehicles.nearest(pos.x, pos.z) : null;
       nearCar = onFoot && alive && !nearVehicle ? traffic.nearest(pos.x, pos.z, 6.5) : null;
+      const ob = virus.state === 'spreading' ? originBuilding() : null;
+      nearOrigin = !!ob && onFoot && alive && gap(ob, pos.x, pos.z) < REACH + 0.5;
+      renderVirus();
       if (!entering && !detailOpen && onFoot) {
         let best: WalkBuilding | null = null;
         let bestGap = REACH;
@@ -1109,6 +1330,7 @@ const mount: MountViewer = (root, arch, env) => {
     }
     markers.update(time, onFoot && alive ? (nearVehicle ?? nearCar) : null, nearVehicle ? '운전' : '탑승');
     sparks.update(dt);
+    tracers.update(dt);
     rain.update(time, camera.position);
     clearView(camera.position, v.set(pos.x, 1.4 + footY, pos.z));
     composer.render();
@@ -1122,6 +1344,10 @@ const mount: MountViewer = (root, arch, env) => {
     cleanups.forEach((fn) => fn());
     hero.dispose();
     battle.dispose();
+    heroHeld.dispose();
+    kit.dispose();
+    tracers.dispose();
+    coreLight.dispose();
     vehicles.dispose();
     sparks.dispose();
     markers.dispose();
