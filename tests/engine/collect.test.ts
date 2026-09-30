@@ -12,6 +12,12 @@ const minMs = (fn: () => void, runs: number, reps: number) => {
   return best;
 };
 
+test('skips dependency and build dirs of the new languages', () => {
+  for (const d of ['.venv', 'venv', 'site-packages', '.tox', '__pycache__', 'Pods', '.build', 'Carthage', 'DerivedData', '.gradle']) {
+    expect(shouldSkipDir(d)).toBe(true);
+  }
+  expect(shouldSkipDir('target')).toBe(false);
+});
 test('skips vendor-like dirs', () => { expect(shouldSkipDir('node_modules')).toBe(true); expect(shouldSkipDir('src')).toBe(false); });
 test('classifies source paths', () => { expect(isSourcePath('app/A.php')).toBe('php'); expect(isSourcePath('src/a.d.ts')).toBe('ts'); expect(isSourcePath('a.css')).toBeNull(); });
 test('classifies all ts extensions', () => {

@@ -4,6 +4,7 @@ import { compileGlob, type GlobSyntax } from './glob';
 
 export const SKIP_DIRS: ReadonlySet<string> = new Set([
   'node_modules', 'vendor', '.git', 'dist', 'build', '.next', 'storage', 'coverage',
+  '.venv', 'venv', 'site-packages', '.tox', '__pycache__', 'Pods', '.build', 'Carthage', 'DerivedData', '.gradle',
 ]);
 
 export const MAX_FILES = 20000;
