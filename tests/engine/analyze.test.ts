@@ -28,7 +28,7 @@ function loadRepo(name: string): RepoInput {
 const NOW = new Date('2026-01-01T00:00:00Z');
 let parsers: Parsers;
 beforeAll(async () => {
-  parsers = await loadParsers(nodeLocate, ['php', 'ts', 'py', 'go', 'java', 'kotlin', 'shell']);
+  parsers = await loadParsers(nodeLocate, ['php', 'ts', 'py', 'go', 'java', 'kotlin', 'shell', 'swift']);
 });
 
 describe('analyze', () => {
@@ -230,6 +230,45 @@ describe('analyze', () => {
     expect(node(`${K}/domain/NoteRepository.kt`).kind).toBe('interface');
     expect(node(`${K}/util/Strings.kt`).kind).toBe('module');
     expect(node(`${T}/viewmodel/NoteViewModelTest.kt`).kind).toBe('test');
+  });
+
+  test('swift fixture end to end', () => {
+    const a = analyze(loadRepo('swift-mini'), parsers, { now: NOW });
+    expect(a.lang).toBe('swift');
+    expect(a.framework).toBeNull();
+    expect(a.nodes.length).toBe(10);
+    const K = 'Sources/NotesKit';
+    const A = 'Sources/NotesApp';
+    const T = 'Tests/NotesKitTests';
+    const path = (i: number) => a.nodes[i].path;
+    const kinds = Object.fromEntries(a.edges.map(([from, to, , k]) => [`${path(from)}→${path(to)}`, k]));
+    expect(kinds).toEqual({
+      [`${K}/Services/NoteStoring.swift→${K}/Models/Note.swift`]: { 'class-ref': 2 },
+      [`${K}/Services/NoteStore.swift→${K}/Services/NoteStoring.swift`]: { 'class-ref': 1 },
+      [`${K}/Services/NoteStore.swift→${K}/Models/Note.swift`]: { 'class-ref': 5 },
+      [`${K}/Extensions/Note+Display.swift→${K}/Models/Note.swift`]: { 'class-ref': 1 },
+      [`${A}/NotesApp.swift→${A}/Views/NoteListView.swift`]: { 'class-ref': 1 },
+      [`${A}/NotesApp.swift→${A}/ViewModels/NoteListViewModel.swift`]: { 'class-ref': 1 },
+      [`${A}/Views/NoteListView.swift→${A}/ViewModels/NoteListViewModel.swift`]: { 'class-ref': 1 },
+      [`${A}/ViewModels/NoteListViewModel.swift→${A}/Utils/Formatter.swift`]: { 'class-ref': 1 },
+    });
+    expect(a.edges.map(([from, to]) => `${path(from)}→${path(to)}`).sort()).toEqual(Object.keys(kinds).sort());
+    expect(a.unresolved).toBe(0);
+    expect(a.failed).toEqual([]);
+    const byRole: Record<string, string[]> = {};
+    for (const n of a.nodes) (byRole[a.roles[n.role].name] ??= []).push(n.path);
+    expect(byRole).toEqual({
+      기타: ['Package.swift'],
+      진입점: [`${A}/NotesApp.swift`, `${A}/Views/NoteListView.swift`],
+      기반: [`${A}/Utils/Formatter.swift`, `${K}/Extensions/Note+Display.swift`],
+      애플리케이션: [`${A}/ViewModels/NoteListViewModel.swift`],
+      도메인: [`${K}/Models/Note.swift`, `${K}/Services/NoteStore.swift`, `${K}/Services/NoteStoring.swift`],
+      테스트: [`${T}/NoteStoreTests.swift`],
+    });
+    const node = (p: string) => a.nodes.find((n) => n.path === p)!;
+    expect(node(`${K}/Extensions/Note+Display.swift`)).toMatchObject({ name: 'Note+Display', kind: 'type' });
+    expect(node(`${A}/Views/NoteListView.swift`).kind).toBe('view');
+    expect(node(`${T}/NoteStoreTests.swift`).kind).toBe('test');
   });
 
   test('progress events', () => {

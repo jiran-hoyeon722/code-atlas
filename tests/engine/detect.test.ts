@@ -35,7 +35,7 @@ test('react without src uses root and app route dir', () => {
   const d = detect({ name: 'x', configs: { 'package.json': '{"devDependencies":{"react":"1"}}' }, files: [{ path: 'app/page.tsx', text: '' }] });
   expect(d).toEqual({ lang: 'ts', framework: 'react', sourceDir: '', routeDirs: ['app'] });
 });
-test('languages without an extractor are not counted', () => {
+test('the majority language beats a lone python file and shell scripts', () => {
   const files = ['a.php', 'b.php', 's/1.sh', 's/2.sh', 's/3.sh', 'tool.py'].map((path) => ({ path, text: '' }));
   expect(detect({ name: 'x', configs: {}, files })).toEqual({ lang: 'php', framework: null, sourceDir: '', routeDirs: [] });
 });
@@ -45,9 +45,13 @@ test('a repo with only unsupported sources → null', () => {
 test('a python-only repo is detected once python has an extractor', () => {
   expect(detect({ name: 'x', configs: {}, files: [{ path: 'm/a.py', text: '' }, { path: 'm/b.py', text: '' }] })).toEqual({ lang: 'py', framework: null, sourceDir: '', routeDirs: [] });
 });
-test('prefer for a language without an extractor is ignored', () => {
-  const files = [{ path: 'a.ts', text: '' }, { path: 'run.rb', text: '' }, { path: 'x.rb', text: '' }];
-  expect(detect({ name: 'x', configs: {}, files }, 'swift')?.lang).toBe('ts');
+test('prefer with no files is ignored', () => {
+  const files = [{ path: 'a.ts', text: '' }, { path: 'b.go', text: '' }, { path: 'c.go', text: '' }];
+  expect(detect({ name: 'x', configs: {}, files }, 'swift')?.lang).toBe('go');
+  expect(detect({ name: 'x', configs: {}, files: [...files, { path: 'd.swift', text: '' }] }, 'swift')?.lang).toBe('swift');
+});
+test('a swift-only repo is detected once swift has an extractor', () => {
+  expect(detect({ name: 'x', configs: {}, files: [{ path: 'Sources/A/a.swift', text: '' }] })).toEqual({ lang: 'swift', framework: null, sourceDir: '', routeDirs: [] });
 });
 test('shell only wins when nothing else is there', () => {
   const sh = ['scripts/a.sh', 'scripts/b.sh', 'scripts/c.bash'].map((path) => ({ path, text: '' }));

@@ -15,3 +15,4 @@ const files = [
 
 mkdirSync('public/wasm', { recursive: true });
 for (const f of files) copyFileSync(require.resolve(f), `public/wasm/${f.split('/').pop()}`);
+copyFileSync('vendor/wasm/tree-sitter-swift.wasm', 'public/wasm/tree-sitter-swift.wasm');

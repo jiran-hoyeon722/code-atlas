@@ -110,6 +110,15 @@ const KOTLIN_ROLES: Role[] = [
   ...JAVA_ROLES.slice(2),
 ];
 
+const SWIFT_ROLES: Role[] = [
+  r('테스트', 3, anywhere('Tests/', '*Tests.swift'), '테스트 코드'),
+  r('진입점', 0, anywhere('App/', '*App.swift', 'AppDelegate.swift', 'SceneDelegate.swift', 'Views/', 'Screens/', 'Scenes/'), '앱을 시작하는 파일과 화면을 그리는 뷰'),
+  r('애플리케이션', 1, anywhere('ViewModels/', 'ViewModel/', 'Coordinators/', 'Features/'), '화면 상태와 흐름을 다루는 뷰모델·코디네이터'),
+  r('도메인', 2, anywhere('Models/', 'Model/', 'Services/', 'Network/', 'Networking/', 'Repositories/'), '데이터 모델과 서비스·네트워크·저장소 접근'),
+  r('기반', 3, anywhere('Extensions/', 'Utils/', 'Utilities/', 'Helpers/', 'Resources/'), '어디서나 가져다 쓰는 확장·유틸·리소스'),
+  r('기타', 3, [''], '위 역할에 속하지 않는 나머지 코드'),
+];
+
 const escapeGlob = (s: string) => s.replace(/[*\\]/g, '\\$&');
 
 const inner = (path: string, sourceDir: string) =>
@@ -122,6 +131,7 @@ export function presetFor(detection: Detection, paths: string[]): Preset {
   if (detection.lang === 'go') return { layers: layers('애플리케이션', '도메인'), roles: GO_ROLES };
   if (detection.lang === 'java') return { layers: layers('애플리케이션', '도메인'), roles: JAVA_ROLES };
   if (detection.lang === 'kotlin') return { layers: layers('애플리케이션', '도메인'), roles: KOTLIN_ROLES };
+  if (detection.lang === 'swift') return { layers: layers('애플리케이션', '도메인'), roles: SWIFT_ROLES };
 
   const folders: string[] = [];
   for (const p of paths) {

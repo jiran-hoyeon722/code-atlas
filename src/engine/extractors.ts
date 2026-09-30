@@ -8,6 +8,7 @@ import { javaModule } from './java/module';
 import { kotlinModule } from './kotlin/module';
 import { pyModule } from './py/module';
 import { shellModule } from './shell/module';
+import { swiftModule } from './swift/module';
 import type { Extraction, Lang, RepoInput } from './types';
 
 export type Extractor = (
@@ -18,7 +19,7 @@ export type Extractor = (
   onLink?: () => void,
 ) => Extraction;
 
-const MODULES: Partial<Record<Lang, LangModule>> = { py: pyModule, go: goModule, java: javaModule, kotlin: kotlinModule, shell: shellModule };
+const MODULES: Partial<Record<Lang, LangModule>> = { py: pyModule, go: goModule, java: javaModule, kotlin: kotlinModule, shell: shellModule, swift: swiftModule };
 
 const EXTRACTORS: Partial<Record<Lang, Extractor>> = { php: extractPhpProject, ts: extractTsProject };
 
