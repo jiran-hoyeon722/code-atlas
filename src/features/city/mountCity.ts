@@ -6,7 +6,7 @@ import type { ArchNode } from '../../engine/architecture';
 import type { MountViewer } from '../viewer-env';
 import { esc } from '../escape';
 import { LAYER_TINT, roleColors } from '../palette';
-import { highlight } from '../code-viewer/highlight';
+import { renderCode } from '../code-viewer/highlight';
 import { ROAD, layoutCity } from './layout';
 import { createSelectionReporter } from './selection';
 import { MAX_HEIGHT, SMALL_CITY, homeView } from './homeView';
@@ -461,7 +461,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
       code.textContent = '폴더 접근 권한이 없어요. 상단의 "폴더 다시 연결"을 눌러 주세요.';
       return;
     }
-    code.innerHTML = highlight(source, arch.lang);
+    renderCode(code, source, arch.lang);
     $('code-gutter').textContent = source.split('\n').map((_, k) => k + 1).join('\n');
     linkReferences(code, n);
     $('code-body').scrollTop = 0;
