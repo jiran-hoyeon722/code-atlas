@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { buildArmy, chunkStart, isShield, placeSquads } from '../../../src/engine/battle/sim/army';
-import { chainSplit, cloneBurst, guardDamage, hitDamage } from '../../../src/engine/battle/sim/battle';
+import { chainExtra, cloneBurst, guardDamage, hitDamage } from '../../../src/engine/battle/sim/battle';
+import { ATTACK_BY_TIER, EFFECTS, SPEED_BY_TIER } from '../../../src/engine/battle/rules';
 import { createBattle, predict, simulate, victoryLabel } from '../../../src/engine/battle/sim';
 import type { BattleEvent, Squad } from '../../../src/engine/battle/sim';
 import { synthQuality, tinyQuality } from './synth';
@@ -46,8 +47,8 @@ describe('army', () => {
     ]));
     // 1200 lines -> 4 lines each; soldier 37 covers lines 148..151: half in f0.
     const s = army.soldiers[37];
-    expect(s.atk).toBeCloseTo((2 * 0.5 + 2 * 1) / 4);
-    expect(s.spd).toBeCloseTo((2 * 0.6 + 2 * 1) / 4);
+    expect(s.atk).toBeCloseTo((2 * ATTACK_BY_TIER[3] + 2 * 1) / 4);
+    expect(s.spd).toBeCloseTo((2 * SPEED_BY_TIER[3] + 2 * 1) / 4);
     expect(s.r).toBe(0.5);
     expect(s.chainGroup).toBe(0);
     expect(s.d).toBe(0.5);
@@ -80,16 +81,15 @@ describe('army', () => {
     expect(army.squads[1]).toMatchObject({ name: 'root.ts', body: 'sprint', gear: ['shield', 'mirror'] });
     expect(army.squads[5]).toMatchObject({ name: 'ui', body: 'sprint', gear: ['shield'] });
     expect(army.commander.hp).toBe(1000);
-    expect(army.commander.guard).toBeCloseTo(0.7);
+    expect(army.commander.guard).toBeCloseTo(1 - EFFECTS.shieldCut);
   });
 
-  test('lanes: ranks 1,4,7 mid; 2,5,8 top; 3,6,9 bottom', () => {
-    const squads = Array.from({ length: 15 }, (_, i) => ({ index: i, power: [5, 9, 1, 9, 3, 7, 2, 8, 4, 6, 0.5, 0.4, 0.3, 0.2, 0.1][i] }));
+  test('lanes: path order 1,4,7 mid; 2,5,8 top; 3,6,9 bottom', () => {
+    const squads = Array.from({ length: 15 }, (_, i) => ({ index: i }));
     const lanes = placeSquads(squads as Squad[]);
-    // power order: 1(9), 3(9), 7(8), 5(7), 9(6), 0(5), 8(4), 4(3), 6(2), 2(1), 10, 11, 12, 13, 14
-    expect(lanes.mid).toEqual([1, 5, 8, 2, 12]);
-    expect(lanes.top).toEqual([3, 9, 4, 10, 13]);
-    expect(lanes.bottom).toEqual([7, 0, 6, 11, 14]);
+    expect(lanes.mid).toEqual([0, 3, 6, 9, 12]);
+    expect(lanes.top).toEqual([1, 4, 7, 10, 13]);
+    expect(lanes.bottom).toEqual([2, 5, 8, 11, 14]);
   });
 
   test('fewer than 300 code lines cannot fight', () => {
@@ -107,23 +107,21 @@ describe('mechanics', () => {
     expect(hitDamage(1, 0, 0.01).crit).toBe(true);
   });
 
-  test('shield cuts 30%, commander guard scales with tests', () => {
+  test('shield cuts shieldCut, commander guard scales with tests', () => {
     const shielded = guardDamage(10, true, 1);
-    expect(shielded.damage).toBeCloseTo(7);
-    expect(shielded.blocked).toBeCloseTo(3);
+    expect(shielded.damage).toBeCloseTo(10 * (1 - EFFECTS.shieldCut));
+    expect(shielded.blocked).toBeCloseTo(10 * EFFECTS.shieldCut);
     expect(guardDamage(10, false, 1)).toEqual({ damage: 10, blocked: 0 });
     expect(guardDamage(10, false, 0.85).damage).toBeCloseTo(8.5);
   });
 
-  test('chain shares 30% x r among allies, or none without allies', () => {
-    const split = chainSplit(10, 0.5, 3);
-    expect(split.self).toBeCloseTo(8.5);
-    expect(split.each).toBeCloseTo(0.5);
-    expect(chainSplit(10, 0.5, 0)).toEqual({ self: 10, each: 0 });
+  test('chain adds chainShare x r of the hit on top, nothing without cycles', () => {
+    expect(chainExtra(10, 0.5)).toBeCloseTo(10 * EFFECTS.chainShare * 0.5);
+    expect(chainExtra(10, 0)).toBe(0);
   });
 
-  test('clone burst is max hp x 50% x d', () => {
-    expect(cloneBurst(100, 0.4)).toBeCloseTo(20);
+  test('clone burst is max hp x cloneBurst x d', () => {
+    expect(cloneBurst(100, 0.4)).toBeCloseTo(100 * EFFECTS.cloneBurst * 0.4);
     expect(cloneBurst(100, 0)).toBe(0);
   });
 
@@ -133,35 +131,34 @@ describe('mechanics', () => {
     return kinds;
   };
 
-  test('chain events carry the shared part of a hit on a tangled army', () => {
+  test('chain events carry the extra a tangled soldier takes on top of a hit', () => {
     const tangled = tinyQuality('tangled', fivePaths(200).map((f) => ({ ...f, cycle: 0 })));
     const plain = tinyQuality('plain', fivePaths(200));
     const r = simulate(tangled, plain, 1, { record: true });
     const at = r.events.findIndex((e) => e.kind === 'hit' && e.target.side === 'a' && e.target.index >= 0);
     const first = r.events[at];
     if (first.kind !== 'hit') throw new Error('no hit');
-    let total = 0;
-    let n = 0;
-    for (let i = at + 1; r.events[i].kind === 'chain'; i++) {
-      const e = r.events[i];
-      if (e.kind === 'chain') {
-        expect(e.from).toEqual(first.target);
-        total += e.damage;
-        n++;
-      }
-    }
-    expect(n).toBe(19);
-    expect(total).toBeCloseTo(first.damage * 0.3);
-    expect(allEvents(r.events).get('chain')).toBeGreaterThan(0);
+    const chain = r.events[at + 1];
+    if (chain.kind !== 'chain') throw new Error('no chain event');
+    expect(chain.from).toEqual(first.target);
+    expect(chain.target).toEqual(first.target);
+    expect(chain.damage).toBeCloseTo(first.damage * EFFECTS.chainShare);
+    expect(allEvents(simulate(plain, tinyQuality('plain2', fivePaths(200)), 1, { record: true }).events).get('chain')).toBeUndefined();
   });
 
-  test('clone bursts hit same-group soldiers when one dies, without cascading', () => {
+  test('a dying clone splits max hp x cloneBurst x d among its group, without cascading', () => {
     const cloned = tinyQuality('cloned', fivePaths(200).map((f) => ({ ...f, clone: 1, removable: true })));
     const plain = tinyQuality('plain', fivePaths(200));
     const r = simulate(cloned, plain, 1, { record: true });
     const bursts = r.events.filter((e) => e.kind === 'clone');
     expect(bursts.length).toBeGreaterThan(0);
-    for (const e of bursts) if (e.kind === 'clone') expect(e.damage).toBeCloseTo(50);
+    const perDeath = new Map<string, number>();
+    for (const e of bursts) {
+      if (e.kind !== 'clone') continue;
+      const k = `${e.tick}:${e.source.index}`;
+      perDeath.set(k, (perDeath.get(k) ?? 0) + e.damage);
+    }
+    for (const total of perDeath.values()) expect(total).toBeCloseTo(100 * EFFECTS.cloneBurst);
     const cloneDeaths = r.events.filter((e) => e.kind === 'death' && e.cause === 'clone');
     const sources = new Set(bursts.map((e) => (e.kind === 'clone' ? `${e.tick}:${e.source.index}` : '')));
     for (const d of cloneDeaths) if (d.kind === 'death') expect(sources.has(`${d.tick}:${d.unit.index}`)).toBe(false);
@@ -172,7 +169,7 @@ describe('mechanics', () => {
     const r = simulate(tested, tinyQuality('plain', fivePaths(200)), 1, { record: true });
     const onShield = r.events.find((e) => e.kind === 'hit' && e.target.side === 'a' && e.target.index >= 0);
     if (!onShield || onShield.kind !== 'hit') throw new Error('no hit');
-    expect(onShield.blocked / (onShield.damage + onShield.blocked)).toBeCloseTo(0.3);
+    expect(onShield.blocked / (onShield.damage + onShield.blocked)).toBeCloseTo(EFFECTS.shieldCut);
   });
 });
 

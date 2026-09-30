@@ -51,6 +51,9 @@ export function synthQuality(opts: SynthOptions = {}): Quality {
   const removableShare = opts.removableShare ?? 0;
   const testRatio = opts.testRatio ?? 0.5;
   const rand = mulberry32(opts.seed ?? 1);
+  // Separate streams so changing one knob (say cycles) leaves the other layouts (say clones) as they were.
+  const cycleRand = mulberry32(((opts.seed ?? 1) * 7919 + 1) >>> 0);
+  const cloneRand = mulberry32(((opts.seed ?? 1) * 7919 + 2) >>> 0);
 
   const weights = Array.from({ length: fileCount }, () => 0.5 + rand());
   const wsum = weights.reduce((s, w) => s + w, 0);
@@ -102,12 +105,17 @@ export function synthQuality(opts: SynthOptions = {}): Quality {
   let inCycles = 0;
   const order = files.map((_, i) => i);
   for (let i = order.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
+    const j = Math.floor(cycleRand() * (i + 1));
     [order[i], order[j]] = [order[j], order[i]];
   }
   let cursor = 0;
   while (inCycles < cycleTarget && cursor + 1 < order.length) {
-    const size = Math.min(order.length - cursor, 2 + Math.floor(rand() * 5));
+    let size = Math.min(order.length - cursor, 2 + Math.floor(cycleRand() * 5));
+    const linesOf = (n: number) => order.slice(cursor, cursor + n).reduce((t, m) => t + files[m].lines, 0);
+    // Trim the group so whole-file cycles land near the target instead of overshooting by a group.
+    while (size > 2 && inCycles + linesOf(size) > cycleTarget) size--;
+    const over = inCycles + linesOf(size) - cycleTarget;
+    if (over > 0 && over > cycleTarget - inCycles) break;
     const members = order.slice(cursor, cursor + size);
     cursor += size;
     const id = cycles.length;
@@ -129,12 +137,12 @@ export function synthQuality(opts: SynthOptions = {}): Quality {
   };
   while (removable < removableTarget && attempts < 20_000) {
     attempts++;
-    const len = 6 + Math.floor(rand() * 7);
-    const copies = 1 + Math.floor(rand() * 3);
+    const len = 6 + Math.floor(cloneRand() * 7);
+    const copies = 1 + Math.floor(cloneRand() * 3);
     const spots: { f: QualityFile; start: number }[] = [];
     for (let c = 0; c <= copies; c++) {
-      const f = files[Math.floor(rand() * files.length)];
-      const start = Math.floor(rand() * Math.max(1, f.lines - len + 1));
+      const f = files[Math.floor(cloneRand() * files.length)];
+      const start = Math.floor(cloneRand() * Math.max(1, f.lines - len + 1));
       if (!free(f, start, len) || spots.some((s) => s.f === f && Math.abs(s.start - start) < len)) break;
       spots.push({ f, start });
     }

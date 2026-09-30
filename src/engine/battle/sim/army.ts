@@ -66,8 +66,12 @@ function folderOf(path: string): string {
   return slash < 0 ? path : path.slice(0, slash);
 }
 
-export function placeSquads(squads: readonly Pick<Squad, 'index' | 'power'>[]): Record<Lane, number[]> {
-  const order = squads.map((s) => s.index).sort((x, y) => squads[y].power - squads[x].power || x - y);
+/**
+ * Path order, dealt mid, top, bottom. Sorting by power put an uneven army's best squads first and
+ * cost it the war against an even army of the same average, which made small repos lose to big ones.
+ */
+export function placeSquads(squads: readonly Pick<Squad, 'index'>[]): Record<Lane, number[]> {
+  const order = squads.map((s) => s.index).sort((x, y) => x - y);
   const lanes: Record<Lane, number[]> = { top: [], mid: [], bottom: [] };
   const byRank: Lane[] = ['mid', 'top', 'bottom'];
   order.forEach((s, k) => lanes[byRank[k % 3]].push(s));
