@@ -4,7 +4,7 @@ import { compileGlob, type GlobSyntax } from '../glob';
 import { isBuildScript, sourcesFor } from '../sources';
 import type { RepoInput, SourceFile } from '../types';
 import { codeLines } from './lines';
-import { DEFAULT_EXCLUDE, DEFAULT_TEST_PATTERNS } from './rules';
+import { DEFAULT_EXCLUDE, DEFAULT_TEST_PATTERNS, LANG_TEST_PATTERNS } from './rules';
 
 export interface Scope {
   prod: SourceFile[];
@@ -24,7 +24,7 @@ const anyOf = (patterns: readonly string[]) => {
 const byPath = (a: SourceFile, b: SourceFile) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 
 export function splitScope(detection: Detection, input: RepoInput): Scope {
-  const testPatterns = [...DEFAULT_TEST_PATTERNS];
+  const testPatterns = [...DEFAULT_TEST_PATTERNS, ...(LANG_TEST_PATTERNS[detection.lang] ?? [])];
   const exclude = [...DEFAULT_EXCLUDE];
   const isTest = anyOf(testPatterns);
   const isExcluded = anyOf(exclude);

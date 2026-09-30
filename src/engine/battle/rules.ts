@@ -1,3 +1,5 @@
+import type { Lang } from '../langs';
+
 /**
  * Every number the battle is judged by. Changing one changes results, so bump RULE_VERSION with it
  * and keep the rulebook in step.
@@ -93,6 +95,14 @@ export const LIMITS = {
 } as const;
 
 export const DEFAULT_TEST_PATTERNS = ['**/*.test.*', '**/*.spec.*', '**/__tests__/**', 'tests/**'] as const;
+// Added on top of the defaults, matching each language preset's test role; php and ts have none so their scope stays fixed.
+export const LANG_TEST_PATTERNS: Partial<Record<Lang, readonly string[]>> = {
+  py: ['**/test_*.py', '**/*_test.py', '**/tests/**'],
+  go: ['**/*_test.go'],
+  java: ['**/src/test/**', '**/*Test.java', '**/*Tests.java'],
+  kotlin: ['**/src/test/**', '**/src/androidTest/**', '**/*Test.kt', '**/*Tests.kt'],
+  swift: ['**/Tests/**', '**/*Tests.swift'],
+};
 export const DEFAULT_EXCLUDE = ['**/*.d.ts', '**/*.gen.ts', '**/*.gen.tsx'] as const;
 
 export function tierOf(value: number, bounds: readonly number[]): number {
