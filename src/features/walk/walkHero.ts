@@ -131,6 +131,7 @@ export interface ModelHero extends Hero {
   emote(name: Emote): void;
   die(): void;
   revive(): void;
+  sit(on: boolean): void;
   readonly ready: boolean;
 }
 
@@ -142,6 +143,7 @@ export function createModelHero(url: string, onError: () => void): ModelHero {
   let robot: Robot | null = null;
   let emoting: THREE.AnimationAction | null = null;
   let dead = false;
+  let seated = false;
   let disposed = false;
 
   void spawnRobot(url, 1.75).then((r) => {
@@ -169,9 +171,14 @@ export function createModelHero(url: string, onError: () => void): ModelHero {
       dead = false;
       robot?.play('Idle', 0.1);
     },
+    sit(on) {
+      seated = on;
+      emoting = null;
+      robot?.play(on ? 'Sitting' : 'Idle', 0.15);
+    },
     animate(p) {
       if (!robot) { fallback.animate(p); return; }
-      if (!dead) {
+      if (!dead && !seated) {
         const moving = p.speed > 0.4;
         if ((moving || p.airborne) && emoting && emoting !== robot.actions.Punch) emoting = null;
         if (!emoting) robot.play(p.airborne ? 'Jump' : !moving ? 'Idle' : p.run > 0.35 ? 'Running' : 'Walking', p.airborne ? 0.12 : 0.28);

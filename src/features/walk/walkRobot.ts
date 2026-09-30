@@ -24,7 +24,7 @@ export interface Robot {
   dispose(): void;
 }
 
-const ONCE = ['Jump', 'Wave', 'ThumbsUp', 'Punch', 'Death', 'No', 'Yes'];
+const ONCE = ['Jump', 'Wave', 'ThumbsUp', 'Punch', 'Death', 'No', 'Yes', 'Sitting'];
 
 // Each robot is a skeleton-aware clone with its own mixer; tint recolours the body without touching the shared original.
 export async function spawnRobot(url: string, height: number, tint?: string): Promise<Robot> {

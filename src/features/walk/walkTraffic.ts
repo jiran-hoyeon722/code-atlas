@@ -60,8 +60,16 @@ export interface Traffic {
   update(dt: number, player: THREE.Vector3): void;
   /** Show the cars of this file's references (blue = files that use it, orange = files it uses); null keeps only ambient traffic. */
   setFocus(node: number | null): void;
+  /** The closest passing car within reach, for hitching a ride. */
+  nearest(x: number, z: number, reach: number): RideCar | null;
+  /** Rides `car` along its reference route; `arrived` fires at the used file's door. */
+  board(car: RideCar, arrived: (car: RideCar) => void): void;
+  leave(): void;
+  readonly riding: RideCar | null;
   dispose(): void;
 }
+
+export interface RideCar { readonly f: number; readonly t: number; readonly x: number; readonly z: number; readonly dx: number; readonly dz: number; readonly speed: number }
 
 type Car = { f: number; t: number; kind: 'ambient' | 'in' | 'out'; pts: P[]; cum: number[]; total: number; s: number; speed: number; x: number; z: number; dx: number; dz: number };
 
@@ -144,7 +152,27 @@ export function createTraffic(scene: THREE.Scene, layout: WalkLayout, arch: Arch
   const up = new THREE.Vector3(0, 1, 0);
   let labelClock = 0;
   let focus: number | null = null;
+  let riding: Car | null = null;
+  let arrived: ((car: RideCar) => void) | null = null;
   return {
+    get riding() { return riding; },
+    nearest(x, z, reach) {
+      let best: Car | null = null;
+      let bestD = reach;
+      cars.forEach((c) => {
+        const d = Math.hypot(c.x - x, c.z - z);
+        if (d < bestD) { bestD = d; best = c; }
+      });
+      return best;
+    },
+    board(car, done) {
+      riding = cars.find((c) => c === car) ?? null;
+      arrived = done;
+    },
+    leave() {
+      riding = null;
+      arrived = null;
+    },
     setFocus(node) {
       if (node === focus) return;
       focus = node;
@@ -159,6 +187,7 @@ export function createTraffic(scene: THREE.Scene, layout: WalkLayout, arch: Arch
       }
       const busy = new Set(related.map((c) => `${c.f}>${c.t}`));
       cars = [...related, ...ambient.filter((c) => !busy.has(`${c.f}>${c.t}`))].slice(0, CAPACITY);
+      if (riding && !cars.includes(riding)) cars = [riding, ...cars].slice(0, CAPACITY);
       labels.forEach((l) => { l.sprite.visible = false; l.car = null; });
       recolor();
     },
@@ -166,9 +195,15 @@ export function createTraffic(scene: THREE.Scene, layout: WalkLayout, arch: Arch
       cars.forEach((c, k) => {
         const ahead = (player.x - c.x) * c.dx + (player.z - c.z) * c.dz;
         const side = Math.abs((player.x - c.x) * c.dz - (player.z - c.z) * c.dx);
-        const target = ahead > 0 && ahead < 7 && side < 1.8 && player.y < 2 ? 0 : SPEED;
+        const target = c !== riding && ahead > 0 && ahead < 7 && side < 1.8 && player.y < 2 ? 0 : SPEED;
         c.speed += (target - c.speed) * Math.min(1, dt * (target ? 1.5 : 6));
-        c.s = (c.s + c.speed * dt) % c.total;
+        if (c === riding && c.s + c.speed * dt >= c.total) {
+          c.s = c.total - 0.001;
+          const done = arrived;
+          riding = null;
+          arrived = null;
+          done?.(c);
+        } else c.s = (c.s + c.speed * dt) % c.total;
         let seg = 1;
         while (seg < c.cum.length - 1 && c.cum[seg] < c.s) seg++;
         const [x0, z0] = c.pts[seg - 1];

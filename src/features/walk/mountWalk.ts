@@ -16,6 +16,8 @@ import { createTraffic } from './walkTraffic';
 import { createRain } from './walkRain';
 import { RIVALS, createBattle } from './walkBattle';
 import { createHeli } from './walkHeli';
+import { createVehicles, type Vehicle } from './walkVehicles';
+import type { RideCar } from './walkTraffic';
 import robotUrl from './assets/RobotExpressive.glb?url';
 
 const WALK = 4.2;
@@ -35,7 +37,7 @@ const fmt = (n: number) => Number(n).toLocaleString('ko-KR');
 const MARKUP = `
 <div class="wk-hud glass">
     <h1 data-el="title"></h1>
-    <div class="keys"><b>WASD</b> 이동 · <b>Shift</b> 달리기 · <b>Space</b> 점프 · <b>클릭</b> 후 마우스로 시점 · <b>휠</b> 거리 · <b>E</b> 들어가기 · <b>/</b> 검색 · <b>R</b> 비 · <b>1~3</b> 인사·엄지·춤 · <b>F</b> 주먹 · <b>H</b> 헬기</div>
+    <div class="keys"><b>WASD</b> 이동 · <b>Shift</b> 달리기 · <b>Space</b> 점프 · <b>클릭</b> 후 마우스로 시점 · <b>휠</b> 거리 · <b>E</b> 들어가기·타기 · <b>/</b> 검색 · <b>R</b> 비 · <b>1~3</b> 인사·엄지·춤 · <b>F</b> 주먹 · <b>H</b> 헬기</div>
     <div class="search"><input data-el="q" type="search" placeholder="파일 이름으로 순간 이동 ( / )" autocomplete="off"></div>
 </div>
 <canvas class="wk-map glass" data-el="map" width="200" height="200" title="클릭하면 그 위치로 이동"></canvas>
@@ -326,8 +328,8 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     for (const b of nearby(p.x, p.z, 1)) if (gap(b, p.x, p.z) < 0.4 && p.y < b.h + 0.5) return true;
     return false;
   };
-  const blocked = (x: number, z: number) => {
-    for (const b of nearby(x, z, RADIUS + 1)) if (gap(b, x, z) < RADIUS) return true;
+  const blocked = (x: number, z: number, r = RADIUS) => {
+    for (const b of nearby(x, z, r + 1)) if (gap(b, x, z) < r) return true;
     return x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ;
   };
 
@@ -443,7 +445,9 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   let punchAt = 0;
   let punchCooldown = 0;
   let hurt = 0;
-  let mode: 'walk' | 'fly' = 'walk';
+  let mode: 'walk' | 'fly' | 'drive' | 'ride' = 'walk';
+  let nearVehicle: Vehicle | null = null;
+  let nearCar: RideCar | null = null;
   let toastTimer = 0;
   const caughtNames = new Set<string>();
   const toast = (text: string, ms = 2600) => {
@@ -466,6 +470,7 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     return new THREE.Vector3(x, 0, z);
   }
   const heli = createHeli(scene, bounds);
+  const vehicles = createVehicles(scene, layout, blocked, random);
   const battle = createBattle(scene, robotUrl, pos, {
     blocked,
     random,
@@ -547,6 +552,82 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     const prompt = $('prompt');
     if (b) prompt.innerHTML = `<b>E</b> 들어가기 — ${esc(arch.nodes[b.i].name)}`;
     prompt.classList.toggle('open', !!b && !detailOpen);
+    updatePrompt();
+  }
+  function updatePrompt() {
+    const prompt = $('prompt');
+    let html = '';
+    const name = (i: number) => esc(arch.nodes[i].name);
+    if (mode === 'drive') html = '<b>E</b> 내리기';
+    else if (mode === 'ride' && traffic.riding) html = `<b>E</b> 먼저 내리기 — ${name(traffic.riding.t)}(으)로 가는 중`;
+    else if (mode === 'walk' && alive && !detailOpen && !entering) {
+      const hpos = heli.root.position;
+      if (heli.state === 'parked' && Math.hypot(hpos.x - pos.x, hpos.z - pos.z) < 7) html = '<b>H</b> 헬기 타기';
+      else if (nearVehicle) html = `<b>E</b> 운전 — ${nearVehicle.kind === 'car' ? '자동차' : '오토바이'}`;
+      else if (nearCar) html = `<b>E</b> 탑승 — ${name(nearCar.f)} → ${name(nearCar.t)}`;
+      else if (focus) html = `<b>E</b> 들어가기 — ${name(focus.i)}`;
+    }
+    if (html) prompt.innerHTML = html;
+    prompt.classList.toggle('open', !!html);
+  }
+  const showHero = (on: boolean) => { hero.root.visible = on; blob.visible = on; };
+  function driveVehicle(v: Vehicle) {
+    vehicles.enter(v);
+    mode = 'drive';
+    keys.clear();
+    setFocus(null);
+    if (v.kind === 'car') showHero(false); else hero.sit(true);
+    toast('운전 — W/S 가속·브레이크 · A/D 핸들 · Shift 부스트 · Space 급제동 · E 내리기', 4500);
+    updatePrompt();
+  }
+  function leaveVehicle() {
+    const u = vehicles.exit();
+    mode = 'walk';
+    hero.sit(false);
+    showHero(true);
+    hero.root.rotation.z = 0;
+    if (u) {
+      pos.copy(freeSpotNear(u.x + Math.cos(u.heading) * 2.4, u.z - Math.sin(u.heading) * 2.4, 0, 10));
+      heading = u.heading;
+      yaw = heading + Math.PI;
+    }
+    vel.set(0, 0, 0);
+    updatePrompt();
+  }
+  function hitch(car: RideCar) {
+    traffic.board(car, (c) => {
+      mode = 'walk';
+      showHero(true);
+      const b = byNode.get(c.t);
+      if (b) {
+        pos.copy(freeSpotNear(b.x, b.z + b.face * (b.d / 2 + 2.6), 0, 8));
+        heading = b.face > 0 ? Math.PI : 0;
+        yaw = heading + Math.PI;
+      }
+      vel.set(0, 0, 0);
+      toast(`${arch.nodes[c.t].name} 도착! — ${arch.nodes[c.f].name} 이(가) 쓰는 파일이에요`, 3500);
+      updatePrompt();
+    });
+    mode = 'ride';
+    keys.clear();
+    setFocus(null);
+    showHero(false);
+    toast(`${arch.nodes[car.f].name} → ${arch.nodes[car.t].name} 차에 탔어요 — 도착하면 내려 줘요`, 3500);
+    updatePrompt();
+  }
+  function hopOff() {
+    const car = traffic.riding;
+    traffic.leave();
+    mode = 'walk';
+    showHero(true);
+    if (car) pos.copy(freeSpotNear(car.x, car.z, 3, 12));
+    vel.set(0, 0, 0);
+    updatePrompt();
+  }
+  function interact() {
+    if (nearVehicle) driveVehicle(nearVehicle);
+    else if (nearCar) hitch(nearCar);
+    else if (focus) enter(focus);
   }
   function enter(b: WalkBuilding) {
     keys.clear();
@@ -595,7 +676,17 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     if (typing()) { if (e.key === 'Escape') (document.activeElement as HTMLElement).blur(); return; }
     if (e.key === 'Escape' && (detailOpen || entering)) { leave(); return; }
     if (detailOpen || entering) return;
-    if (e.code === 'KeyH') { toggleHeli(); return; }
+    const isE = e.key === 'e' || e.key === 'E' || e.key === 'ㄷ';
+    if (e.code === 'KeyH' && (mode === 'walk' || mode === 'fly')) { toggleHeli(); return; }
+    if (mode === 'drive' || mode === 'ride') {
+      if (isE) { if (mode === 'drive') leaveVehicle(); else hopOff(); return; }
+      if (e.code === 'KeyR') { rain.set(!rain.enabled); applyWeather(); return; }
+      if (mode === 'drive') {
+        keys.add(e.code);
+        if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+      }
+      return;
+    }
     if (mode === 'fly') {
       if (e.code === 'KeyR') { rain.set(!rain.enabled); applyWeather(); return; }
       keys.add(e.code);
@@ -605,7 +696,7 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     if (!alive) return;
     if (e.code === 'KeyF') { punch(); return; }
     if (e.key === '/') { e.preventDefault(); $('q').focus(); return; }
-    if ((e.key === 'e' || e.key === 'E' || e.key === 'ㄷ') && focus) { enter(focus); return; }
+    if (isE) { interact(); return; }
     if (e.code === 'KeyR') { rain.set(!rain.enabled); applyWeather(); return; }
     const emote = ({ Digit1: 'Wave', Digit2: 'ThumbsUp', Digit3: 'Dance' } as Record<string, Emote>)[e.code];
     if (emote) { hero.emote(emote); return; }
@@ -732,6 +823,9 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     rivals: () => battle.positions(),
     goTo: (x: number, z: number) => teleport(new THREE.Vector3(x, 0, z)),
     face: (x: number, z: number) => { heading = Math.atan2(x - pos.x, z - pos.z); yaw = heading + Math.PI; },
+    vehicle: (kind: string) => { const u = vehicles.all().find((x) => x.kind === kind); return u ? { x: u.x, z: u.z, heading: u.heading } : null; },
+    car: () => { const c = traffic.nearest(pos.x, pos.z, 2000); return c ? { x: c.x, z: c.z, dx: c.dx, dz: c.dz, f: arch.nodes[c.f].name, t: arch.nodes[c.t].name } : null; },
+    probe: () => ({ nearVehicle: !!nearVehicle, nearCar: nearCar ? [nearCar.x, nearCar.z] : null, riding: !!traffic.riding, alive, mode, focus: !!focus }),
     state: () => ({ hp, alive, mode, heli: heli.state, caught: battle.caught, pos: [pos.x, pos.z], heliPos: heli.root.position.toArray() }),
   };
   let disposed = false;
@@ -753,8 +847,9 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
     right.set(-forward.z, 0, forward.x);
     const flying = mode === 'fly';
+    const onFoot = mode === 'walk';
     wish.set(0, 0, 0);
-    if (alive && !flying) wish.addScaledVector(forward, fz).addScaledVector(right, fx);
+    if (alive && onFoot) wish.addScaledVector(forward, fz).addScaledVector(right, fx);
     if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(running ? RUN : WALK);
     const airborne = footY > 0.001 || vy > 0;
     vel.lerp(wish, Math.min(1, dt * (airborne ? ACCEL * 0.15 : ACCEL) / Math.max(1, vel.distanceTo(wish))));
@@ -780,6 +875,18 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     blob.scale.setScalar(1 / (1 + footY * 0.6));
     heli.update(dt, time, flying ? { forward: fz, turn: -fx, lift: input(['Space'], ['KeyC', 'ControlLeft']), boost: running } : { forward: 0, turn: 0, lift: 0, boost: false }, floorAt);
     if (flying) pos.set(heli.root.position.x, 0, heli.root.position.z);
+    vehicles.update(dt, mode === 'drive' ? { throttle: fz, steer: -fx, boost: running, handbrake: keys.has('Space') } : { throttle: 0, steer: 0, boost: false, handbrake: false }, pos);
+    const drivenNow = vehicles.driving;
+    if (mode === 'drive' && drivenNow) {
+      pos.set(drivenNow.x, 0, drivenNow.z);
+      heading = drivenNow.heading;
+      if (drivenNow.kind === 'bike') {
+        hero.root.position.set(drivenNow.x, 0.3, drivenNow.z);
+        hero.root.rotation.set(0, drivenNow.heading, drivenNow.lean);
+      }
+    }
+    const ridden = traffic.riding;
+    if (mode === 'ride' && ridden) pos.set(ridden.x, 0, ridden.z);
     if (!alive && now >= respawnAt) {
       alive = true;
       hp = 100;
@@ -794,7 +901,7 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       punchAt -= dt;
       if (punchAt <= 0) battle.strike(pos, heading);
     }
-    battle.update(dt, pos, alive && !flying && !detailOpen && !entering);
+    battle.update(dt, pos, alive && onFoot && !detailOpen && !entering);
     hurt = Math.max(0, hurt - dt * 1.6);
     $('hurt').style.opacity = String(hurt * 0.85);
 
@@ -809,6 +916,21 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       camera.lookAt(lookAt);
       $('fade').style.opacity = String(Math.max(0, (t - 0.55) / 0.45) * 0.55);
       if (t === 1 && !detailOpen) void openDetail(b);
+    } else if ((mode === 'drive' && drivenNow) || (mode === 'ride' && ridden)) {
+      $('fade').style.opacity = '0';
+      const h = drivenNow && mode === 'drive' ? drivenNow.heading : Math.atan2(ridden!.dx, ridden!.dz);
+      const spd = drivenNow && mode === 'drive' ? Math.abs(drivenNow.speed) : ridden!.speed;
+      const want = h + Math.PI;
+      yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * Math.min(1, dt * 3);
+      const back = (drivenNow?.kind === 'bike' && mode === 'drive' ? 6 : 9) + spd * 0.08;
+      let reach = back;
+      do {
+        camPos.set(Math.sin(yaw) * Math.cos(0.24), Math.sin(0.24), Math.cos(yaw) * Math.cos(0.24)).multiplyScalar(reach).add(v.set(pos.x, 1.7, pos.z));
+        reach -= 0.5;
+      } while (reach > 2 && insideBuilding(camPos));
+      camera.position.lerp(camPos, Math.min(1, dt * 6));
+      lookAt.lerp(v.set(pos.x, 1.3, pos.z), Math.min(1, dt * 12));
+      camera.lookAt(lookAt);
     } else if (flying) {
       $('fade').style.opacity = '0';
       const hpos = heli.root.position;
@@ -830,7 +952,7 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       lookAt.lerp(v.set(pos.x, 1.6 + footY * 0.4, pos.z), Math.min(1, dt * 14));
       camera.lookAt(lookAt);
     }
-    const targetFov = flying ? 62 + (heli.speed / 52) * 14 : 58 + run * 10;
+    const targetFov = flying ? 62 + (heli.speed / 52) * 14 : mode === 'drive' && drivenNow ? 60 + (Math.abs(drivenNow.speed) / 40) * 14 : 58 + run * 10;
     if (Math.abs(targetFov - fov) > 0.01) {
       fov += (targetFov - fov) * Math.min(1, dt * 4);
       camera.fov = fov;
@@ -850,9 +972,11 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       updateLampLights(pos.x, pos.z);
       let near: WalkBuilding | null = null;
       let nearGap = 20;
-      if (!flying) for (const b of nearby(pos.x, pos.z, 21)) { const g = gap(b, pos.x, pos.z); if (g < nearGap) { nearGap = g; near = b; } }
-      traffic.setFocus(near ? near.i : null);
-      if (!entering && !detailOpen && !flying) {
+      if (onFoot) for (const b of nearby(pos.x, pos.z, 21)) { const g = gap(b, pos.x, pos.z); if (g < nearGap) { nearGap = g; near = b; } }
+      if (mode !== 'ride') traffic.setFocus(near ? near.i : null);
+      nearVehicle = onFoot && alive ? vehicles.nearest(pos.x, pos.z) : null;
+      nearCar = onFoot && alive && !nearVehicle ? traffic.nearest(pos.x, pos.z, 3.5) : null;
+      if (!entering && !detailOpen && onFoot) {
         let best: WalkBuilding | null = null;
         let bestGap = REACH;
         for (const b of nearby(pos.x, pos.z, REACH + 1)) {
@@ -861,6 +985,7 @@ export const mountWalk: MountViewer = (root, arch, env) => {
         }
         if (best !== focus) setFocus(best);
       }
+      updatePrompt();
       drawMap();
     }
     traffic.update(dt, flying ? heli.root.position : pos);
@@ -877,6 +1002,7 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     cleanups.forEach((fn) => fn());
     hero.dispose();
     battle.dispose();
+    vehicles.dispose();
     heli.dispose();
     window.clearTimeout(toastTimer);
     traffic.dispose();
