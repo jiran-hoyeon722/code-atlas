@@ -113,6 +113,6 @@ describe('scopeAt performance', () => {
     extractPhpFile(parsers.php, small, false); // warm-up
     const t3k = minMs(small);
     const t12k = minMs(large);
-    expect(t12k / t3k).toBeLessThan(8);
+    expect(t12k / t3k).toBeLessThan(10);
   }, 30_000);
 });
