@@ -14,7 +14,23 @@ async function php(src: string) {
   return measureFunctions(parser.parse(src)!.rootNode, 'php', src);
 }
 
+async function other(lang: 'py' | 'shell', src: string) {
+  const parser = (await loadParsers(nodeLocate, [lang])).get(lang);
+  return measureFunctions(parser.parse(src)!.rootNode, lang, src);
+}
+
 describe('measureFunctions', () => {
+  test('py lambda counts as one function', async () => {
+    const r = await other('py', 'f = lambda x: x\n');
+    expect(r.functions).toHaveLength(1);
+  });
+
+  test('shell && and || lists add branches like engine complexity', async () => {
+    const r = await other('shell', 'f() {\n  a && b || c\n}\n');
+    expect(r.functions).toHaveLength(1);
+    expect(r.functions[0].ccn).toBe(3);
+  });
+
   test('ts nested function owns its own lines and branches', async () => {
     const src = [
       'function outer(a) {',

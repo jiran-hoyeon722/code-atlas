@@ -48,11 +48,18 @@ const OPERATORS: Partial<Record<Lang, ReadonlySet<string>>> = {
 
 function isBranch(node: Node, lang: Lang): boolean {
   const spec = LANGS[lang];
-  if ((BRANCHES[lang] ?? spec.branches).has(node.type)) return true;
+  const frozen = BRANCHES[lang];
+  if ((frozen ?? spec.branches).has(node.type)) return true;
   const logical = spec.logical;
-  if (!logical || node.type !== logical.node) return false;
-  const op = node.childForFieldName('operator');
-  return op !== null && (OPERATORS[lang] ?? logical.ops).has(lang === 'php' ? op.type.toLowerCase() : op.type);
+  if (frozen) {
+    if (!logical || node.type !== logical.node) return false;
+    const op = node.childForFieldName('operator');
+    return op !== null && OPERATORS[lang]!.has(lang === 'php' ? op.type.toLowerCase() : op.type);
+  }
+  if (!logical || (node.type !== logical.node && !logical.also?.has(node.type))) return false;
+  // Bash `list` nodes (a && b) carry the operator as an unnamed child without a field name.
+  const op = node.childForFieldName('operator') ?? node.children.find((c) => c !== null && !c.isNamed) ?? null;
+  return op !== null && logical.ops.has(logical.caseInsensitive ? op.type.toLowerCase() : op.type);
 }
 
 export interface FunctionProfile {
@@ -65,14 +72,16 @@ export interface FunctionProfile {
 export function measureFunctions(root: Node, lang: Lang, text: string): FunctionProfile {
   const physical = codeLines(text);
   const map = codeLineMapper(physical);
-  const fnTypes = FUNCTIONS[lang] ?? LANGS[lang].functions;
+  const frozenFns = FUNCTIONS[lang];
+  const fnTypes = frozenFns ?? LANGS[lang].functions;
   const functions: FnInfo[] = [];
   // Explicit stack: deeply nested code must not overflow the JS call stack.
   const stack: { node: Node; fn: number }[] = [{ node: root, fn: -1 }];
   while (stack.length > 0) {
     const { node, fn: parentFn } = stack.pop()!;
     let fn = parentFn;
-    if (fnTypes.has(node.type)) {
+    // Python's `lambda` keyword token shares the type name of the lambda node.
+    if (fnTypes.has(node.type) && (frozenFns !== undefined || node.isNamed)) {
       fn = functions.length;
       const startRow = node.startPosition.row;
       const end = node.endPosition;
