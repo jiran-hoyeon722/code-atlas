@@ -22,11 +22,15 @@
 .wk-walk .wk-hud .keys b { color: var(--text); font-weight: 600; }
 .wk-walk .wk-hud input { margin-top: 8px; width: 100%; box-sizing: border-box; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: rgba(255, 255, 255, .05); color: var(--text); }
 .wk-walk .wk-map { position: absolute; left: 14px; bottom: 14px; width: 200px; height: 200px; padding: 0; cursor: crosshair; }
-.wk-walk .wk-prompt { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); padding: 8px 16px; display: none; font-size: 14px; }
-.wk-walk .wk-prompt.open { display: block; }
+.wk-walk .wk-prompt { position: absolute; left: 50%; bottom: 40px; transform: translate(-50%, 8px); padding: 8px 16px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
+.wk-walk .wk-prompt.open { opacity: 1; transform: translate(-50%, 0); }
 .wk-walk .wk-prompt b { display: inline-block; min-width: 18px; padding: 0 6px; margin-right: 6px; border-radius: 5px; background: var(--accent); color: #0b0d12; text-align: center; }
-.wk-walk .wk-detail { position: absolute; top: 14px; right: 14px; bottom: 14px; width: min(760px, calc(100% - 380px)); display: none; flex-direction: column; overflow: hidden; }
-.wk-walk .wk-detail.open { display: flex; }
+.wk-walk .wk-detail { position: absolute; top: 14px; right: 14px; bottom: 14px; width: min(760px, calc(100% - 380px)); display: flex; flex-direction: column; overflow: hidden; opacity: 0; transform: translateX(40px) scale(.98); pointer-events: none; transition: opacity .35s ease, transform .45s cubic-bezier(.2, .8, .2, 1); }
+.wk-walk .wk-detail.open { opacity: 1; transform: none; pointer-events: auto; }
+.wk-walk .wk-fade { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 40% 50%, transparent 30%, #05060a 100%); opacity: 0; }
+.wk-walk .wk-hud, .wk-walk .wk-map { transition: opacity .4s ease; }
+.wk-walk.entering .wk-hud, .wk-walk.entering .wk-map { opacity: .25; }
+@media (prefers-reduced-motion: reduce) { .wk-walk .wk-detail { transition: none; } }
 .wk-walk .wk-detail .head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
 .wk-walk .wk-detail .title { flex: 1; min-width: 0; }
 .wk-walk .wk-detail .title b { font-size: 15px; }
