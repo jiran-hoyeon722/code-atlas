@@ -900,19 +900,6 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   resize();
   updateLampLights(pos.x, pos.z);
 
-  (window as unknown as { __walkView?: (y: number, p: number, d: number) => void }).__walkView = (y, p, d) => { yaw += y; pitch = p; distance = d; };
-  (window as unknown as { __walkTest?: unknown }).__walkTest = {
-    rivals: () => battle.positions(),
-    goTo: (x: number, z: number) => teleport(new THREE.Vector3(x, 0, z)),
-    face: (x: number, z: number) => { heading = Math.atan2(x - pos.x, z - pos.z); yaw = heading + Math.PI; },
-    vehicle: (kind: string) => { const u = vehicles.all().find((x) => x.kind === kind); return u ? { x: u.x, z: u.z, heading: u.heading } : null; },
-    car: () => { const c = traffic.nearest(pos.x, pos.z, 2000); return c ? { x: c.x, z: c.z, dx: c.dx, dz: c.dz, f: arch.nodes[c.f].name, t: arch.nodes[c.t].name } : null; },
-    probe: () => ({ nearVehicle: !!nearVehicle, nearCar: nearCar ? [nearCar.x, nearCar.z] : null, riding: !!traffic.riding, alive, mode, focus: !!focus }),
-    moveVehicle: (x: number, z: number, h: number) => { const u = vehicles.driving; if (u) Object.assign(u, { x, z, heading: h }); },
-    shake: () => shake,
-    building: () => { let best: WalkBuilding | null = null; let bg = Infinity; for (const b of layout.buildings) { const g = gap(b, pos.x, pos.z); if (g < bg) { bg = g; best = b; } } return best; },
-    state: () => ({ hp, alive, mode, heli: heli.state, caught: battle.caught, pos: [pos.x, pos.z], heliPos: heli.root.position.toArray() }),
-  };
   let disposed = false;
   let last = performance.now();
   let slowClock = 0;

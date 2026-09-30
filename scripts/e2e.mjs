@@ -203,6 +203,24 @@ async function main() {
       await shot(page, 'city-blast.png');
     });
 
+    await step('walk tab: search, walk up to a door, E opens the code', async () => {
+      await page.click('.ca-shell [role=tab]:has-text("걷기")');
+      await page.waitForSelector('.wk-walk canvas', { timeout: 30_000 });
+      await page.waitForTimeout(2500);
+      await page.keyboard.press('/');
+      await page.keyboard.type('userService');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.querySelector('.wk-prompt.open')?.textContent?.includes('들어가기'), null, { timeout: 20_000 });
+      await shot(page, 'walk.png');
+      await page.keyboard.press('e');
+      await page.waitForFunction(() => document.querySelector('[data-el=d-src]')?.textContent?.includes('export const fetchUsers'), null, { timeout: 20_000 });
+      const name = await page.locator('[data-el=d-name]').textContent();
+      assert(name.startsWith('userService'), `walk detail shows another file: "${name}"`);
+      await page.waitForTimeout(600);
+      await shot(page, 'walk-code.png');
+      await page.keyboard.press('Escape');
+    });
+
     await step('graph tab renders', async () => {
       await page.click('.ca-shell [role=tab]:has-text("그래프")');
       await page.waitForSelector('.ca-shell-mount .cg-canvas canvas', { timeout: 30_000 });

@@ -21,7 +21,6 @@ export interface Vehicles {
   /** Leaves the driven vehicle where it is; it respawns elsewhere once the player walks away. */
   exit(): Vehicle | null;
   readonly driving: Vehicle | null;
-  all(): Vehicle[];
   /** Moves the driven vehicle; returns the collision it just had, if any. */
   update(dt: number, input: DriveInput, player: THREE.Vector3): Impact | null;
   /** True when a circle at (x, z) overlaps a parked or driven vehicle body. */
@@ -136,7 +135,6 @@ export function createVehicles(scene: THREE.Scene, layout: WalkLayout, blocked: 
 
   return {
     get driving() { return driving; },
-    all: () => units,
     nearest(x, z) {
       let best: Unit | null = null;
       let bestD = Infinity;
