@@ -16,6 +16,7 @@ const external = [];
 const consoleErrors = [];
 const cspEvents = [];
 const notes = [];
+const workerScripts = [];
 
 function run(cmd, args) {
   return new Promise((ok, fail) => {
@@ -146,7 +147,9 @@ async function main() {
     await context.addInitScript(initScript);
     const page = await context.newPage();
     page.on('request', (r) => {
-      if (!r.url().startsWith(BASE)) external.push(r.url());
+      // blob: URLs of this origin are in-memory (the analysis worker wrapper), not network requests
+      if (!r.url().startsWith(BASE) && !r.url().startsWith(`blob:${new URL(BASE).origin}/`)) external.push(r.url());
+      else if (/\/assets\/worker-[^/]*\.js$/.test(r.url())) workerScripts.push(r.url());
     });
     page.on('console', (m) => {
       if (m.type() === 'error') consoleErrors.push(`${m.text()} @ ${m.location().url}:${m.location().lineNumber}`);
@@ -230,6 +233,48 @@ async function main() {
       const meta = await page.locator('.ca-shell-brand span').textContent();
       assert(meta.startsWith('Laravel'), `expected Laravel detection, got "${meta}"`);
       await shot(page, 'laravel-city.png');
+    });
+
+    await step('analysis worker script is loaded (via the blob: wrapper)', async () => {
+      assert(workerScripts.length > 0, 'no assets/worker-*.js request seen — the analysis worker never loaded');
+    });
+
+    await step('blob: module worker inherits the CSP (fetch to another origin is blocked)', async () => {
+      // this step triggers exactly one violation on purpose, so its events are kept apart from the app's
+      const before = { csp: cspEvents.length, console: consoleErrors.length, external: external.length };
+      const r = await page.evaluate(async () => {
+        const src = `
+          const violations = [];
+          self.addEventListener('securitypolicyviolation', (e) => violations.push({ directive: e.violatedDirective, blocked: e.blockedURI }));
+          let fetched = null;
+          try { await fetch('https://example.invalid/'); fetched = 'ok'; } catch (e) { fetched = String(e); }
+          await new Promise((r) => setTimeout(r, 200));
+          postMessage({ fetched, violations });
+        `;
+        const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+        const w = new Worker(url, { type: 'module' });
+        try {
+          return await new Promise((ok, fail) => {
+            w.onmessage = (e) => ok(e.data);
+            w.onerror = (e) => fail(new Error(e.message || 'blob worker failed'));
+            setTimeout(() => fail(new Error('blob worker timed out')), 10_000);
+          });
+        } finally {
+          w.terminate();
+          URL.revokeObjectURL(url);
+        }
+      });
+      await page.waitForTimeout(300);
+      const stepCsp = cspEvents.splice(before.csp);
+      const stepConsole = consoleErrors.splice(before.console);
+      const stepExternal = external.splice(before.external);
+      assert(r.fetched !== 'ok', `blob worker fetched another origin: ${JSON.stringify(r)}`);
+      assert(r.violations.length === 1 && r.violations[0].directive === 'connect-src' && r.violations[0].blocked.startsWith('https://example.invalid'),
+        `expected exactly one connect-src violation for example.invalid inside the worker, got ${JSON.stringify(r.violations)}`);
+      assert(stepCsp.every((v) => v.blocked.startsWith('https://example.invalid')), `unexpected document CSP events: ${JSON.stringify(stepCsp)}`);
+      assert(stepConsole.every((m) => /example\.invalid/.test(m)), `unexpected console errors: ${stepConsole.join('\n')}`);
+      assert(stepExternal.every((u) => u.startsWith('https://example.invalid')), `unexpected external requests: ${stepExternal.join('\n')}`);
+      notes.push(`blob-worker CSP probe: fetch → ${r.fetched}; worker violation ${JSON.stringify(r.violations[0])}`);
     });
 
     await step('no external requests', async () => {
