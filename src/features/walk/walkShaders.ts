@@ -36,7 +36,30 @@ void main() {
   float lit = step(0.5, hash(cell + vec2(vSeed * 13.1 + epoch * 0.37, 0.0)));
   float warm = hash(cell * 1.7 + vSeed);
   vec3 bulb = mix(vec3(1.0, 0.72, 0.4), vec3(0.5, 0.65, 1.0), step(0.82, warm)) * (0.55 + 0.6 * hash(cell + 3.0));
-  vec3 glass = mix(vec3(0.03, 0.045, 0.08) + 0.05 * vColor, bulb, lit);
+  // Interior mapping: march the view ray into a 3 x 3.5 x 4 m room behind each window.
+  vec3 V = normalize(vWorld - cameraPosition);
+  vec3 T = abs(n.x) > 0.5 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+  vec3 d = vec3(dot(V, T), V.y, max(0.05, dot(V, -n)));
+  vec2 p = g * vec2(3.0, 3.5);
+  float tx = d.x > 0.0 ? (3.0 - p.x) / d.x : -p.x / min(d.x, -1e-4);
+  float ty = d.y > 0.0 ? (3.5 - p.y) / d.y : -p.y / min(d.y, -1e-4);
+  float tz = 4.0 / d.z;
+  float t = min(min(tx, ty), tz);
+  vec3 hit = vec3(p, 0.0) + d * t;
+  float rs = hash(cell + vSeed * 3.7);
+  vec3 wall = mix(vec3(0.9, 0.82, 0.7), vec3(0.62, 0.72, 0.9), step(0.7, rs));
+  vec3 room = wall * 0.85;
+  if (t == tx) room = wall * 0.6;
+  if (t == ty) room = d.y > 0.0 ? wall * (1.05 + 0.6 * smoothstep(0.9, 0.0, distance(hit.xz, vec2(1.5, 2.0)))) : wall * 0.32;
+  if (t == tz) {
+    float fx = 0.3 + rs * 1.4;
+    float furniture = step(fx, hit.x) * step(hit.x, fx + 0.8 + rs) * step(hit.y, 0.7 + rs * 0.9);
+    room = mix(room, wall * 0.18, furniture);
+  }
+  room *= 1.0 - clamp(t / 9.0, 0.0, 0.55);
+  vec3 lamp = bulb * room;
+  vec3 dark = (vec3(0.02, 0.03, 0.06) + 0.04 * vColor) * (0.6 + 0.4 * room);
+  vec3 glass = mix(dark, lamp, lit) + vec3(0.02, 0.03, 0.05) * pow(1.0 - d.z, 3.0);
   col = mix(col, glass, win * side);
   col = mix(col, col * 1.4 + 0.01, frame * side);
   float ground = 1.0 - step(0.5, vBase);

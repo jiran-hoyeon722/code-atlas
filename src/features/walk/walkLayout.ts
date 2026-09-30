@@ -8,15 +8,17 @@ export const STREET = 14;
 export const AVENUE = 24;
 export const FLOOR = 3.5;
 
-export interface WalkBuilding { i: number; x: number; z: number; w: number; d: number; h: number; face: 1 | -1 }
+export interface WalkBuilding { i: number; x: number; z: number; w: number; d: number; h: number; face: 1 | -1; lane: number; district: number }
 export interface WalkStrip { role: number; x: number; z: number; w: number; d: number }
 export interface WalkLane { x: number; z: number; w: number }
-export interface WalkDistrict { role: number; x: number; z: number; w: number; d: number }
+export interface WalkDistrict { role: number; x: number; z: number; w: number; d: number; row: number }
+export interface WalkRow { zMin: number; zMax: number }
 export interface WalkLayout {
   buildings: WalkBuilding[];
   strips: WalkStrip[];
   lanes: WalkLane[];
   districts: WalkDistrict[];
+  rows: WalkRow[];
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
 }
 
@@ -32,6 +34,7 @@ export function layoutWalk(arch: Architecture): WalkLayout {
   const strips: WalkStrip[] = [];
   const lanes: WalkLane[] = [];
   const districts: WalkDistrict[] = [];
+  const rows: WalkRow[] = [];
   const pairDepth = 2 * LOT_DEPTH + LANE;
   let zCursor = 0;
 
@@ -47,8 +50,10 @@ export function layoutWalk(arch: Architecture): WalkLayout {
     const width = shapes.reduce((s, v) => s + v.w, 0) + STREET * (shapes.length - 1);
     const depth = Math.max(...shapes.map((s) => s.d));
     let x = -width / 2;
+    rows.push({ zMin: zCursor, zMax: zCursor + depth });
     shapes.forEach(({ ri, cols, pairs, w, d }) => {
-      districts.push({ role: ri, x: x + w / 2, z: zCursor + d / 2, w, d });
+      const district = districts.length;
+      districts.push({ role: ri, x: x + w / 2, z: zCursor + d / 2, w, d, row: rows.length - 1 });
       for (let p = 0; p < pairs; p++) {
         const z0 = zCursor + p * (pairDepth + BACK);
         strips.push({ role: ri, x: x + w / 2, z: z0 + LOT_DEPTH / 2, w, d: LOT_DEPTH });
@@ -69,6 +74,8 @@ export function layoutWalk(arch: Architecture): WalkLayout {
           z: back ? z0 + LOT_DEPTH - 2 - size / 2 : z0 + LOT_DEPTH + LANE + 2 + size / 2,
           w: size, d: size, h: floors * FLOOR,
           face: back ? 1 : -1,
+          lane: z0 + LOT_DEPTH + LANE / 2,
+          district,
         });
       });
       x += w + STREET;
@@ -78,13 +85,14 @@ export function layoutWalk(arch: Architecture): WalkLayout {
 
   const totalDepth = Math.max(0, zCursor - AVENUE);
   const flip = (z: number) => totalDepth / 2 - z;
-  buildings.forEach((b) => { b.z = flip(b.z); b.face = (-b.face) as 1 | -1; });
+  buildings.forEach((b) => { b.z = flip(b.z); b.lane = flip(b.lane); b.face = (-b.face) as 1 | -1; });
+  rows.forEach((r) => { const top = flip(r.zMin); r.zMin = flip(r.zMax); r.zMax = top; });
   strips.forEach((s) => (s.z = flip(s.z)));
   lanes.forEach((l) => (l.z = flip(l.z)));
   districts.forEach((d) => (d.z = flip(d.z)));
   const xs = districts.flatMap((d) => [d.x - d.w / 2, d.x + d.w / 2]);
   return {
-    buildings, strips, lanes, districts,
+    buildings, strips, lanes, districts, rows,
     bounds: { minX: Math.min(0, ...xs) - AVENUE, maxX: Math.max(0, ...xs) + AVENUE, minZ: -totalDepth / 2 - AVENUE, maxZ: totalDepth / 2 + AVENUE },
   };
 }

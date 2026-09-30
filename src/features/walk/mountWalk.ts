@@ -11,7 +11,10 @@ import { roleColors } from '../palette';
 import { renderCode } from '../code-viewer/highlight';
 import { FLOOR, LANE, STREET, layoutWalk, type WalkBuilding } from './walkLayout';
 import { BUILDING_FRAG, BUILDING_VERT, SKY_FRAG, SKY_VERT } from './walkShaders';
-import { createHero } from './walkHero';
+import { createModelHero, type Emote } from './walkHero';
+import { createTraffic } from './walkTraffic';
+import { createRain } from './walkRain';
+import robotUrl from './assets/RobotExpressive.glb?url';
 
 const WALK = 4.2;
 const RUN = 11;
@@ -30,7 +33,7 @@ const fmt = (n: number) => Number(n).toLocaleString('ko-KR');
 const MARKUP = `
 <div class="wk-hud glass">
     <h1 data-el="title"></h1>
-    <div class="keys"><b>WASD</b> 이동 · <b>Shift</b> 달리기 · <b>Space</b> 점프 · <b>클릭</b> 후 마우스로 시점 · <b>휠</b> 거리 · <b>E</b> 들어가기 · <b>/</b> 검색</div>
+    <div class="keys"><b>WASD</b> 이동 · <b>Shift</b> 달리기 · <b>Space</b> 점프 · <b>클릭</b> 후 마우스로 시점 · <b>휠</b> 거리 · <b>E</b> 들어가기 · <b>/</b> 검색 · <b>R</b> 비 · <b>1~3</b> 인사·엄지·춤</div>
     <div class="search"><input data-el="q" type="search" placeholder="파일 이름으로 순간 이동 ( / )" autocomplete="off"></div>
 </div>
 <canvas class="wk-map glass" data-el="map" width="200" height="200" title="클릭하면 그 위치로 이동"></canvas>
@@ -378,8 +381,20 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   }
 
   // ---- character ----
-  const hero = createHero();
+  const hero = createModelHero(robotUrl, () => {});
   scene.add(hero.root);
+  const traffic = createTraffic(scene, layout, arch, roleColor, random);
+  const rain = createRain(scene, ground, HORIZON, random);
+  const applyWeather = () => {
+    const on = rain.enabled;
+    stars.visible = !on;
+    moonDisc.visible = !on;
+    moon.intensity = on ? 0.35 : 0.9;
+    (scene.fog as THREE.Fog).near = on ? 50 : 80;
+    (scene.fog as THREE.Fog).far = on ? 330 : 430;
+    (sky.material as THREE.ShaderMaterial).uniforms.uGlow.value.set(on ? '#22263a' : '#3b2f5c');
+  };
+  applyWeather();
   const blobTex = (() => {
     const c = document.createElement('canvas');
     c.width = c.height = 64;
@@ -475,6 +490,9 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     if (detailOpen || entering) return;
     if (e.key === '/') { e.preventDefault(); $('q').focus(); return; }
     if ((e.key === 'e' || e.key === 'E' || e.key === 'ㄷ') && focus) { enter(focus); return; }
+    if (e.code === 'KeyR') { rain.set(!rain.enabled); applyWeather(); return; }
+    const emote = ({ Digit1: 'Wave', Digit2: 'ThumbsUp', Digit3: 'Dance' } as Record<string, Emote>)[e.code];
+    if (emote) { hero.emote(emote); return; }
     if (e.code === 'Space') {
       e.preventDefault();
       if (footY <= 0.001) vy = JUMP;
@@ -571,12 +589,14 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
     composer.setSize(w, h);
+    rain.resize(w * renderer.getPixelRatio(), h * renderer.getPixelRatio());
   };
   const resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(root);
   resize();
   updateLampLights(pos.x, pos.z);
 
+  (window as unknown as { __walkView?: (y: number, p: number, d: number) => void }).__walkView = (y, p, d) => { yaw += y; pitch = p; distance = d; };
   let disposed = false;
   let last = performance.now();
   let slowClock = 0;
@@ -672,6 +692,8 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       }
       drawMap();
     }
+    traffic.update(dt, pos);
+    rain.update(time, camera.position);
     clearView(camera.position, v.set(pos.x, 1.4 + footY, pos.z));
     composer.render();
   });
@@ -683,6 +705,8 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     resizeObserver.disconnect();
     cleanups.forEach((fn) => fn());
     hero.dispose();
+    traffic.dispose();
+    rain.dispose();
     lampLights.forEach((l) => l.dispose());
     moon.dispose();
     bloom.dispose();
