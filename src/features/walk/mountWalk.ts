@@ -17,6 +17,8 @@ import { createRain } from './walkRain';
 import { RIVALS, createBattle } from './walkBattle';
 import { createHeli } from './walkHeli';
 import { createVehicles, type Vehicle } from './walkVehicles';
+import { THEMES, type Theme } from './walkThemes';
+import { createMarkers, createSparks } from './walkFx';
 import type { RideCar } from './walkTraffic';
 import robotUrl from './assets/RobotExpressive.glb?url';
 
@@ -37,7 +39,8 @@ const fmt = (n: number) => Number(n).toLocaleString('ko-KR');
 const MARKUP = `
 <div class="wk-hud glass">
     <h1 data-el="title"></h1>
-    <div class="keys"><b>WASD</b> 이동 · <b>Shift</b> 달리기 · <b>Space</b> 점프 · <b>클릭</b> 후 마우스로 시점 · <b>휠</b> 거리 · <b>E</b> 들어가기·타기 · <b>/</b> 검색 · <b>R</b> 비 · <b>1~3</b> 인사·엄지·춤 · <b>F</b> 주먹 · <b>H</b> 헬기</div>
+    <div class="keys"><b>WASD</b> 이동 · <b>Shift</b> 달리기 · <b>Space</b> 점프 · <b>클릭</b> 후 마우스로 시점 · <b>휠</b> 거리 · <b>E</b> 들어가기·타기 · <b>/</b> 검색 · <b>R</b> 비 · <b>1~3</b> 인사·엄지·춤 · <b>F</b> 주먹 · <b>H</b> 헬기 · <b>T</b> 테마</div>
+    <div class="themes" data-el="themes"></div>
     <div class="search"><input data-el="q" type="search" placeholder="파일 이름으로 순간 이동 ( / )" autocomplete="off"></div>
 </div>
 <canvas class="wk-map glass" data-el="map" width="200" height="200" title="클릭하면 그 위치로 이동"></canvas>
@@ -92,7 +95,9 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(HORIZON, 80, 430);
   const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 2000);
-  scene.add(new THREE.HemisphereLight('#7f93d8', '#1c1d26', 0.75));
+  const hemi = new THREE.HemisphereLight('#7f93d8', '#1c1d26', 0.75);
+  scene.add(hemi);
+  const fogColor = (scene.fog as THREE.Fog).color;
   const moon = new THREE.DirectionalLight('#b9c6ff', 0.9);
   moon.castShadow = true;
   moon.shadow.mapSize.set(2048, 2048);
@@ -125,10 +130,11 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     return mesh;
   }
 
+  const moonDir = new THREE.Vector3(0.45, 0.55, -0.7).normalize();
   // ---- sky ----
   const sky = new THREE.Mesh(keep(new THREE.SphereGeometry(1500, 32, 16)), keep(new THREE.ShaderMaterial({
     vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { uHorizon: { value: HORIZON }, uZenith: { value: ZENITH }, uGlow: { value: new THREE.Color('#3b2f5c') } },
+    uniforms: { uHorizon: { value: HORIZON.clone() }, uZenith: { value: ZENITH.clone() }, uGlow: { value: new THREE.Color('#3b2f5c') }, uSunDir: { value: moonDir }, uSunColor: { value: new THREE.Color(0, 0, 0) } },
   })));
   scene.add(sky);
   const starPos = new Float32Array(1800 * 3);
@@ -143,18 +149,19 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   const stars = new THREE.Points(starGeo, keep(new THREE.PointsMaterial({ color: '#ffffff', size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.8 })));
   scene.add(stars);
   const moonDisc = new THREE.Mesh(keep(new THREE.SphereGeometry(28, 24, 16)), keep(new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff4dc').multiplyScalar(1.6), fog: false })));
-  const moonDir = new THREE.Vector3(0.45, 0.55, -0.7).normalize();
   moonDisc.position.copy(moonDir).multiplyScalar(1200);
   scene.add(moonDisc);
 
   // ---- ground, lots, lanes ----
-  const ground = new THREE.Mesh(keep(new THREE.PlaneGeometry(bounds.maxX - bounds.minX + 400, bounds.maxZ - bounds.minZ + 400)), std('#1a1c24', { roughness: 0.42, metalness: 0.15 }));
+  const groundMat = std('#1a1c24', { roughness: 0.42, metalness: 0.15 });
+  const lotMat = std('#ffffff', { roughness: 0.8 });
+  const ground = new THREE.Mesh(keep(new THREE.PlaneGeometry(bounds.maxX - bounds.minX + 400, bounds.maxZ - bounds.minZ + 400)), groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.set((bounds.minX + bounds.maxX) / 2, 0, (bounds.minZ + bounds.maxZ) / 2);
   ground.receiveShadow = true;
   scene.add(ground);
 
-  const lots = instanced(new THREE.BoxGeometry(1, 1, 1), std('#ffffff', { roughness: 0.8 }), layout.strips.map((st) => ({ x: st.x, y: 0.08, z: st.z, sx: st.w, sy: 0.16, sz: st.d })), { receive: true });
+  const lots = instanced(new THREE.BoxGeometry(1, 1, 1), lotMat, layout.strips.map((st) => ({ x: st.x, y: 0.08, z: st.z, sx: st.w, sy: 0.16, sz: st.d })), { receive: true });
   layout.strips.forEach((st, k) => lots.setColorAt(k, new THREE.Color('#2a2d35').lerp(new THREE.Color(roleColor(st.role)), 0.1)));
   if (lots.instanceColor) lots.instanceColor.needsUpdate = true;
   instanced(new THREE.BoxGeometry(1, 1, 1), std('#5a5f6b'), layout.strips.flatMap((st) => [-1, 1].map((side) => ({ x: st.x, y: 0.09, z: st.z + side * (st.d / 2 - 0.12), sx: st.w, sy: 0.18, sz: 0.24 }))), { receive: true });
@@ -174,7 +181,8 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   ]).flat());
   instanced(new THREE.CylinderGeometry(0.07, 0.11, 5.2, 8), std('#2d3139', { metalness: 0.6, roughness: 0.4 }), lampSpots.map((p) => ({ ...p, y: 2.6 })), { cast: true });
   instanced(new THREE.BoxGeometry(0.12, 0.1, 1.1), std('#2d3139', { metalness: 0.6, roughness: 0.4 }), lampSpots.map((p) => ({ ...p, y: 5.15, z: p.z - p.side * 0.5 })));
-  instanced(new THREE.BoxGeometry(0.34, 0.12, 0.5), glow('#ffd29a', 2.2), lampSpots.map((p) => ({ ...p, y: 5.05, z: p.z - p.side * 0.95 })));
+  const lampHead = glow('#ffd29a', 2.2);
+  instanced(new THREE.BoxGeometry(0.34, 0.12, 0.5), lampHead, lampSpots.map((p) => ({ ...p, y: 5.05, z: p.z - p.side * 0.95 })));
   const pool = keep(new THREE.MeshBasicMaterial({ color: '#ffb866', transparent: true, opacity: 0.035, depthWrite: false, blending: THREE.AdditiveBlending }));
   instanced(new THREE.CircleGeometry(4.5, 28).rotateX(-Math.PI / 2), pool, lampSpots.map((p) => ({ ...p, y: 0.2, z: p.z - p.side * 0.95 })));
   const lampLights = Array.from({ length: LAMP_LIGHTS }, () => {
@@ -183,6 +191,7 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     return l;
   });
 
+  const props: { x: number; z: number; r: number }[] = lampSpots.map((p) => ({ x: p.x, z: p.z, r: 0.22 }));
   const benchSpots = lampSpots.filter(() => random() < 0.45).map((p) => ({ x: p.x + 2.2, z: p.z + p.side * 0.6, side: p.side }));
   instanced(new THREE.BoxGeometry(1.8, 0.08, 0.5), std('#6b4a32'), benchSpots.map((p) => ({ ...p, y: 0.62 })), { cast: true });
   instanced(new THREE.BoxGeometry(1.8, 0.4, 0.06), std('#6b4a32'), benchSpots.map((p) => ({ ...p, y: 0.85, z: p.z + p.side * 0.22 })), { cast: true });
@@ -193,6 +202,8 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     for (let x = d.x - d.w / 2 + 4; x <= d.x + d.w / 2 - 4; x += 9) out.push({ x, z: d.z - d.d / 2 - 3.5, k: random() }, { x, z: d.z + d.d / 2 + 3.5, k: random() });
     return out;
   });
+  benchSpots.forEach((p) => props.push({ x: p.x - 0.5, z: p.z, r: 0.42 }, { x: p.x + 0.5, z: p.z, r: 0.42 }));
+  treeSpots.forEach((p) => props.push({ x: p.x, z: p.z, r: 0.3 }));
   const trunkItems = treeSpots.map((p) => ({ ...p, y: 1.1 }));
   const crownItems = treeSpots.map((p) => ({ ...p, y: 3.2 + p.k * 0.5, sx: 1 + p.k * 0.3, sy: 1.15 + p.k * 0.3, sz: 1 + p.k * 0.3, ry: p.k * 6 }));
   const trunks = instanced(new THREE.CylinderGeometry(0.13, 0.19, 2.2, 7), std('#3e3024'), trunkItems, { cast: true });
@@ -261,7 +272,7 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   bgeo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(aSeed, 1));
   bgeo.setAttribute('aFace', new THREE.InstancedBufferAttribute(aFace, 1));
   bgeo.setAttribute('aBase', new THREE.InstancedBufferAttribute(aBase, 1));
-  const uniforms = { uFog: { value: HORIZON }, uFocus: { value: -1 }, uTime: { value: 0 } };
+  const uniforms = { uFog: { value: fogColor }, uFocus: { value: -1 }, uTime: { value: 0 }, uDay: { value: 0 }, uLit: { value: 0.5 }, uSunDir: { value: moonDir }, uSky: { value: new THREE.Color() } };
   const bmat = keep(new THREE.ShaderMaterial({ vertexShader: BUILDING_VERT, fragmentShader: BUILDING_FRAG, uniforms }));
   const buildings = new THREE.InstancedMesh(bgeo, bmat, Math.max(1, pc));
   buildings.count = pc;
@@ -303,7 +314,9 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       board.rotation.y = side > 0 ? 0 : Math.PI;
       scene.add(board);
     });
-    instanced(new THREE.BoxGeometry(0.16, 5, 0.16), std('#2d3139', { metalness: 0.6 }), [1, -1].flatMap((side) => [-4.3, 4.3].map((dx) => ({ x: d.x + dx, y: 2.5, z: d.z + side * (d.d / 2 + 5.5) }))), { cast: true });
+    const posts = [1, -1].flatMap((side) => [-4.3, 4.3].map((dx) => ({ x: d.x + dx, y: 2.5, z: d.z + side * (d.d / 2 + 5.5) })));
+    posts.forEach((p) => props.push({ x: p.x, z: p.z, r: 0.18 }));
+    instanced(new THREE.BoxGeometry(0.16, 5, 0.16), std('#2d3139', { metalness: 0.6 }), posts, { cast: true });
   });
 
   // ---- collision grid ----
@@ -328,7 +341,21 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     for (const b of nearby(p.x, p.z, 1)) if (gap(b, p.x, p.z) < 0.4 && p.y < b.h + 0.5) return true;
     return false;
   };
+  const propGrid = new Map<string, typeof props>();
+  props.forEach((p) => {
+    const k = key(Math.floor(p.x / GRID), Math.floor(p.z / GRID));
+    const list = propGrid.get(k) ?? [];
+    list.push(p);
+    propGrid.set(k, list);
+  });
+  const propHit = (x: number, z: number, r: number) => {
+    for (let gx = Math.floor((x - r - 1) / GRID); gx <= Math.floor((x + r + 1) / GRID); gx++)
+      for (let gz = Math.floor((z - r - 1) / GRID); gz <= Math.floor((z + r + 1) / GRID); gz++)
+        if (propGrid.get(key(gx, gz))?.some((p) => Math.hypot(p.x - x, p.z - z) < p.r + r)) return true;
+    return false;
+  };
   const blocked = (x: number, z: number, r = RADIUS) => {
+    if (propHit(x, z, r)) return true;
     for (const b of nearby(x, z, r + 1)) if (gap(b, x, z) < r) return true;
     return x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ;
   };
@@ -384,24 +411,21 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   }
   function updateLampLights(x: number, z: number) {
     lampSpots.map((p) => ({ p, d: (p.x - x) ** 2 + (p.z - z) ** 2 })).sort((a, c) => a.d - c.d).slice(0, LAMP_LIGHTS)
-      .forEach(({ p }, k) => { lampLights[k].position.set(p.x, 4.8, p.z - p.side * 0.95); lampLights[k].intensity = 6; });
+      .forEach(({ p }, k) => { lampLights[k].position.set(p.x, 4.8, p.z - p.side * 0.95); lampLights[k].intensity = lampsOn ? 6 : 0; });
   }
 
   // ---- character ----
   const hero = createModelHero(robotUrl, () => {});
   scene.add(hero.root);
   const traffic = createTraffic(scene, layout, arch, roleColor, random);
-  const rain = createRain(scene, ground, HORIZON, random);
-  const applyWeather = () => {
-    const on = rain.enabled;
-    stars.visible = !on;
-    moonDisc.visible = !on;
-    moon.intensity = on ? 0.35 : 0.9;
-    (scene.fog as THREE.Fog).near = on ? 50 : 80;
-    (scene.fog as THREE.Fog).far = on ? 330 : 430;
-    (sky.material as THREE.ShaderMaterial).uniforms.uGlow.value.set(on ? '#22263a' : '#3b2f5c');
+  const rain = createRain(scene, ground, fogColor, random);
+  let theme: Theme = THEMES[0];
+  let lampsOn = true;
+  const refreshSky = () => {
+    stars.visible = theme.stars && !rain.enabled;
+    moonDisc.visible = !!theme.disc && !rain.enabled;
   };
-  applyWeather();
+  const toggleRain = () => { rain.set(!rain.enabled); refreshSky(); };
   const blobTex = (() => {
     const c = document.createElement('canvas');
     c.width = c.height = 64;
@@ -465,30 +489,39 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     for (let r = min; r <= max; r += 1.5)
       for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
         const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
-        if (![[0, 0], [3.5, 0], [-3.5, 0], [0, 3.5], [0, -3.5]].some(([dx, dz]) => blocked(px + dx, pz + dz))) return new THREE.Vector3(px, 0, pz);
+        if (![[0, 0], [3.5, 0], [-3.5, 0], [0, 3.5], [0, -3.5]].some(([dx, dz]) => blockedWalker(px + dx, pz + dz))) return new THREE.Vector3(px, 0, pz);
       }
     return new THREE.Vector3(x, 0, z);
   }
   const heli = createHeli(scene, bounds);
   const vehicles = createVehicles(scene, layout, blocked, random);
+  const sparks = createSparks(scene);
+  const markers = createMarkers(scene);
+  const blockedWalker = (x: number, z: number, r = RADIUS) => blocked(x, z, r) || vehicles.occupied(x, z, r);
+  let shake = 0;
+  function hurtPlayer(damage: number, fx: number, fz: number, push = 7) {
+    if (!alive) return;
+    hp -= damage;
+    hurt = 1;
+    shake = Math.max(shake, Math.min(1, damage / 30));
+    const dx = pos.x - fx, dz = pos.z - fz;
+    const d = Math.hypot(dx, dz) || 1;
+    vel.x += (dx / d) * push;
+    vel.z += (dz / d) * push;
+    if (hp <= 0) {
+      if (mode === 'drive') leaveVehicle();
+      alive = false;
+      hero.die();
+      respawnAt = performance.now() + 2600;
+      toast('쓰러졌어요 — 잠시 후 처음 자리에서 다시 시작해요', 2400);
+    }
+    renderBattle();
+  }
   const battle = createBattle(scene, robotUrl, pos, {
-    blocked,
+    blocked: blockedWalker,
     random,
     onPlayerHit(damage, fx, fz) {
-      if (!alive) return;
-      hp -= damage;
-      hurt = 1;
-      const dx = pos.x - fx, dz = pos.z - fz;
-      const d = Math.hypot(dx, dz) || 1;
-      vel.x += (dx / d) * 7;
-      vel.z += (dz / d) * 7;
-      if (hp <= 0) {
-        alive = false;
-        hero.die();
-        respawnAt = performance.now() + 2600;
-        toast('쓰러졌어요 — 잠시 후 처음 자리에서 다시 시작해요', 2400);
-      }
-      renderBattle();
+      hurtPlayer(damage, fx, fz);
     },
     onCaught(name, n, total) {
       caughtNames.add(name);
@@ -677,10 +710,11 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     if (e.key === 'Escape' && (detailOpen || entering)) { leave(); return; }
     if (detailOpen || entering) return;
     const isE = e.key === 'e' || e.key === 'E' || e.key === 'ㄷ';
+    if (e.code === 'KeyT') { applyTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]); return; }
     if (e.code === 'KeyH' && (mode === 'walk' || mode === 'fly')) { toggleHeli(); return; }
     if (mode === 'drive' || mode === 'ride') {
       if (isE) { if (mode === 'drive') leaveVehicle(); else hopOff(); return; }
-      if (e.code === 'KeyR') { rain.set(!rain.enabled); applyWeather(); return; }
+      if (e.code === 'KeyR') { toggleRain(); return; }
       if (mode === 'drive') {
         keys.add(e.code);
         if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
@@ -688,7 +722,7 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       return;
     }
     if (mode === 'fly') {
-      if (e.code === 'KeyR') { rain.set(!rain.enabled); applyWeather(); return; }
+      if (e.code === 'KeyR') { toggleRain(); return; }
       keys.add(e.code);
       if (e.code === 'Space') e.preventDefault();
       return;
@@ -697,7 +731,7 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     if (e.code === 'KeyF') { punch(); return; }
     if (e.key === '/') { e.preventDefault(); $('q').focus(); return; }
     if (isE) { interact(); return; }
-    if (e.code === 'KeyR') { rain.set(!rain.enabled); applyWeather(); return; }
+    if (e.code === 'KeyR') { toggleRain(); return; }
     const emote = ({ Digit1: 'Wave', Digit2: 'ThumbsUp', Digit3: 'Dance' } as Record<string, Emote>)[e.code];
     if (emote) { hero.emote(emote); return; }
     if (e.code === 'Space') {
@@ -804,6 +838,54 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   const output = new OutputPass();
   composer.addPass(output);
 
+  const themeKey = 'code-atlas.walk.theme';
+  function applyTheme(t: Theme) {
+    theme = t;
+    const skyU = (sky.material as THREE.ShaderMaterial).uniforms;
+    skyU.uHorizon.value.set(t.horizon);
+    skyU.uZenith.value.set(t.zenith);
+    skyU.uGlow.value.set(t.glow);
+    skyU.uSunColor.value.set(t.disc ? t.disc.color : '#000000').multiplyScalar(t.disc ? 1 : 0);
+    fogColor.set(t.horizon);
+    (scene.fog as THREE.Fog).near = t.fog[0];
+    (scene.fog as THREE.Fog).far = t.fog[1];
+    moonDir.set(...t.sun.dir).normalize();
+    moon.color.set(t.sun.color);
+    moon.intensity = t.sun.intensity;
+    if (t.disc) {
+      (moonDisc.material as THREE.MeshBasicMaterial).color.set(t.disc.color).multiplyScalar(t.disc.boost);
+      moonDisc.scale.setScalar(t.disc.size / 28);
+    }
+    hemi.color.set(t.hemi.sky);
+    hemi.groundColor.set(t.hemi.ground);
+    hemi.intensity = t.hemi.intensity;
+    renderer.toneMappingExposure = t.exposure;
+    bloom.strength = t.bloom;
+    uniforms.uDay.value = t.day;
+    uniforms.uLit.value = t.lit;
+    uniforms.uSky.value.set(t.horizon);
+    lampsOn = t.lamps;
+    lampHead.color.set('#ffd29a').multiplyScalar(t.lamps ? 2.2 : 0.3);
+    pool.opacity = t.lamps ? 0.035 : 0;
+    groundMat.color.set(t.ground);
+    lotMat.color.setScalar(t.lot);
+    rain.tone(groundMat.color);
+    rain.set(t.rain);
+    refreshSky();
+    updateLampLights(pos.x, pos.z);
+    $('themes').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.theme === t.id));
+    try { localStorage.setItem(themeKey, t.id); } catch { /* storage may be blocked */ }
+  }
+  $('themes').innerHTML = THEMES.map((t) => `<button data-theme="${esc(t.id)}">${esc(t.label)}</button>`).join('');
+  listen($('themes'), 'click', (e) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>('[data-theme]')?.dataset.theme;
+    const t = THEMES.find((x) => x.id === id);
+    if (t) applyTheme(t);
+  });
+  let saved: string | null = null;
+  try { saved = localStorage.getItem(themeKey); } catch { saved = null; }
+  applyTheme(THEMES.find((t) => t.id === saved) ?? THEMES[0]);
+
   const size = () => ({ w: Math.max(1, root.clientWidth), h: Math.max(1, root.clientHeight) });
   const resize = () => {
     const { w, h } = size();
@@ -826,6 +908,9 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     vehicle: (kind: string) => { const u = vehicles.all().find((x) => x.kind === kind); return u ? { x: u.x, z: u.z, heading: u.heading } : null; },
     car: () => { const c = traffic.nearest(pos.x, pos.z, 2000); return c ? { x: c.x, z: c.z, dx: c.dx, dz: c.dz, f: arch.nodes[c.f].name, t: arch.nodes[c.t].name } : null; },
     probe: () => ({ nearVehicle: !!nearVehicle, nearCar: nearCar ? [nearCar.x, nearCar.z] : null, riding: !!traffic.riding, alive, mode, focus: !!focus }),
+    moveVehicle: (x: number, z: number, h: number) => { const u = vehicles.driving; if (u) Object.assign(u, { x, z, heading: h }); },
+    shake: () => shake,
+    building: () => { let best: WalkBuilding | null = null; let bg = Infinity; for (const b of layout.buildings) { const g = gap(b, pos.x, pos.z); if (g < bg) { bg = g; best = b; } } return best; },
     state: () => ({ hp, alive, mode, heli: heli.state, caught: battle.caught, pos: [pos.x, pos.z], heliPos: heli.root.position.toArray() }),
   };
   let disposed = false;
@@ -854,8 +939,8 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     const airborne = footY > 0.001 || vy > 0;
     vel.lerp(wish, Math.min(1, dt * (airborne ? ACCEL * 0.15 : ACCEL) / Math.max(1, vel.distanceTo(wish))));
     if (vel.lengthSq() < 0.0004 && wish.lengthSq() === 0) vel.set(0, 0, 0);
-    if (!blocked(pos.x + vel.x * dt, pos.z)) pos.x += vel.x * dt; else vel.x = 0;
-    if (!blocked(pos.x, pos.z + vel.z * dt)) pos.z += vel.z * dt; else vel.z = 0;
+    if (!blockedWalker(pos.x + vel.x * dt, pos.z)) pos.x += vel.x * dt; else vel.x = 0;
+    if (!blockedWalker(pos.x, pos.z + vel.z * dt)) pos.z += vel.z * dt; else vel.z = 0;
     vy -= GRAVITY * dt;
     footY = Math.max(0, footY + vy * dt);
     if (footY === 0 && vy < 0) vy = 0;
@@ -875,8 +960,25 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     blob.scale.setScalar(1 / (1 + footY * 0.6));
     heli.update(dt, time, flying ? { forward: fz, turn: -fx, lift: input(['Space'], ['KeyC', 'ControlLeft']), boost: running } : { forward: 0, turn: 0, lift: 0, boost: false }, floorAt);
     if (flying) pos.set(heli.root.position.x, 0, heli.root.position.z);
-    vehicles.update(dt, mode === 'drive' ? { throttle: fz, steer: -fx, boost: running, handbrake: keys.has('Space') } : { throttle: 0, steer: 0, boost: false, handbrake: false }, pos);
+    const impact = vehicles.update(dt, mode === 'drive' ? { throttle: fz, steer: -fx, boost: running, handbrake: keys.has('Space') } : { throttle: 0, steer: 0, boost: false, handbrake: false }, pos);
     const drivenNow = vehicles.driving;
+    if (mode === 'drive' && drivenNow) {
+      const spd = Math.abs(drivenNow.speed);
+      const dirx = Math.sin(drivenNow.heading) * Math.sign(drivenNow.speed || 1), dirz = Math.cos(drivenNow.heading) * Math.sign(drivenNow.speed || 1);
+      const reachAhead = drivenNow.kind === 'car' ? 1.8 : 0.9;
+      const nose = { x: drivenNow.x + dirx * reachAhead, z: drivenNow.z + dirz * reachAhead };
+      let crash = impact ? impact.speed : 0;
+      if (battle.ram(nose.x, nose.z, drivenNow.kind === 'car' ? 1.3 : 0.7, dirx, dirz, spd)) { vehicles.bounce(0.55); crash = Math.max(crash, spd * 0.5); }
+      if (spd > 1.5) {
+        const other = traffic.bump(nose.x, nose.z, drivenNow.kind === 'car' ? 1.0 : 0.5);
+        if (other >= 0) { vehicles.bounce(-0.3); crash = Math.max(crash, spd + other * 0.5); }
+      }
+      if (crash > 2.5) {
+        shake = Math.max(shake, Math.min(1, crash / 22));
+        sparks.burst(nose.x, 0.8, nose.z, Math.min(40, 8 + crash * 1.5));
+        if (crash > 12) hurtPlayer(Math.round((crash - 12) * 1.5), nose.x, nose.z, 0);
+      }
+    }
     if (mode === 'drive' && drivenNow) {
       pos.set(drivenNow.x, 0, drivenNow.z);
       heading = drivenNow.heading;
@@ -952,6 +1054,11 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       lookAt.lerp(v.set(pos.x, 1.6 + footY * 0.4, pos.z), Math.min(1, dt * 14));
       camera.lookAt(lookAt);
     }
+    if (shake > 0.001 && !reduceMotion) {
+      camera.position.x += (Math.random() - 0.5) * shake * 0.6;
+      camera.position.y += (Math.random() - 0.5) * shake * 0.4;
+      shake = Math.max(0, shake - dt * 2.5);
+    }
     const targetFov = flying ? 62 + (heli.speed / 52) * 14 : mode === 'drive' && drivenNow ? 60 + (Math.abs(drivenNow.speed) / 40) * 14 : 58 + run * 10;
     if (Math.abs(targetFov - fov) > 0.01) {
       fov += (targetFov - fov) * Math.min(1, dt * 4);
@@ -973,9 +1080,9 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       let near: WalkBuilding | null = null;
       let nearGap = 20;
       if (onFoot) for (const b of nearby(pos.x, pos.z, 21)) { const g = gap(b, pos.x, pos.z); if (g < nearGap) { nearGap = g; near = b; } }
-      if (mode !== 'ride') traffic.setFocus(near ? near.i : null);
+      if (mode !== 'ride') traffic.setFocus(near ? near.i : null, pos);
       nearVehicle = onFoot && alive ? vehicles.nearest(pos.x, pos.z) : null;
-      nearCar = onFoot && alive && !nearVehicle ? traffic.nearest(pos.x, pos.z, 3.5) : null;
+      nearCar = onFoot && alive && !nearVehicle ? traffic.nearest(pos.x, pos.z, 6.5) : null;
       if (!entering && !detailOpen && onFoot) {
         let best: WalkBuilding | null = null;
         let bestGap = REACH;
@@ -988,7 +1095,14 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       updatePrompt();
       drawMap();
     }
-    traffic.update(dt, flying ? heli.root.position : pos);
+    const struck = traffic.update(dt, flying ? heli.root.position : pos, onFoot && alive ? pos : null);
+    if (struck > 0) {
+      hurtPlayer(Math.round(struck * 2 + 4), pos.x - Math.sin(heading), pos.z - Math.cos(heading), 9);
+      vy = 4.5;
+      toast('차에 치였어요!', 1600);
+    }
+    markers.update(time, onFoot && alive ? (nearVehicle ?? nearCar) : null, nearVehicle ? '운전' : '탑승');
+    sparks.update(dt);
     rain.update(time, camera.position);
     clearView(camera.position, v.set(pos.x, 1.4 + footY, pos.z));
     composer.render();
@@ -1003,6 +1117,8 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     hero.dispose();
     battle.dispose();
     vehicles.dispose();
+    sparks.dispose();
+    markers.dispose();
     heli.dispose();
     window.clearTimeout(toastTimer);
     traffic.dispose();

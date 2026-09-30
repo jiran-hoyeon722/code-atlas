@@ -4,14 +4,15 @@ import type { WalkLayout } from './walkLayout';
 export type VehicleKind = 'car' | 'bike';
 
 const SPEC = {
-  car: { top: 26, boost: 38, accel: 13, brake: 24, steer: 1.9, radius: 1.3, reach: 3.2 },
-  bike: { top: 30, boost: 44, accel: 16, brake: 26, steer: 2.4, radius: 0.7, reach: 2.4 },
+  car: { top: 26, boost: 38, accel: 13, brake: 24, steer: 1.9, radius: 1.0, half: 1.55, reach: 3.2 },
+  bike: { top: 30, boost: 44, accel: 16, brake: 26, steer: 2.4, radius: 0.45, half: 0.6, reach: 2.4 },
 } as const;
 const COUNT = { car: 5, bike: 5 };
 const PAINT = ['#e8554e', '#3ec48a', '#f2a93b', '#4dabf7', '#e36bd0', '#e9ecef', '#845ef7'];
 const RESPAWN_AWAY = 60;
 
 export interface DriveInput { throttle: number; steer: number; boost: boolean; handbrake: boolean }
+export interface Impact { x: number; z: number; speed: number }
 export interface Vehicle { id: number; kind: VehicleKind; x: number; z: number; heading: number; speed: number; lean: number; group: THREE.Group }
 
 export interface Vehicles {
@@ -21,7 +22,12 @@ export interface Vehicles {
   exit(): Vehicle | null;
   readonly driving: Vehicle | null;
   all(): Vehicle[];
-  update(dt: number, input: DriveInput, player: THREE.Vector3): void;
+  /** Moves the driven vehicle; returns the collision it just had, if any. */
+  update(dt: number, input: DriveInput, player: THREE.Vector3): Impact | null;
+  /** True when a circle at (x, z) overlaps a parked or driven vehicle body. */
+  occupied(x: number, z: number, r: number): boolean;
+  /** Knocks the driven vehicle back after hitting something outside this module (traffic, people). */
+  bounce(factor: number): void;
   dispose(): void;
 }
 
@@ -106,6 +112,19 @@ export function createVehicles(scene: THREE.Scene, layout: WalkLayout, blocked: 
   });
 
   let driving: Unit | null = null;
+  const axis = (u: Vehicle, k: number): [number, number] => [u.x + Math.sin(u.heading) * SPEC[u.kind].half * k, u.z + Math.cos(u.heading) * SPEC[u.kind].half * k];
+  const touches = (u: Vehicle, x: number, z: number, r: number) => [-1, 0, 1].some((k) => {
+    const [ax, az] = axis(u, k);
+    return Math.hypot(ax - x, az - z) < SPEC[u.kind].radius + r;
+  });
+  // The body is three circles along its axis so a car's nose can't poke into walls the way a single circle would.
+  const hits = (u: Unit, x: number, z: number, heading: number) => {
+    const probe = { ...u, x, z, heading };
+    return [-1, 0, 1].some((k) => {
+      const [ax, az] = axis(probe, k);
+      return blocked(ax, az, SPEC[u.kind].radius) || units.some((o) => o !== u && touches(o, ax, az, SPEC[u.kind].radius));
+    });
+  };
   const place = (u: Unit) => {
     u.group.position.set(u.x, 0.16, u.z);
     u.group.rotation.y = u.heading;
@@ -139,6 +158,10 @@ export function createVehicles(scene: THREE.Scene, layout: WalkLayout, blocked: 
       driving = null;
       return u;
     },
+    occupied: (x, z, r) => units.some((u) => touches(u, x, z, r)),
+    bounce(factor) {
+      if (driving) driving.speed *= factor;
+    },
     update(dt, input, player) {
       units.forEach((u) => {
         if (u.left && u !== driving && Math.hypot(u.x - player.x, u.z - player.z) > RESPAWN_AWAY) {
@@ -147,7 +170,7 @@ export function createVehicles(scene: THREE.Scene, layout: WalkLayout, blocked: 
         }
       });
       const u = driving;
-      if (!u) return;
+      if (!u) return null;
       const spec = SPEC[u.kind];
       const top = input.boost ? spec.boost : spec.top;
       if (input.throttle > 0) u.speed += spec.accel * dt * (u.speed < 0 ? 2 : 1);
@@ -157,15 +180,26 @@ export function createVehicles(scene: THREE.Scene, layout: WalkLayout, blocked: 
       u.speed = Math.max(-8, Math.min(top, u.speed));
       const grip = Math.min(1, Math.abs(u.speed) / 6);
       u.steerAngle += (input.steer * 0.5 - u.steerAngle) * Math.min(1, dt * 8);
-      u.heading += input.steer * spec.steer * grip * Math.sign(u.speed || 1) * dt;
+      // Already overlapping (spawned or shoved into something): let it drive out instead of pinning it forever.
+      const stuck = hits(u, u.x, u.z, u.heading);
+      const clear = (x: number, z: number, h: number) => stuck || !hits(u, x, z, h);
+      const turned = u.heading + input.steer * spec.steer * grip * Math.sign(u.speed || 1) * dt;
+      if (clear(u.x, u.z, turned)) u.heading = turned;
       const nx = u.x + Math.sin(u.heading) * u.speed * dt;
       const nz = u.z + Math.cos(u.heading) * u.speed * dt;
-      if (!blocked(nx, u.z, spec.radius)) u.x = nx; else u.speed *= -0.25;
-      if (!blocked(u.x, nz, spec.radius)) u.z = nz; else u.speed *= -0.25;
+      let impact: Impact | null = null;
+      const crash = () => {
+        const [fx, fz] = axis(u, Math.sign(u.speed || 1));
+        if (Math.abs(u.speed) > 2.5) impact = { x: fx, z: fz, speed: Math.abs(u.speed) };
+        u.speed *= -0.3;
+      };
+      if (clear(nx, u.z, u.heading)) u.x = nx; else crash();
+      if (clear(u.x, nz, u.heading)) u.z = nz; else if (!impact) crash();
       u.spin += (u.speed / 0.37) * dt;
       const lean = u.kind === 'bike' ? -input.steer * 0.45 * grip : -input.steer * 0.04 * grip;
       u.lean += (lean - u.lean) * Math.min(1, dt * 6);
       place(u);
+      return impact;
     },
     dispose() {
       units.forEach((u) => scene.remove(u.group));

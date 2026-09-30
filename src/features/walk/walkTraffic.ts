@@ -8,6 +8,9 @@ const CAPACITY = AMBIENT + PER_SIDE * 2;
 const IN = '#4dabf7';
 const OUT = '#ffa94d';
 const SPEED = 11;
+const BRAKE = 14;
+const HALF = 2.1;
+const WIDTH = 1.0;
 const KEEP_RIGHT = 1.6;
 const LABELS = 4;
 
@@ -57,9 +60,12 @@ function keepRight(pts: P[]): P[] {
 }
 
 export interface Traffic {
-  update(dt: number, player: THREE.Vector3): void;
+  /** Advances traffic; `walker` is the on-foot player to watch for (null while driving or flying). Returns the speed of a car that just hit the walker, or 0. */
+  update(dt: number, player: THREE.Vector3, walker: THREE.Vector3 | null): number;
+  /** A body (the player's vehicle) at (x, z) with radius r rammed into traffic: the struck car stalls. Returns the struck car's speed, or -1 if nothing was hit. */
+  bump(x: number, z: number, r: number): number;
   /** Show the cars of this file's references (blue = files that use it, orange = files it uses); null keeps only ambient traffic. */
-  setFocus(node: number | null): void;
+  setFocus(node: number | null, player: THREE.Vector3): void;
   /** The closest passing car within reach, for hitching a ride. */
   nearest(x: number, z: number, reach: number): RideCar | null;
   /** Rides `car` along its reference route; `arrived` fires at the used file's door. */
@@ -71,19 +77,34 @@ export interface Traffic {
 
 export interface RideCar { readonly f: number; readonly t: number; readonly x: number; readonly z: number; readonly dx: number; readonly dz: number; readonly speed: number }
 
-type Car = { f: number; t: number; kind: 'ambient' | 'in' | 'out'; pts: P[]; cum: number[]; total: number; s: number; speed: number; x: number; z: number; dx: number; dz: number };
+type Car = { stall: number; f: number; t: number; kind: 'ambient' | 'in' | 'out'; pts: P[]; cum: number[]; total: number; s: number; speed: number; x: number; z: number; dx: number; dz: number };
 
 export function createTraffic(scene: THREE.Scene, layout: WalkLayout, arch: Architecture, roleColor: (role: number) => string, random: () => number): Traffic {
   const byNode = new Map(layout.buildings.map((b) => [b.i, b]));
   const valid = arch.edges.filter(([f, t]) => f !== t && byNode.has(f) && byNode.has(t));
-  const makeCar = (f: number, t: number, kind: Car['kind']): Car | null => {
+  const FAR = 35;
+  const makeCar = (f: number, t: number, kind: Car['kind'], player?: THREE.Vector3): Car | null => {
     const pts = keepRight(routeBetween(layout, byNode.get(f)!, byNode.get(t)!));
     const cum = [0];
     for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
     const total = cum[cum.length - 1];
     if (total <= 1) return null;
-    return { f, t, kind, pts, cum, total, s: random() * total, speed: SPEED, x: pts[0][0], z: pts[0][1], dx: 0, dz: 1 };
+    const c: Car = { stall: 0, f, t, kind, pts, cum, total, s: random() * total, speed: SPEED, x: pts[0][0], z: pts[0][1], dx: 0, dz: 1 };
+    // New cars appear out of the player's sight radius so they never pop in next to them.
+    for (let k = 0; player && k < 10; k++) {
+      c.s = random() * total;
+      const [x, z] = pointAt(c);
+      if (Math.hypot(x - player.x, z - player.z) > FAR) break;
+    }
+    [c.x, c.z] = pointAt(c);
+    return c;
   };
+  function pointAt(c: Pick<Car, 's' | 'cum' | 'pts'>): P {
+    let seg = 1;
+    while (seg < c.cum.length - 1 && c.cum[seg] < c.s) seg++;
+    const t = (c.s - c.cum[seg - 1]) / (c.cum[seg] - c.cum[seg - 1] || 1);
+    return [c.pts[seg - 1][0] + (c.pts[seg][0] - c.pts[seg - 1][0]) * t, c.pts[seg - 1][1] + (c.pts[seg][1] - c.pts[seg - 1][1]) * t];
+  }
   const ambient = [...valid].sort((p, q) => q[2] - p[2]).slice(0, AMBIENT).map(([f, t]) => makeCar(f, t, 'ambient')).filter((c): c is Car => !!c);
   let cars: Car[] = [...ambient];
 
@@ -151,6 +172,10 @@ export function createTraffic(scene: THREE.Scene, layout: WalkLayout, arch: Arch
   const one = new THREE.Vector3(1, 1, 1);
   const up = new THREE.Vector3(0, 1, 0);
   let labelClock = 0;
+  const segmentGap = (c: Car, x: number, z: number) => {
+    const along = Math.max(-HALF, Math.min(HALF, (x - c.x) * c.dx + (z - c.z) * c.dz));
+    return Math.hypot(x - (c.x + c.dx * along), z - (c.z + c.dz * along));
+  };
   let focus: number | null = null;
   let riding: Car | null = null;
   let arrived: ((car: RideCar) => void) | null = null;
@@ -173,30 +198,53 @@ export function createTraffic(scene: THREE.Scene, layout: WalkLayout, arch: Arch
       riding = null;
       arrived = null;
     },
-    setFocus(node) {
+    bump(x, z, r) {
+      for (const c of cars) {
+        if (c === riding) continue;
+        if (segmentGap(c, x, z) < WIDTH + r) {
+          const was = c.speed;
+          c.speed = 0;
+          c.stall = 1.6;
+          return was;
+        }
+      }
+      return -1;
+    },
+    setFocus(node, player) {
       if (node === focus) return;
       focus = node;
       const related: Car[] = [];
+      const near = (c: Car) => Math.hypot(c.x - player.x, c.z - player.z) < FAR;
+      const staying = cars.filter((c) => c.kind !== 'ambient' && (c === riding || near(c)));
+      const has = (f: number, t: number, kind: Car['kind']) => staying.some((c) => c.f === f && c.t === t && c.kind === kind);
       if (node !== null) {
         const pick = (list: typeof valid, kind: Car['kind']) => [...list].sort((p, q) => q[2] - p[2]).slice(0, PER_SIDE).forEach(([f, t]) => {
-          const c = makeCar(f, t, kind);
+          if (has(f, t, kind)) return;
+          const c = makeCar(f, t, kind, player);
           if (c) related.push(c);
         });
         pick(valid.filter(([, t]) => t === node), 'in');
         pick(valid.filter(([f]) => f === node), 'out');
       }
-      const busy = new Set(related.map((c) => `${c.f}>${c.t}`));
-      cars = [...related, ...ambient.filter((c) => !busy.has(`${c.f}>${c.t}`))].slice(0, CAPACITY);
-      if (riding && !cars.includes(riding)) cars = [riding, ...cars].slice(0, CAPACITY);
-      labels.forEach((l) => { l.sprite.visible = false; l.car = null; });
+      const all = [...staying, ...related];
+      const busy = new Set(all.map((c) => `${c.f}>${c.t}`));
+      cars = [...all, ...ambient.filter((c) => !busy.has(`${c.f}>${c.t}`))].slice(0, CAPACITY);
+      labels.forEach((l) => { if (l.car && !cars.includes(l.car)) { l.sprite.visible = false; l.car = null; } });
       recolor();
     },
-    update(dt, player) {
+    update(dt, player, walker) {
+      let struck = 0;
       cars.forEach((c, k) => {
         const ahead = (player.x - c.x) * c.dx + (player.z - c.z) * c.dz;
         const side = Math.abs((player.x - c.x) * c.dz - (player.z - c.z) * c.dx);
-        const target = c !== riding && ahead > 0 && ahead < 7 && side < 1.8 && player.y < 2 ? 0 : SPEED;
-        c.speed += (target - c.speed) * Math.min(1, dt * (target ? 1.5 : 6));
+        c.stall -= dt;
+        const target = c.stall > 0 || (c !== riding && ahead > 0 && ahead < 10 && side < 1.9 && player.y < 2) ? 0 : SPEED;
+        c.speed = target < c.speed ? Math.max(target, c.speed - BRAKE * dt) : Math.min(target, c.speed + 4 * dt);
+        if (walker && c !== riding && c.speed > 2 && !struck && segmentGap(c, walker.x, walker.z) < WIDTH + 0.4) {
+          struck = c.speed;
+          c.speed = 0;
+          c.stall = 1.2;
+        }
         if (c === riding && c.s + c.speed * dt >= c.total) {
           c.s = c.total - 0.001;
           const done = arrived;
@@ -238,6 +286,7 @@ export function createTraffic(scene: THREE.Scene, layout: WalkLayout, arch: Arch
         l.sprite.position.set(l.car.x, 2.3, l.car.z);
         l.sprite.visible = true;
       });
+      return struck;
     },
     dispose() {
       owned.forEach((o) => o.dispose());

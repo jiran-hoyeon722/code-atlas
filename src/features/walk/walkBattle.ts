@@ -25,7 +25,9 @@ export interface Battle {
   update(dt: number, player: THREE.Vector3, playerCanBeHit: boolean): void;
   /** Resolves a punch from `at` facing `heading`; returns true when it lands. */
   strike(at: THREE.Vector3, heading: number): boolean;
-  positions(): { x: number; z: number; down: boolean; tint: string }[];
+  /** A vehicle body at (x, z) moving along (dx, dz) at `speed` runs into rivals; returns how many it hit. */
+  ram(x: number, z: number, r: number, dx: number, dz: number, speed: number): number;
+  positions(): { x: number; z: number; down: boolean; tint: string; hp: number }[];
   readonly caught: number;
   dispose(): void;
 }
@@ -113,7 +115,29 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
 
   return {
     get caught() { return caught; },
-    positions: () => rivals.filter((r) => r.robot).map((r) => ({ x: r.x, z: r.z, down: r.down, tint: r.tint })),
+    positions: () => rivals.filter((r) => r.robot).map((r) => ({ x: r.x, z: r.z, down: r.down, tint: r.tint, hp: r.hp })),
+    ram(x, z, radius, dx, dz, speed) {
+      if (speed < 4) return 0;
+      let count = 0;
+      rivals.forEach((r) => {
+        if (!r.robot || r.down || r.stun > 0.6) return;
+        if (Math.hypot(r.x - x, r.z - z) > radius + 0.45) return;
+        count++;
+        r.hp = Math.max(0, r.hp - (speed > 14 ? 2 : 1));
+        r.vx = dx * speed * 0.7;
+        r.vz = dz * speed * 0.7;
+        r.stun = 1.2;
+        r.pendingHit = 0;
+        if (r.hp <= 0) {
+          r.down = true;
+          caught++;
+          r.robot.play('Death', 0.1);
+          hooks.onCaught(r.name, caught, rivals.length);
+        } else r.robot.play('No', 0.08);
+        paintTag(r);
+      });
+      return count;
+    },
     strike(at, heading) {
       let landed = false;
       const fx = Math.sin(heading), fz = Math.cos(heading);

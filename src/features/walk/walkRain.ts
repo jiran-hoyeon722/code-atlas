@@ -73,6 +73,8 @@ const WET_SHADER = {
 export interface Rain {
   readonly enabled: boolean;
   set(on: boolean): void;
+  /** Dry asphalt colour under the reflections, per theme. */
+  tone(base: THREE.Color): void;
   update(time: number, center: THREE.Vector3): void;
   resize(w: number, h: number): void;
   dispose(): void;
@@ -110,10 +112,13 @@ export function createRain(scene: THREE.Scene, ground: THREE.Mesh, fog: THREE.Co
     mirror.visible = on;
     ground.visible = !on;
   };
-  set(true);
+  set(false);
   return {
     get enabled() { return enabled; },
     set,
+    tone(base) {
+      wet.uniforms.uBase.value.copy(base).multiplyScalar(0.8);
+    },
     update(time, center) {
       rainUniforms.uTime.value = time;
       rainUniforms.uCenter.value.copy(center);
