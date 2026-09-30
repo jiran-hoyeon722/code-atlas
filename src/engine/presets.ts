@@ -75,6 +75,17 @@ const REACT_ROLES: Role[] = [
   r('기타', 3, [''], '위 역할에 속하지 않는 나머지 코드'),
 ];
 
+const anywhere = (...patterns: string[]) => patterns.map((p) => `**/${p}`);
+
+const PYTHON_ROLES: Role[] = [
+  r('진입점', 0, anywhere('views/', 'views.py', 'urls.py', 'api/', 'routers/', 'cli/', '__main__.py', 'manage.py'), '요청·명령을 처음 받는 뷰·라우터·실행 스크립트'),
+  r('서비스', 1, anywhere('services/', 'tasks/', 'handlers/'), '업무 흐름과 백그라운드 작업을 처리하는 코드'),
+  r('모델/데이터', 2, anywhere('models/', 'models.py', 'schemas/', 'serializers.py', 'repositories/', 'db/'), '데이터 모델·스키마와 DB 접근'),
+  r('공용/설정', 3, anywhere('utils/', 'core/', 'config/', 'settings.py'), '어디서나 가져다 쓰는 유틸·핵심 모듈·설정'),
+  r('테스트', 3, anywhere('tests/'), '테스트 코드'),
+  r('기타', 3, [''], '위 역할에 속하지 않는 나머지 코드'),
+];
+
 const escapeGlob = (s: string) => s.replace(/[*\\]/g, '\\$&');
 
 const inner = (path: string, sourceDir: string) =>
@@ -83,6 +94,7 @@ const inner = (path: string, sourceDir: string) =>
 export function presetFor(detection: Detection, paths: string[]): Preset {
   if (detection.framework === 'laravel') return { layers: layers('애플리케이션', '도메인·인프라'), roles: LARAVEL_ROLES };
   if (detection.framework === 'react') return { layers: layers('화면·기능', '상태·API'), roles: REACT_ROLES };
+  if (detection.lang === 'py') return { layers: layers('애플리케이션', '도메인'), roles: PYTHON_ROLES };
 
   const folders: string[] = [];
   for (const p of paths) {

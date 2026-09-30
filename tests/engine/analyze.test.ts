@@ -28,7 +28,7 @@ function loadRepo(name: string): RepoInput {
 const NOW = new Date('2026-01-01T00:00:00Z');
 let parsers: Parsers;
 beforeAll(async () => {
-  parsers = await loadParsers(nodeLocate, ['php', 'ts']);
+  parsers = await loadParsers(nodeLocate, ['php', 'ts', 'py']);
 });
 
 describe('analyze', () => {
@@ -48,6 +48,36 @@ describe('analyze', () => {
     expect(a.framework).toBe('react');
     expect(a.nodes.some((n) => n.path.endsWith('routeTree.gen.ts'))).toBe(false);
     expect(a.nodes.length).toBe(9);
+  });
+
+  test('py fixture end to end', () => {
+    const a = analyze(loadRepo('py-mini'), parsers, { now: NOW });
+    expect(a.lang).toBe('py');
+    expect(a.framework).toBeNull();
+    expect(a.nodes.length).toBe(10);
+    const path = (i: number) => a.nodes[i].path;
+    expect(a.edges.map(([from, to]) => `${path(from)}→${path(to)}`).sort()).toEqual([
+      'shop/api/views.py→shop/api/__init__.py',
+      'shop/api/views.py→shop/api/sibling.py',
+      'shop/api/views.py→shop/core/__init__.py',
+      'shop/api/views.py→shop/models/order.py',
+      'shop/models/order.py→src/billing/tasks/charge.py',
+      'tests/test_views.py→shop/api/views.py',
+    ]);
+    expect(a.unresolved).toBe(1);
+    expect(a.failed).toEqual([{ path: 'shop/utils/broken.py', reason: 'syntax' }]);
+    const byRole: Record<string, string[]> = {};
+    for (const n of a.nodes) (byRole[a.roles[n.role].name] ??= []).push(n.path);
+    expect(byRole).toEqual({
+      진입점: ['shop/api/__init__.py', 'shop/api/sibling.py', 'shop/api/views.py'],
+      서비스: ['src/billing/tasks/charge.py'],
+      '모델/데이터': ['shop/models/order.py'],
+      '공용/설정': ['shop/core/__init__.py', 'shop/utils/broken.py'],
+      테스트: ['tests/test_views.py'],
+      기타: ['shop/__init__.py', 'src/billing/__init__.py'],
+    });
+    expect(a.nodes.find((n) => n.path === 'tests/test_views.py')!.kind).toBe('test');
+    expect(a.nodes.find((n) => n.path === 'shop/api/__init__.py')!.name).toBe('api/__init__');
   });
 
   test('progress events', () => {

@@ -26,7 +26,8 @@ export function measure(root: Node, lang: Lang): Complexity {
   while (stack.length > 0) {
     const { node, fn: parentFn } = stack.pop()!;
     let fn = parentFn;
-    if (fnTypes.has(node.type)) {
+    // Python's `lambda` keyword token shares the type name of the lambda node.
+    if (fnTypes.has(node.type) && node.isNamed) {
       fn = perFunction.length;
       perFunction.push(1);
     } else if (isBranch(node, spec)) {

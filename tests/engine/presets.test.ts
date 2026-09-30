@@ -113,4 +113,24 @@ describe('presetFor', () => {
     expect(m('beta/d.ts')).toBe(1);
     expect(m('root.ts')).toBe(2);
   });
+
+  test('python preset matches role folders and files anywhere in the path', () => {
+    const d: Detection = { lang: 'py', framework: null, sourceDir: '', routeDirs: [] };
+    const p = presetFor(d, []);
+    const m = compileRoles(p.roles);
+    const roleOf = (path: string) => p.roles[m(path)].name;
+    expect(roleOf('api/users.py')).toBe('진입점');
+    expect(roleOf('shop/web/views.py')).toBe('진입점');
+    expect(roleOf('manage.py')).toBe('진입점');
+    expect(roleOf('shop/services/pay.py')).toBe('서비스');
+    expect(roleOf('shop/models.py')).toBe('모델/데이터');
+    expect(roleOf('a/b/db/session.py')).toBe('모델/데이터');
+    expect(roleOf('shop/core/base.py')).toBe('공용/설정');
+    expect(roleOf('tests/test_a.py')).toBe('테스트');
+    expect(roleOf('tests/api/test_b.py')).toBe('진입점');
+    expect(roleOf('shop/myapi/x.py')).toBe('기타');
+    expect(roleOf('shop/oldviews.py')).toBe('기타');
+    expect(p.layers.map((l) => l.label)).toEqual(['진입점', '애플리케이션', '도메인', '기반']);
+    expect(p.roles[p.roles.length - 1]).toMatchObject({ name: '기타', patterns: [''] });
+  });
 });
