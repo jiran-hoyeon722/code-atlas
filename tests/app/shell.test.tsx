@@ -106,6 +106,19 @@ describe('ViewerShell', () => {
     expect(location.hash).toBe('#graph');
   });
 
+  test('a view whose mount throws shows the load-error note instead of a blank tab', async () => {
+    h.graph.mount.mockImplementationOnce(() => {
+      throw new Error('boom');
+    });
+    render(<ViewerShell {...props()} />);
+    await screen.findByText('view:city');
+    fireEvent.click(screen.getByRole('tab', { name: '그래프' }));
+    expect(await screen.findByText('화면을 불러오지 못했어요. 새로고침해 주세요.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: '탐색기' }));
+    await screen.findByText('view:explorer');
+    expect(screen.queryByText('화면을 불러오지 못했어요. 새로고침해 주세요.')).toBeNull();
+  });
+
   test('onSelect from the mounted view updates the hash without remounting', async () => {
     render(<ViewerShell {...props()} />);
     await screen.findByText('view:city');
