@@ -63,6 +63,22 @@ export const CLOCK = {
   tieMargin: 0.01,
 } as const;
 
+/** Battlefield geometry and movement (world units, per second). */
+export const FIELD = {
+  moveSpeed: 3,
+  reach: 1.0,
+  /** Movers stop this close so float rounding never leaves them a hair outside `reach`. */
+  hold: 0.9,
+  spacing: 1.0,
+  columns: 5,
+  startX: 10,
+  laneGap: 15,
+  finalRowWidth: 20,
+  heavyAttackBelow: 0.85,
+} as const;
+
+export const VICTORY_LABEL = { skill: 0.6, close: 0.4 } as const;
+
 export const PREDICTION_RUNS = 100;
 
 export const LIMITS = {
