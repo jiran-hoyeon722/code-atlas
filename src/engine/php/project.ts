@@ -1,4 +1,4 @@
-import type { Parsers } from '../parsers';
+import type { OnTree, Parsers } from '../parsers';
 import type { Detection } from '../detect';
 import type { Edge, Extraction, FileNode, RefKind, RepoInput, SourceFile } from '../types';
 import { sourcesFor } from '../sources';
@@ -15,6 +15,7 @@ export function extractPhpProject(
   parsers: Parsers,
   onFile?: (path: string) => void,
   onLink?: () => void,
+  onTree?: OnTree,
 ): Extraction {
   const srcPrefix = detection.sourceDir ? `${detection.sourceDir}/` : '';
   const providersPrefix = `${srcPrefix}Providers/`;
@@ -29,7 +30,7 @@ export function extractPhpProject(
   for (const file of appFiles) {
     let f: PhpFacts;
     try {
-      f = extractPhpFile(parsers.php, file, file.path.startsWith(providersPrefix));
+      f = extractPhpFile(parsers.php, file, file.path.startsWith(providersPrefix), onTree);
     } catch {
       failed.push({ path: file.path, reason: 'read' });
       nodes.push({ id: file.path, name: baseName(file.path), kind: 'script', lines: file.text.split('\n').length, functions: 0, complexity: 0, maxComplexity: 0 });

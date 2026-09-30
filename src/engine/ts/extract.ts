@@ -1,4 +1,5 @@
 import type { Node, Parser } from 'web-tree-sitter';
+import type { OnTree } from '../parsers';
 import { measure } from '../complexity';
 import type { SourceFile } from '../types';
 
@@ -61,7 +62,7 @@ function isTypePositionImport(call: Node): boolean {
   return false;
 }
 
-export function extractTsFile(parser: Parser, file: SourceFile): TsFileResult {
+export function extractTsFile(parser: Parser, file: SourceFile, onTree?: OnTree): TsFileResult {
   const lines = file.text.split('\n').length;
   const tree = parser.parse(file.text);
   if (!tree) return { imports: [], hasError: true, lines, functions: 0, complexity: 0, maxComplexity: 0 };
@@ -93,7 +94,9 @@ export function extractTsFile(parser: Parser, file: SourceFile): TsFileResult {
         if (c) stack.push(c);
       }
     }
-    return { imports, hasError: root.hasError, lines, ...measure(root, 'ts') };
+    const result = { imports, hasError: root.hasError, lines, ...measure(root, 'ts') };
+    onTree?.(file.path, root);
+    return result;
   } finally {
     tree.delete();
   }
