@@ -299,6 +299,7 @@
 
 .rb-res-fix-file {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 2px;
   min-width: 0;

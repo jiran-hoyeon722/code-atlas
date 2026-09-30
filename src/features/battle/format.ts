@@ -1,4 +1,4 @@
-import type { Lang } from '../../../engine/types';
+import type { Lang } from '../../engine/types';
 
 const LANG: Record<Lang, string> = { php: 'PHP', ts: 'TypeScript' };
 
