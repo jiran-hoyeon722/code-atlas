@@ -67,6 +67,7 @@ export const NOTICE = {
   githubNetwork: 'GitHub 에 연결하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.',
   githubTruncated: '레포가 너무 커서 파일 목록을 다 받지 못했어요. 하위 폴더 주소(…/tree/main/폴더)로 좁혀 주세요.',
   sampleFailed: '샘플을 불러오지 못했어요. 새로고침 후 다시 시도해 주세요.',
+  collapsed: '바이러스로 레포가 붕괴됐어요. 폴더를 다시 등록해 분석해 주세요.',
 } as const;
 
 /** Every file is its own request, so a huge repo would take minutes; ask for a subfolder instead. */
@@ -565,6 +566,16 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     toLanding();
   };
 
+  // Samples are not in the cache, so deleting their key is a harmless no-op.
+  const onCollapse = async () => {
+    const cur = current.current;
+    runId.current++;
+    current.current = null;
+    history.replaceState(null, '', location.pathname + location.search);
+    if (cur) await d().cache.deleteAnalysis(cur.key).catch(() => {});
+    toLanding(NOTICE.collapsed);
+  };
+
   return {
     state,
     hasPicker: !!d().pickDirectory,
@@ -584,6 +595,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     onReconnect,
     onReanalyze,
     onOpenOther,
+    onCollapse,
     onDismissNotice: () => patch({ notice: undefined, failedGithub: undefined }),
   };
 }

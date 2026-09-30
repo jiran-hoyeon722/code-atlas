@@ -10,18 +10,19 @@ import { esc } from '../escape';
 import { roleColors } from '../palette';
 import { renderCode } from '../code-viewer/highlight';
 import { FLOOR, LANE, STREET, layoutWalk, type WalkBuilding } from './walkLayout';
-import { BUILDING_FRAG, BUILDING_VERT, SKY_FRAG, SKY_VERT } from './walkShaders';
+import { BEAM_FRAG, BEAM_VERT, BUILDING_FRAG, BUILDING_VERT, SKY_FRAG, SKY_VERT } from './walkShaders';
 import { createModelHero, type Emote } from './walkHero';
-import { createTraffic } from './walkTraffic';
+import { createTraffic, routeBetween } from './walkTraffic';
 import { createRain } from './walkRain';
 import { RIVALS, createBattle } from './walkBattle';
 import { createHeli } from './walkHeli';
 import { createHeliArms, shakeAt } from './walkHeliArms';
 import { createVehicles, type Vehicle } from './walkVehicles';
 import { THEMES, type Theme } from './walkThemes';
-import { createMarkers, createSparks } from './walkFx';
+import { createBeacon, createGuide, createMarkers, createMotes, createSparks, type PathPoint } from './walkFx';
 import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type WeaponId } from './walkWeapons';
-import { createVirus, pickOrigin } from './walkVirus';
+import { DIFFICULTIES, DIFFICULTY, FORM_TIME, createSiege, createVirus, isDifficulty, isInfected, pickOrigin, pickSpawnSite, type Difficulty } from './walkVirus';
+import { HELI_BOSS_BONUS, createHorde } from './walkHorde';
 import { turnToward } from './walkMotion';
 import type { RideCar } from './walkTraffic';
 import robotUrl from './assets/RobotExpressive.glb?url';
@@ -39,7 +40,7 @@ const GRID = 16;
 const HORIZON = new THREE.Color('#1a1d36');
 const ZENITH = new THREE.Color('#030409');
 const fmt = (n: number) => Number(n).toLocaleString('ko-KR');
-const VIRUS_SPREAD = 150;
+const VIRUS_SPREAD = DIFFICULTY.normal.spread;
 const DESCEND = ['KeyC', 'KeyX', 'ControlLeft', 'ControlRight'];
 const CURE_TIME = 2.5;
 const clock = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -58,9 +59,18 @@ const HELP = [
   ['이동', [['W A S D', '걷기'], ['Shift', '달리기'], ['Space', '점프'], ['클릭', '마우스로 시점 돌리기 (Esc 로 풀기)'], ['휠', '카메라 거리']]],
   ['전투', [['1 ~ 6', '무기 고르기'], ['F · 클릭', '공격 (기관단총은 누르고 있기)'], ['G', '감정 표현']]],
   ['행동', [['E', '건물 들어가기 · 차 타기 · 바이러스 치료'], ['H', '헬기 타기 (라이벌 4명을 다 잡으면)']]],
+  ['바이러스', [['V', '바이러스 모드 시작 · 그만두기 (괴물이 나타나면 못 그만둬요)'], ['하 · 중 · 상', '난이도 — 하는 바닥 화살표 안내, 상은 빠른 확산과 좀비 떼'], ['E (근원지 앞)', '백신 주입 — 도시가 다 감염되기 전에'], ['괴물', '다 감염되면 나타나요. 시간 안에 못 잡으면 레포가 무너지고 분석 기록이 지워져요']]],
   ['헬기', [['W S', '앞으로 · 뒤로'], ['A D · 마우스', '방향 돌리기'], ['Q E', '옆으로 이동'], ['Space · C (Ctrl · X)', '올라가기 · 내려가기'], ['Shift', '가속'], ['F · 클릭', '기관총 (누르고 있기)'], ['G · 우클릭', '폭탄 떨어뜨리기'], ['마우스 위아래', '조준점 가깝게 · 멀리'], ['H', '천천히 내려가 착륙 (Space 로 취소)']]],
   ['화면', [['/', '파일 이름으로 순간 이동'], ['T', '날씨 바꾸기'], ['V', '바이러스 모드'], ['?', '이 도움말']]],
 ] as const;
+
+const DIFF_HINT: Record<Difficulty, string> = {
+  easy: '하 — 바닥에 근원지로 가는 형광 화살표가 보여요',
+  normal: '중 — 보통 속도, 화살표 없음',
+  hard: '상 — 빨리 번지고 좀비가 빨리 생겨요, 화살표 없음',
+};
+const VIRUS_NOTE = '하늘로 솟은 초록 빛기둥이 근원지예요. 건물 앞에서 <b>E</b> 로 백신을 넣으세요. 감염된 건물은 코드를 볼 수 없고 차도 끊겨요.';
+const GUIDE_NOTE = ' 바닥의 형광 화살표를 따라가세요.';
 
 const MARKUP = `
 <div class="wk-hud glass">
@@ -68,14 +78,22 @@ const MARKUP = `
     <input data-el="q" type="search" placeholder="파일 이름으로 순간 이동 ( / )" autocomplete="off">
     <div class="field"><span class="lbl">날씨</span><div class="weather" data-el="themes" role="radiogroup" aria-label="날씨"></div></div>
     <button class="virus-btn" data-el="virus-btn">${VIRUS_ICON}<span data-el="virus-label">바이러스 모드 시작</span><kbd>V</kbd></button>
+    <div class="field"><span class="lbl">바이러스 난이도</span><div class="v-diff" data-el="v-diff" role="radiogroup" aria-label="바이러스 난이도">${DIFFICULTIES.map((d) => `<button role="radio" aria-checked="false" data-diff="${d}" title="${DIFF_HINT[d]}">${DIFFICULTY[d].label}</button>`).join('')}</div></div>
     <div class="tips"><b>WASD</b> 이동 · <b>클릭</b> 시점 · <b>F</b> 공격 · <b>E</b> 행동 · <b>1~6</b> 무기 · <b>?</b> 전체 조작법</div>
 </div>
 <div class="wk-virus glass" data-el="virus" hidden>
-    <div class="v-head">${VIRUS_ICON}<b>바이러스 확산 중</b><span data-el="v-time">00:00</span></div>
+    <div class="v-head">${VIRUS_ICON}<b data-el="v-title">바이러스 확산 중</b><span data-el="v-time">00:00</span></div>
     <div class="v-bar"><i data-el="v-bar"></i></div>
     <div class="v-row"><span>감염된 건물</span><b data-el="v-count"></b></div>
     <div class="v-row"><span>근원지 신호</span><span class="signal" data-el="v-signal"><i></i><i></i><i></i><i></i><i></i></span></div>
-    <p>초록빛으로 맥박치는 건물이 근원지예요. 신호가 세지는 쪽으로 가서 건물 앞에서 <b>E</b>.</p>
+    <div class="v-row"><span>난이도</span><b data-el="v-diff-label"></b></div>
+    <div class="v-row"><span>처치한 바이러스</span><b data-el="v-kills">0</b></div>
+    <p data-el="v-note"></p>
+</div>
+<div class="wk-boss glass" data-el="boss" hidden>
+    <div class="b-head"><b data-el="b-title">초대형 바이러스</b><span data-el="b-time"></span></div>
+    <div class="b-bar"><i data-el="b-bar"></i></div>
+    <p data-el="b-note">처치하지 않으면 레포가 붕괴돼요 — 분석 기록이 지워져요</p>
 </div>
 <div class="wk-weapons glass" data-el="weapons" role="toolbar" aria-label="무기"></div>
 <div class="wk-heli glass" data-el="heli-hud" aria-label="헬기">
@@ -292,7 +310,7 @@ const mount: MountViewer = (root, arch, env) => {
   // ---- buildings: houses get a gable roof, apartments balconies, towers a set-back upper tier ----
   type Part = { k: number; b: WalkBuilding; x: number; z: number; w: number; d: number; h: number; base: number };
   const parts: Part[] = [];
-  const roofs: Item[] = [];
+  const roofs: (Item & { k: number })[] = [];
   const gables: (Item & { k: number })[] = [];
   const balconies: (Item & { k: number })[] = [];
   const ridge = (b: WalkBuilding) => (b.kind === 'house' ? Math.min(3, b.d * 0.3) : 0);
@@ -310,7 +328,7 @@ const mount: MountViewer = (root, arch, env) => {
     }
     if (b.kind === 'house') {
       gables.push({ k, x: b.x, y: b.h + 0.16, z: b.z, sx: b.w + 0.8, sy: ridge(b), sz: b.d + 0.8 });
-      roofs.push({ x: b.x + b.w * 0.25, y: b.h + 0.16 + ridge(b) * 0.7, z: b.z - b.face * b.d * 0.15, sx: 0.6, sy: 1.6, sz: 0.6 });
+      roofs.push({ k, x: b.x + b.w * 0.25, y: b.h + 0.16 + ridge(b) * 0.7, z: b.z - b.face * b.d * 0.15, sx: 0.6, sy: 1.6, sz: 0.6 });
       return;
     }
     if (b.kind === 'apartment') {
@@ -319,13 +337,13 @@ const mount: MountViewer = (root, arch, env) => {
     const units = 1 + Math.floor(random() * 3);
     for (let u = 0; u < units; u++) {
       const sx = 0.8 + random() * 1.6;
-      roofs.push({ x: b.x + (random() - 0.5) * top.w * 0.55, y: top.h + 0.16 + sx * 0.3, z: b.z + (random() - 0.5) * top.d * 0.55, sx, sy: sx * 0.6, sz: 0.8 + random() * 1.2, ry: random() < 0.5 ? 0 : Math.PI / 2 });
+      roofs.push({ k, x: b.x + (random() - 0.5) * top.w * 0.55, y: top.h + 0.16 + sx * 0.3, z: b.z + (random() - 0.5) * top.d * 0.55, sx, sy: sx * 0.6, sz: 0.8 + random() * 1.2, ry: random() < 0.5 ? 0 : Math.PI / 2 });
     }
   });
   const bgeo = keep(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0));
   const pc = parts.length;
   const attr = (size: number) => new Float32Array(Math.max(1, pc) * size);
-  const aSize = attr(3), aColor = attr(3), aSeed = attr(1), aFace = attr(1), aBase = attr(1), aInfect = attr(1), aCap = attr(1), aKind = attr(1);
+  const aSize = attr(3), aColor = attr(3), aSeed = attr(1), aFace = attr(1), aBase = attr(1), aInfect = attr(1), aCap = attr(1), aKind = attr(1), aSink = attr(1);
   const KIND = { house: 0, apartment: 1, tower: 2 } as const;
   const tmpColor = new THREE.Color();
   parts.forEach((p, j) => {
@@ -348,6 +366,9 @@ const mount: MountViewer = (root, arch, env) => {
   const infectAttr = new THREE.InstancedBufferAttribute(aInfect, 1);
   infectAttr.setUsage(THREE.DynamicDrawUsage);
   bgeo.setAttribute('aInfect', infectAttr);
+  const sinkAttr = new THREE.InstancedBufferAttribute(aSink, 1);
+  sinkAttr.setUsage(THREE.DynamicDrawUsage);
+  bgeo.setAttribute('aSink', sinkAttr);
   const uniforms = { uFog: { value: fogColor }, uFocus: { value: -1 }, uTime: { value: 0 }, uDay: { value: 0 }, uLit: { value: 0.5 }, uSunDir: { value: moonDir }, uSky: { value: new THREE.Color() }, uOrigin: { value: -1 } };
   const bmat = keep(new THREE.ShaderMaterial({ vertexShader: BUILDING_VERT, fragmentShader: BUILDING_FRAG, uniforms }));
   const buildings = new THREE.InstancedMesh(bgeo, bmat, Math.max(1, pc));
@@ -357,7 +378,7 @@ const mount: MountViewer = (root, arch, env) => {
   buildings.castShadow = true;
   scene.add(buildings);
   disposables.push(buildings);
-  instanced(new THREE.BoxGeometry(1, 1, 1), std('#3a3e48', { metalness: 0.3, roughness: 0.6 }), roofs, { cast: true });
+  const roofMesh = instanced(new THREE.BoxGeometry(1, 1, 1), std('#3a3e48', { metalness: 0.3, roughness: 0.6 }), roofs, { cast: true });
   const gableGeo = new THREE.BufferGeometry();
   gableGeo.setAttribute('position', new THREE.Float32BufferAttribute([
     -0.5, 0, -0.5, -0.5, 1, 0, 0.5, 1, 0, -0.5, 0, -0.5, 0.5, 1, 0, 0.5, 0, -0.5,
@@ -385,7 +406,7 @@ const mount: MountViewer = (root, arch, env) => {
   };
   tintInfected([]);
   const beacons = instanced(new THREE.SphereGeometry(0.35, 10, 8), glow('#ff3b3b', 3), tallest.map((b) => ({ x: b.x, y: b.h + 4.6, z: b.z })));
-  instanced(new THREE.CylinderGeometry(0.05, 0.08, 4.4, 6), std('#6b7080', { metalness: 0.7 }), tallest.map((b) => ({ x: b.x, y: b.h + 2.4, z: b.z })));
+  const beaconPoles = instanced(new THREE.CylinderGeometry(0.05, 0.08, 4.4, 6), std('#6b7080', { metalness: 0.7 }), tallest.map((b) => ({ x: b.x, y: b.h + 2.4, z: b.z })));
 
   // ---- district boards: role name on two posts facing the avenue ----
   const boardTextures: THREE.CanvasTexture[] = [];
@@ -658,7 +679,7 @@ const mount: MountViewer = (root, arch, env) => {
   let triggerHeld = false;
   let aimHold = 0;
   let pendingShot = false;
-  let aimed = -1;
+  const rivalAt = (k: number) => (k >= 0 ? battle.positions().find((r) => r.name === RIVALS[k].name) : undefined);
   const shotEnd = new THREE.Vector3();
   const muzzle = new THREE.Vector3();
   const aimVec = new THREE.Vector3();
@@ -696,9 +717,24 @@ const mount: MountViewer = (root, arch, env) => {
   };
 
   // ---- virus mode: spreads out from a random building until the player cures it at the source ----
-  const virus = createVirus(layout.buildings.map((b) => ({ x: b.x, z: b.z })), VIRUS_SPREAD, Math.random);
+  const sites = layout.buildings.map((b) => ({ x: b.x, z: b.z }));
+  const virus = createVirus(sites, VIRUS_SPREAD, Math.random);
+  const siege = createSiege();
+  const diffKey = 'code-atlas.walk.virus-difficulty';
+  let difficulty: Difficulty = 'normal';
+  try {
+    const stored = localStorage.getItem(diffKey);
+    if (isDifficulty(stored)) difficulty = stored;
+  } catch { /* storage may be blocked */ }
   let curing = 0;
   let nearOrigin = false;
+  let kills = 0;
+  let bossDown = false;
+  let bossFormed = false;
+  let collapsed = false;
+  let closedCount = 0;
+  // On 상 the minimap only rings the neighbourhood, not the building itself.
+  const mapHint = { x: 0, z: 0, fuzz: 0 };
   const core = new THREE.Group();
   const coreMat = glow('#39ff7a', 2.6);
   const coreShell = new THREE.Mesh(keep(new THREE.IcosahedronGeometry(0.75, 1)), keep(new THREE.MeshBasicMaterial({ color: new THREE.Color('#39ff7a').multiplyScalar(1.6), wireframe: true })));
@@ -707,50 +743,189 @@ const mount: MountViewer = (root, arch, env) => {
   core.add(coreLight);
   core.visible = false;
   scene.add(core);
+  const beacon = createBeacon(scene, BEAM_VERT, BEAM_FRAG);
+  const guide = createGuide(scene);
+  const energy = createMotes(scene, 900, new THREE.Color('#5dff8f').multiplyScalar(2.2), 0.35, true);
+  const dust = createMotes(scene, 700, new THREE.Color('#8a8778'), 1.6, false);
+  const openSpot = (x: number, z: number, min: number, max: number, r: number) => {
+    const turn0 = Math.random() * Math.PI * 2;
+    for (let d = min; d <= max; d += 1.5)
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+        const px = x + Math.cos(turn0 + a) * d, pz = z + Math.sin(turn0 + a) * d;
+        if (!blockedWalker(px, pz, r)) return { x: px, z: pz };
+      }
+    return null;
+  };
+  const horde = createHorde(scene, robotUrl, energy, {
+    blocked: blockedWalker,
+    clear: clearLine,
+    spot: (x, z, min, max) => openSpot(x, z, min, max, 0.6),
+    onPlayerHit: (damage, fx, fz, push) => hurtPlayer(damage, fx, fz, push),
+    onKill: () => { kills++; },
+    onBossDown: () => { bossDown = true; },
+    onQuake: (x, z) => { shake = Math.max(shake, Math.max(0.25, 1 - Math.hypot(x - pos.x, z - pos.z) / 60)); },
+  });
   const originBuilding = () => (virus.origin >= 0 ? layout.buildings[virus.origin] : null);
+  const buildingInfected = (b: WalkBuilding | null) => !!b && virus.state !== 'off' && isInfected(virus.levels[indexOf.get(b) ?? -1] ?? 0);
+  const nodeInfected = (node: number) => buildingInfected(byNode.get(node) ?? null);
+  const rule = () => siege.rule;
   function startVirus() {
-    const o = pickOrigin(layout.buildings.map((b) => ({ x: b.x, z: b.z })), { x: pos.x, z: pos.z }, Math.random);
+    const o = pickOrigin(sites, { x: pos.x, z: pos.z }, Math.random);
     if (o < 0) return;
-    virus.start(o);
+    const r = DIFFICULTY[difficulty];
+    virus.start(o, r.spread);
+    siege.start(r);
+    kills = 0;
+    bossDown = false;
+    bossFormed = false;
+    horde.warm(r.zombieCap + r.eliteCap + 1);
     const b = layout.buildings[o];
     core.position.set(b.x, 1.6, b.z + b.face * (b.d / 2 + 1.4));
     core.visible = true;
     coreLight.intensity = 10;
+    beacon.show(b.x, b.z, b.h + ridge(b) + 0.16);
     uniforms.uOrigin.value = o;
-    toast('바이러스가 퍼지기 시작했어요! 근원지 건물을 찾아 그 앞에서 E 로 치료하세요', 5000);
+    const a = Math.random() * Math.PI * 2;
+    const off = difficulty === 'hard' ? 14 + Math.random() * 14 : 0;
+    Object.assign(mapHint, { x: b.x + Math.cos(a) * off, z: b.z + Math.sin(a) * off, fuzz: off });
+    toast(r.guide ? '바이러스가 퍼지기 시작했어요! 바닥의 형광 화살표를 따라 근원지로 가서 E 로 치료하세요' : '바이러스가 퍼지기 시작했어요! 초록 빛기둥이 솟은 근원지 건물 앞에서 E 로 치료하세요', 5000);
     renderVirus();
   }
-  function endVirus(cured: boolean) {
+  function endVirus(cured: boolean, byBoss = false) {
     const seconds = virus.elapsed;
     const saved = virus.infected;
     virus.cure();
+    siege.stop();
+    horde.clear('die');
     curing = 0;
     core.visible = false;
     coreLight.intensity = 0;
+    beacon.hide();
+    guide.setPath(null);
     uniforms.uOrigin.value = -1;
-    if (cured) {
+    if (byBoss) {
+      const b = horde.boss;
+      if (b) { energy.burst(b.x, 8, b.z, 200, 22, 6, 1.8); sparks.burst(b.x, 4, b.z, 120); }
+      shake = Math.max(shake, 1);
+      toast(`초대형 바이러스 처치! 레포를 지켜냈어요 — 도시가 되살아나요 (${clock(seconds)})`, 6000);
+    } else if (cured) {
       sparks.burst(core.position.x, 1.6, core.position.z, 60);
+      energy.burst(core.position.x, 1.6, core.position.z, 80, 8, 4, 1.4);
       toast(`바이러스 퇴치! ${clock(seconds)} 만에 건물 ${fmt(saved)}개를 되살렸어요`, 5000);
     }
     renderVirus();
   }
-  const toggleVirus = () => (virus.state === 'spreading' ? endVirus(false) : virus.state === 'off' ? startVirus() : undefined);
+  const toggleVirus = () => {
+    if (virus.state === 'spreading' && !siege.cancellable) { toast('괴물을 처치해야 끝나요'); return; }
+    if (virus.state === 'spreading') endVirus(false);
+    else if (virus.state === 'off') startVirus();
+  };
+  const bossHud = { boss: '', bar: -1, time: '' };
+  function renderBossHud() {
+    const phase = siege.phase;
+    const show = phase === 'forming' || phase === 'boss' || phase === 'collapsing' || phase === 'over';
+    const el = $('boss');
+    if (el.hidden === show) el.hidden = !show;
+    if (!show) return;
+    const b = horde.boss;
+    const title = phase === 'forming' ? '초대형 바이러스가 모이는 중…' : phase === 'boss' ? '초대형 바이러스' : '레포가 무너지고 있어요…';
+    if (bossHud.boss !== title) { bossHud.boss = title; $('b-title').textContent = title; }
+    const bar = Math.round(phase === 'forming' ? siege.progress * 100 : phase === 'boss' && b ? (b.hp / b.max) * 100 : 0);
+    if (bar !== bossHud.bar) { bossHud.bar = bar; $('b-bar').style.width = `${bar}%`; }
+    const time = phase === 'boss' ? clock(Math.ceil(siege.timeLeft)) : '';
+    if (time !== bossHud.time) { bossHud.time = time; $('b-time').textContent = time; }
+    el.classList.toggle('urgent', phase === 'boss' && siege.timeLeft < 20);
+  }
+  function renderDifficulty() {
+    const locked = virus.state !== 'off';
+    $('v-diff').querySelectorAll<HTMLButtonElement>('[data-diff]').forEach((b) => {
+      const on = b.dataset.diff === difficulty;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', String(on));
+      b.disabled = locked;
+    });
+  }
   function renderVirus() {
     const on = virus.state === 'spreading';
     $('virus').hidden = !on;
     $('virus-btn').classList.toggle('on', on);
-    $('virus-label').textContent = on ? '바이러스 모드 그만두기' : '바이러스 모드 시작';
+    $('virus-label').textContent = on ? (siege.cancellable ? '바이러스 모드 그만두기' : '괴물을 처치해야 끝나요') : '바이러스 모드 시작';
+    renderDifficulty();
     if (!on) return;
     const total = layout.buildings.length;
+    $('v-title').textContent = siege.phase === 'outbreak' ? '바이러스 확산 중' : '도시 전체 감염';
     $('v-time').textContent = clock(virus.elapsed);
     $('v-count').textContent = `${fmt(virus.infected)} / ${fmt(total)}`;
     $('v-bar').style.width = `${(virus.infected / Math.max(1, total)) * 100}%`;
+    $('v-diff-label').textContent = rule().label;
+    $('v-kills').textContent = fmt(kills);
+    const note = VIRUS_NOTE + (rule().guide ? GUIDE_NOTE : '');
+    if ($('v-note').dataset.note !== note) { $('v-note').dataset.note = note; $('v-note').innerHTML = note; }
     const b = originBuilding();
     const strength = b ? Math.max(0, 1 - Math.hypot(b.x - pos.x, b.z - pos.z) / Math.max(40, span * 0.8)) : 0;
     const bars = Math.max(1, Math.ceil(strength * 5));
     $('v-signal').querySelectorAll('i').forEach((el, k) => el.classList.toggle('on', k < bars));
   }
   listen($('virus-btn'), 'click', (e) => { toggleVirus(); (e.currentTarget as HTMLElement).blur(); });
+  listen($('v-diff'), 'click', (e) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>('[data-diff]')?.dataset.diff;
+    (e.target as HTMLElement).closest('button')?.blur();
+    if (!isDifficulty(id) || virus.state !== 'off') return;
+    difficulty = id;
+    try { localStorage.setItem(diffKey, id); } catch { /* storage may be blocked */ }
+    renderDifficulty();
+  });
+  renderDifficulty();
+  function spawnFoes(events: string[]) {
+    events.forEach((ev) => {
+      if (ev === 'zombie') {
+        let k = pickSpawnSite(sites, virus.levels, pos, Math.random);
+        if (k < 0) k = pickSpawnSite(sites, virus.levels, pos, Math.random, 14, 100);
+        if (k < 0) return;
+        const door = frontOf(layout.buildings[k]);
+        const at = openSpot(door.x, door.z, 0, 8, 0.6);
+        if (at) horde.spawn('zombie', at.x, at.z);
+      } else if (ev === 'elite') {
+        const b = originBuilding();
+        if (!b) return;
+        const door = frontOf(b);
+        const at = openSpot(door.x, door.z, 2, 14, 1.2);
+        if (at) horde.spawn('elite', at.x, at.z);
+      }
+    });
+  }
+  function formBoss() {
+    const b = originBuilding();
+    if (!b) return;
+    const door = frontOf(b);
+    const at = openSpot(door.x, door.z, 0, 40, 3.2) ?? door;
+    bossFormed = horde.formBoss(at.x, at.z, FORM_TIME * 0.85);
+  }
+  // Collapse: each building sinks in turn from the origin outwards, dragging its roof parts with it.
+  const sinkOf = new Float32Array(layout.buildings.length);
+  const dusted = new Uint8Array(layout.buildings.length);
+  function sinkCity(progress: number) {
+    const o = originBuilding() ?? layout.buildings[0];
+    const far = Math.max(1, ...sites.map((b) => Math.hypot(b.x - o.x, b.z - o.z)));
+    layout.buildings.forEach((b, k) => {
+      const t = Math.min(1, Math.max(0, (progress - (Math.hypot(b.x - o.x, b.z - o.z) / far) * 0.45) / 0.5));
+      sinkOf[k] = t * t * (b.h + ridge(b) + 4);
+      if (t > 0 && !dusted[k]) {
+        dusted[k] = 1;
+        if (Math.hypot(b.x - camera.position.x, b.z - camera.position.z) < 160) dust.burst(b.x, 0.6, b.z, 10, Math.max(b.w, b.d) * 0.5, 1.5, 2.4);
+      }
+    });
+    parts.forEach((p, j) => { aSink[j] = sinkOf[p.k]; });
+    sinkAttr.needsUpdate = true;
+    const drop = (mesh: THREE.InstancedMesh, items: (Item & { k: number })[], sag = 0) => {
+      items.forEach((it, j) => place(mesh, { ...it, y: it.y - sinkOf[it.k] - sag * layout.buildings[it.k].h }, j, true));
+      mesh.instanceMatrix.needsUpdate = true;
+    };
+    drop(roofMesh, roofs);
+    drop(gableMesh, gables, 0.06);
+    drop(slabMesh, balconies);
+    drop(railMesh, balconies);
+  }
   const floorAt = (x: number, z: number) => {
     let floor = 0;
     for (const b of nearby(x, z, 4)) if (gap(b, x, z) < 3) floor = Math.max(floor, b.h + ridge(b) + 0.16 + 1.2);
@@ -767,8 +942,9 @@ const mount: MountViewer = (root, arch, env) => {
   };
   // Every heli bullet and bomb lands here, so new kinds of targets only need to be added once.
   function heliHit(x: number, y: number, z: number, radius: number, damage: number, fromX: number, fromZ: number) {
-    if (y > radius + 1.5) return 0;
-    return battle.damageArea(x, z, radius, damage, fromX, fromZ);
+    const foes = horde.damageArea(x, y, z, radius, damage, fromX, fromZ, HELI_BOSS_BONUS);
+    if (y > radius + 1.5) return foes;
+    return foes + battle.damageArea(x, z, radius, damage, fromX, fromZ);
   }
   const heliArms = createHeliArms(scene, heli, {
     surfaceAt,
@@ -857,9 +1033,6 @@ const mount: MountViewer = (root, arch, env) => {
   function setFocus(b: WalkBuilding | null) {
     focus = b;
     uniforms.uFocus.value = b ? indexOf.get(b) ?? -1 : -1;
-    const prompt = $('prompt');
-    if (b) prompt.innerHTML = `<b>E</b> 들어가기 — ${esc(arch.nodes[b.i].name)}`;
-    prompt.classList.toggle('open', !!b && !detailOpen);
     updatePrompt();
   }
   function updatePrompt() {
@@ -875,6 +1048,7 @@ const mount: MountViewer = (root, arch, env) => {
       else if (heli.state === 'parked' && Math.hypot(hpos.x - pos.x, hpos.z - pos.z) < 7) html = '<b>H</b> 헬기 타기';
       else if (nearVehicle) html = `<b>E</b> 운전 — ${nearVehicle.kind === 'car' ? '자동차' : '오토바이'}`;
       else if (nearCar) html = `<b>E</b> 탑승 — ${name(nearCar.f)} → ${name(nearCar.t)}`;
+      else if (focus && buildingInfected(focus)) html = `바이러스에 잠식된 건물이에요 — ${name(focus.i)} 코드를 볼 수 없어요`;
       else if (focus) html = `<b>E</b> 들어가기 — ${name(focus.i)}`;
     }
     if (html) prompt.innerHTML = html;
@@ -938,6 +1112,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (nearOrigin) { if (curing <= 0) curing = 0.001; updatePrompt(); }
     else if (nearVehicle) driveVehicle(nearVehicle);
     else if (nearCar) hitch(nearCar);
+    else if (focus && buildingInfected(focus)) toast('바이러스에 잠식된 건물은 코드를 볼 수 없어요 — 근원지를 치료하면 다시 열려요');
     else if (focus) enter(focus);
   }
   function enter(b: WalkBuilding) {
@@ -1127,6 +1302,31 @@ const mount: MountViewer = (root, arch, env) => {
       mapCtx.fillStyle = `rgba(90, 255, 140, ${0.3 + level * 0.7})`;
       mapCtx.fillRect(x, y, Math.max(1.5, (b.w / span) * 200), Math.max(1.5, (b.d / span) * 200));
     });
+    if (virus.state === 'spreading' && siege.phase === 'outbreak') {
+      const [hx, hy] = toMap(mapHint.x, mapHint.z);
+      const t = (performance.now() / 1000 * 0.9) % 1;
+      const r0 = 4 + (mapHint.fuzz / span) * 200;
+      mapCtx.lineWidth = 2;
+      mapCtx.strokeStyle = 'rgba(57, 255, 122, .9)';
+      mapCtx.beginPath();
+      mapCtx.arc(hx, hy, r0, 0, Math.PI * 2);
+      mapCtx.stroke();
+      mapCtx.strokeStyle = `rgba(57, 255, 122, ${1 - t})`;
+      mapCtx.beginPath();
+      mapCtx.arc(hx, hy, r0 + 3 + t * 18, 0, Math.PI * 2);
+      mapCtx.stroke();
+    }
+    horde.positions().forEach((f) => {
+      const [x, y] = toMap(f.x, f.z);
+      mapCtx.fillStyle = f.kind === 'zombie' ? '#b6ff4a' : '#39ff7a';
+      mapCtx.beginPath();
+      mapCtx.arc(x, y, f.kind === 'boss' ? 7 : f.kind === 'elite' ? 3.6 : 1.8, 0, Math.PI * 2);
+      mapCtx.fill();
+      if (f.kind === 'zombie') return;
+      mapCtx.strokeStyle = '#0b0d12';
+      mapCtx.lineWidth = 1.2;
+      mapCtx.stroke();
+    });
     battle.positions().forEach((r) => {
       const [x, y] = toMap(r.x, r.z);
       mapCtx.fillStyle = r.down ? '#5c6270' : r.tint;
@@ -1182,6 +1382,7 @@ const mount: MountViewer = (root, arch, env) => {
     renderer.toneMappingExposure = t.exposure;
     bloom.strength = t.bloom;
     uniforms.uDay.value = t.day;
+    beacon.tone(t.day);
     uniforms.uLit.value = t.lit;
     uniforms.uSky.value.set(t.horizon);
     lampsOn = t.lamps;
@@ -1227,6 +1428,15 @@ const mount: MountViewer = (root, arch, env) => {
   let disposed = false;
   let last = performance.now();
   let slowClock = 0;
+  let guideClock = 0;
+  let trafficClock = 0;
+  const guidePath = (): PathPoint[] | null => {
+    const o = originBuilding();
+    if (!o) return null;
+    const near = layout.buildings.reduce((best, b) => (gap(b, pos.x, pos.z) < gap(best, pos.x, pos.z) ? b : best), o);
+    const door = frontOf(o);
+    return [[pos.x, pos.z], ...(near === o ? [] : routeBetween(layout, near, o)), [door.x, door.z]];
+  };
   const forward = new THREE.Vector3();
   const right = new THREE.Vector3();
   const wish = new THREE.Vector3();
@@ -1274,7 +1484,10 @@ const mount: MountViewer = (root, arch, env) => {
     if (pendingShot) {
       pendingShot = false;
       heroHeld.tip(muzzle);
-      battle.shoot(pos, aimHeading, weapon, shotEnd);
+      const foe = horde.aimTarget(pos, aimHeading, weapon);
+      const rival = rivalAt(battle.aimTarget(pos, aimHeading, weapon));
+      if (foe && (!rival || foe.d < Math.hypot(rival.x - pos.x, rival.z - pos.z))) horde.shoot(pos, aimHeading, weapon, shotEnd);
+      else battle.shoot(pos, aimHeading, weapon, shotEnd);
       const pellets = weapon.id === 'shotgun' ? 6 : 1;
       for (let k = 0; k < pellets; k++) {
         const end = pellets > 1 ? v.copy(shotEnd).add(s.set((Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 1.6)) : shotEnd;
@@ -1283,12 +1496,15 @@ const mount: MountViewer = (root, arch, env) => {
       sparks.burst(shotEnd.x, shotEnd.y, shotEnd.z, 6);
       shake = Math.max(shake, weapon.id === 'shotgun' ? 0.35 : 0.08);
     }
-    aimed = gun && onFoot && alive ? battle.aimTarget(pos, yaw + Math.PI, weapon) : -1;
-    const target = aimed >= 0 ? battle.positions().find((r) => r.name === RIVALS[aimed].name) : undefined;
+    const aiming = gun && onFoot && alive;
+    const rivalAim = aiming ? rivalAt(battle.aimTarget(pos, yaw + Math.PI, weapon)) : undefined;
+    const foeAim = aiming ? horde.aimTarget(pos, yaw + Math.PI, weapon) : null;
+    const target = foeAim && (!rivalAim || foeAim.d < Math.hypot(rivalAim.x - pos.x, rivalAim.z - pos.z)) ? foeAim : rivalAim;
     reticle.visible = !!target;
     if (target) {
       reticle.position.set(target.x, 0.22, target.z);
       reticle.rotation.y = time * 2;
+      reticle.scale.setScalar(target === foeAim ? Math.max(1, foeAim.r * 1.4) : 1);
     }
     blob.position.set(pos.x, 0.18, pos.z);
     blob.scale.setScalar(1 / (1 + footY * 0.6));
@@ -1309,7 +1525,8 @@ const mount: MountViewer = (root, arch, env) => {
       const reachAhead = drivenNow.kind === 'car' ? 1.8 : 0.9;
       const nose = { x: drivenNow.x + dirx * reachAhead, z: drivenNow.z + dirz * reachAhead };
       let crash = impact ? impact.speed : 0;
-      if (battle.ram(nose.x, nose.z, drivenNow.kind === 'car' ? 1.3 : 0.7, dirx, dirz, spd)) { vehicles.bounce(0.55); crash = Math.max(crash, spd * 0.5); }
+      const body = drivenNow.kind === 'car' ? 1.3 : 0.7;
+      if (battle.ram(nose.x, nose.z, body, dirx, dirz, spd) + horde.ram(nose.x, nose.z, body, dirx, dirz, spd)) { vehicles.bounce(0.55); crash = Math.max(crash, spd * 0.5); }
       if (spd > 1.5) {
         const other = traffic.bump(nose.x, nose.z, drivenNow.kind === 'car' ? 1.0 : 0.5);
         if (other >= 0) { vehicles.bounce(-0.3); crash = Math.max(crash, spd + other * 0.5); }
@@ -1342,7 +1559,7 @@ const mount: MountViewer = (root, arch, env) => {
     punchCooldown -= dt;
     if (punchAt > 0) {
       punchAt -= dt;
-      if (punchAt <= 0) battle.strike(pos, heading, weapon);
+      if (punchAt <= 0) { battle.strike(pos, heading, weapon); horde.strike(pos, heading, weapon); }
     }
     battle.update(dt, pos, alive && onFoot && !detailOpen && !entering);
     if (virus.update(dt)) {
@@ -1350,6 +1567,45 @@ const mount: MountViewer = (root, arch, env) => {
       infectAttr.needsUpdate = true;
       tintInfected(virus.levels);
     }
+    horde.update(dt, time, { x: pos.x, z: pos.z, y: flying ? heli.root.position.y : footY }, alive && onFoot && !detailOpen && !entering);
+    const allInfected = virus.infected === layout.buildings.length && virus.levels.every((l) => l >= 1);
+    const events = virus.state === 'spreading' ? siege.update(dt, { allInfected, bossDown, zombies: horde.zombies, elites: horde.elites }) : [];
+    spawnFoes(events);
+    if (events.includes('form')) {
+      horde.clear('poof');
+      guide.setPath(null);
+      curing = 0;
+      toast('도시가 모두 감염됐어요! 근원지에서 초대형 바이러스가 깨어나요', 5000);
+      formBoss();
+    } else if (siege.phase === 'forming' && !bossFormed) formBoss();
+    if (events.includes('boss')) toast(`초대형 바이러스 등장! ${clock(rule().bossTime)} 안에 처치하지 않으면 레포가 붕괴돼요`, 5000);
+    if (events.includes('won')) endVirus(true, true);
+    if (events.includes('collapse')) {
+      horde.clear('poof');
+      beacons.visible = beaconPoles.visible = false;
+      signs.forEach((sg) => { sg.mesh.visible = false; sg.owner = -1; });
+      if (detailOpen || entering) leave();
+      toast('시간 초과 — 바이러스가 레포를 무너뜨리고 있어요!', 7000);
+    }
+    const sinking = siege.phase === 'collapsing' || siege.phase === 'over';
+    if (sinking) {
+      sinkCity(siege.progress);
+      shake = Math.max(shake, 0.3 + siege.progress * 0.4);
+    }
+    if (events.includes('collapsed') && !collapsed) {
+      collapsed = true;
+      env.collapse();
+    }
+    renderBossHud();
+    beacon.update(time, dt);
+    energy.update(dt);
+    dust.update(dt);
+    guideClock -= dt;
+    if (guideClock <= 0) {
+      guideClock = 0.5;
+      guide.setPath(rule().guide && siege.phase === 'outbreak' ? guidePath() : null);
+    }
+    guide.update(time);
     if (core.visible) {
       core.rotation.y = time * 1.4;
       coreShell.rotation.x = time * 0.9;
@@ -1443,7 +1699,7 @@ const mount: MountViewer = (root, arch, env) => {
     slowClock -= dt;
     if (slowClock <= 0) {
       slowClock = 0.2;
-      updateSigns(pos.x, pos.z);
+      if (!sinking) updateSigns(pos.x, pos.z);
       updateLampLights(pos.x, pos.z);
       let near: WalkBuilding | null = null;
       let nearGap = 20;
@@ -1451,8 +1707,26 @@ const mount: MountViewer = (root, arch, env) => {
       if (mode !== 'ride') traffic.setFocus(near ? near.i : null, pos);
       nearVehicle = onFoot && alive ? vehicles.nearest(pos.x, pos.z) : null;
       nearCar = onFoot && alive && !nearVehicle ? traffic.nearest(pos.x, pos.z, 6.5) : null;
-      const ob = virus.state === 'spreading' ? originBuilding() : null;
+      const ob = virus.state === 'spreading' && siege.phase === 'outbreak' ? originBuilding() : null;
       nearOrigin = !!ob && onFoot && alive && gap(ob, pos.x, pos.z) < REACH + 0.5;
+      if ((detailOpen || entering) && buildingInfected(entering?.b ?? focus)) {
+        leave();
+        toast('이 건물이 바이러스에 잠식됐어요 — 밖으로 나왔어요');
+      }
+      trafficClock -= 0.2;
+      if (trafficClock <= 0) {
+        trafficClock = 1;
+        const closedNow = virus.state === 'off' ? 0 : virus.levels.reduce((n, l) => n + (isInfected(l) ? 1 : 0), 0);
+        if (closedNow !== closedCount) {
+          closedCount = closedNow;
+          const car = traffic.riding;
+          if (mode === 'ride' && car && (nodeInfected(car.f) || nodeInfected(car.t))) {
+            hopOff();
+            toast('차가 바이러스 구역에 막혀서 내렸어요', 2400);
+          }
+          traffic.setClosed(closedNow ? nodeInfected : null);
+        }
+      }
       renderVirus();
       if (!entering && !detailOpen && onFoot) {
         let best: WalkBuilding | null = null;
@@ -1488,6 +1762,11 @@ const mount: MountViewer = (root, arch, env) => {
     cleanups.forEach((fn) => fn());
     hero.dispose();
     battle.dispose();
+    horde.dispose();
+    beacon.dispose();
+    guide.dispose();
+    energy.dispose();
+    dust.dispose();
     heroHeld.dispose();
     kit.dispose();
     tracers.dispose();

@@ -7,6 +7,8 @@ attribute float aBase;
 attribute float aInfect;
 attribute float aCap;
 attribute float aKind;
+attribute float aSink;
+uniform float uTime;
 varying vec3 vLocal; varying vec3 vN; varying vec3 vColor; varying vec3 vSize; varying vec3 vWorld;
 varying float vSeed; varying float vFace; varying float vBase; varying float vInfect; varying float vKind;
 float vhash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -19,6 +21,9 @@ void main() {
   p.x += aInfect * position.y * (vhash(vec2(aSeed, 1.7)) - 0.5) * 0.05;
   vLocal = p; vSize = aSize; vColor = aColor; vSeed = aSeed; vFace = aFace; vBase = aBase; vInfect = aInfect; vKind = aKind;
   vec4 w = modelMatrix * instanceMatrix * vec4(p, 1.0);
+  // Collapse: the whole building shudders and sinks under the ground plane, which hides what has gone below.
+  w.y -= aSink;
+  w.x += sin(uTime * 41.0 + aSeed * 3.1) * min(aSink, 1.0) * 0.14;
   vWorld = w.xyz;
   vN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * normal);
   gl_Position = projectionMatrix * viewMatrix * w;
@@ -140,9 +145,12 @@ void main() {
     col = mix(col, vec3(0.4, 1.1, 0.5), band * 0.3 * side);
   }
   float origin = 1.0 - step(0.5, abs(vSeed - uOrigin));
-  col += origin * vec3(0.3, 2.2, 0.6) * pow(0.5 + 0.5 * sin(uTime * 5.0 - y * 0.35), 6.0) * side;
   col += focus * vec3(0.05, 0.06, 0.09) * side;
   col = mix(col, uFog, smoothstep(80.0, 430.0, distance(vWorld, cameraPosition)));
+  // Added after the fog so the origin keeps glowing however far away it is.
+  float beat = pow(0.5 + 0.5 * sin(uTime * 5.0 - y * 0.35), 6.0);
+  float throb = 0.55 + 0.45 * sin(uTime * 3.0);
+  col += origin * (vec3(0.04, 0.5, 0.16) * throb + vec3(0.3, 2.6, 0.7) * beat * side);
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -163,4 +171,27 @@ void main() {
   float sun = max(dot(vDir, normalize(uSunDir)), 0.0);
   col += uSunColor * (pow(sun, 8.0) * 0.25 + pow(sun, 90.0) * 0.6);
   gl_FragColor = vec4(col, 1.0);
+}`;
+
+export const BEAM_VERT = /* glsl */ `
+varying vec2 vUv; varying vec3 vN; varying vec3 vWorld;
+void main() {
+  vUv = uv;
+  vec4 w = modelMatrix * vec4(position, 1.0);
+  vWorld = w.xyz;
+  vN = normalize(mat3(modelMatrix) * normal);
+  gl_Position = projectionMatrix * viewMatrix * w;
+}`;
+
+// Densest where the tube faces the camera, fading with height, with bands running upward; alpha carries the shape so it works blended or additive.
+export const BEAM_FRAG = /* glsl */ `
+uniform vec3 uColor; uniform float uTime; uniform float uStrength; uniform float uAlpha; uniform float uSharp;
+varying vec2 vUv; varying vec3 vN; varying vec3 vWorld;
+void main() {
+  float facing = abs(dot(normalize(vN), normalize(cameraPosition - vWorld)));
+  float fade = pow(1.0 - vUv.y, 1.6) * smoothstep(0.0, 0.01, vUv.y);
+  float bands = 0.7 + 0.3 * sin(vUv.y * 160.0 - uTime * 9.0);
+  float pulse = 0.75 + 0.25 * sin(uTime * 3.0);
+  float k = pow(facing, uSharp) * fade * bands * pulse;
+  gl_FragColor = vec4(uColor * uStrength, clamp(k * uAlpha, 0.0, 1.0));
 }`;

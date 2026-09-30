@@ -71,6 +71,8 @@ export interface Traffic {
   /** Rides `car` along its reference route; `arrived` fires at the used file's door. */
   board(car: RideCar, arrived: (car: RideCar) => void): void;
   leave(): void;
+  /** Cars to or from a closed building vanish and are not spawned again until it reopens; call it only when the set changes. */
+  setClosed(closed: ((node: number) => boolean) | null): void;
   readonly riding: RideCar | null;
   dispose(): void;
 }
@@ -177,9 +179,12 @@ export function createTraffic(scene: THREE.Scene, layout: WalkLayout, arch: Arch
     return Math.hypot(x - (c.x + c.dx * along), z - (c.z + c.dz * along));
   };
   let focus: number | null = null;
+  let closed: ((node: number) => boolean) | null = null;
+  const open = (c: { f: number; t: number }) => !closed || (!closed(c.f) && !closed(c.t));
+  const lastPlayer = new THREE.Vector3();
   let riding: Car | null = null;
   let arrived: ((car: RideCar) => void) | null = null;
-  return {
+  const api: Traffic = {
     get riding() { return riding; },
     nearest(x, z, reach) {
       let best: Car | null = null;
@@ -210,16 +215,23 @@ export function createTraffic(scene: THREE.Scene, layout: WalkLayout, arch: Arch
       }
       return -1;
     },
+    setClosed(fn) {
+      closed = fn;
+      const node = focus;
+      focus = -1;
+      api.setFocus(node, lastPlayer);
+    },
     setFocus(node, player) {
+      lastPlayer.copy(player);
       if (node === focus) return;
       focus = node;
       const related: Car[] = [];
       const near = (c: Car) => Math.hypot(c.x - player.x, c.z - player.z) < FAR;
-      const staying = cars.filter((c) => c.kind !== 'ambient' && (c === riding || near(c)));
+      const staying = cars.filter((c) => c.kind !== 'ambient' && (c === riding || (near(c) && open(c))));
       const has = (f: number, t: number, kind: Car['kind']) => staying.some((c) => c.f === f && c.t === t && c.kind === kind);
       if (node !== null) {
         const pick = (list: typeof valid, kind: Car['kind']) => [...list].sort((p, q) => q[2] - p[2]).slice(0, PER_SIDE).forEach(([f, t]) => {
-          if (has(f, t, kind)) return;
+          if (has(f, t, kind) || !open({ f, t })) return;
           const c = makeCar(f, t, kind, player);
           if (c) related.push(c);
         });
@@ -228,7 +240,7 @@ export function createTraffic(scene: THREE.Scene, layout: WalkLayout, arch: Arch
       }
       const all = [...staying, ...related];
       const busy = new Set(all.map((c) => `${c.f}>${c.t}`));
-      cars = [...all, ...ambient.filter((c) => !busy.has(`${c.f}>${c.t}`))].slice(0, CAPACITY);
+      cars = [...all, ...ambient.filter((c) => open(c) && !busy.has(`${c.f}>${c.t}`))].slice(0, CAPACITY);
       labels.forEach((l) => { if (l.car && !cars.includes(l.car)) { l.sprite.visible = false; l.car = null; } });
       recolor();
     },
@@ -292,4 +304,5 @@ export function createTraffic(scene: THREE.Scene, layout: WalkLayout, arch: Arch
       owned.forEach((o) => o.dispose());
     },
   };
+  return api;
 }

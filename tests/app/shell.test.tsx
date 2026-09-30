@@ -53,6 +53,7 @@ const props = (extra: Record<string, unknown> = {}) => ({
   onReconnect: vi.fn(),
   onReanalyze: vi.fn(),
   onOpenOther: vi.fn(),
+  onCollapse: vi.fn(),
   ...extra,
 });
 

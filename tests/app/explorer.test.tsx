@@ -71,6 +71,7 @@ function makeEnv(over: Partial<ViewerEnv> = {}): ViewerEnv {
     selection: {},
     onSelect: vi.fn(),
     goto: vi.fn(),
+    collapse: vi.fn(),
     ...over,
   };
 }
