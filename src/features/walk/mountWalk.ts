@@ -16,6 +16,7 @@ import { createTraffic } from './walkTraffic';
 import { createRain } from './walkRain';
 import { RIVALS, createBattle } from './walkBattle';
 import { createHeli } from './walkHeli';
+import { createHeliArms, shakeAt } from './walkHeliArms';
 import { createVehicles, type Vehicle } from './walkVehicles';
 import { THEMES, type Theme } from './walkThemes';
 import { createMarkers, createSparks } from './walkFx';
@@ -48,11 +49,14 @@ const WEATHER_ICONS: Record<string, string> = {
   sunset: icon('<path d="M6 16a6 6 0 0 1 12 0z" fill="currentColor"/><path d="M2 19h20M12 4v3M4.5 8.5l2 2M19.5 8.5l-2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'),
   fog: icon('<path d="M3 8h13M6 12h15M3 16h12M8 20h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'),
 };
+const GUN_ICON = icon('<path d="M2 10h14l2-2h3v3h-2l-1 1H9l-1 4H5l1-4H2z" fill="currentColor"/><path d="M18 13h4M18 15.5h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>');
+const BOMB_ICON = icon('<circle cx="10.5" cy="14" r="6.5" fill="currentColor"/><path d="M15 9.5l2.5-2.5M18 4.5v2M20.5 7h-2M19.8 4.2l-1.4 1.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>');
 const VIRUS_ICON = icon('<circle cx="12" cy="12" r="5" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.8 2.8M16.2 16.2L19 19M5 19l2.8-2.8M16.2 7.8L19 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>');
 const HELP = [
   ['이동', [['W A S D', '걷기'], ['Shift', '달리기'], ['Space', '점프'], ['클릭', '마우스로 시점 돌리기 (Esc 로 풀기)'], ['휠', '카메라 거리']]],
   ['전투', [['1 ~ 6', '무기 고르기'], ['F · 클릭', '공격 (기관단총은 누르고 있기)'], ['G', '감정 표현']]],
-  ['행동', [['E', '건물 들어가기 · 차 타기 · 바이러스 치료'], ['H', '헬기 (라이벌 4명을 다 잡으면)']]],
+  ['행동', [['E', '건물 들어가기 · 차 타기 · 바이러스 치료'], ['H', '헬기 타기 (라이벌 4명을 다 잡으면)']]],
+  ['헬기', [['W S', '앞으로 · 뒤로'], ['A D · 마우스', '방향 돌리기'], ['Q E', '옆으로 이동'], ['Space · C', '올라가기 · 내려가기'], ['Shift', '가속'], ['F · 클릭', '기관총 (누르고 있기)'], ['G · 우클릭', '폭탄 떨어뜨리기'], ['마우스 위아래', '조준점 가깝게 · 멀리'], ['H', '천천히 내려가 착륙 (Space 로 취소)']]],
   ['화면', [['/', '파일 이름으로 순간 이동'], ['T', '날씨 바꾸기'], ['V', '바이러스 모드'], ['?', '이 도움말']]],
 ] as const;
 
@@ -72,6 +76,13 @@ const MARKUP = `
     <p>초록빛으로 맥박치는 건물이 근원지예요. 신호가 세지는 쪽으로 가서 건물 앞에서 <b>E</b>.</p>
 </div>
 <div class="wk-weapons glass" data-el="weapons" role="toolbar" aria-label="무기"></div>
+<div class="wk-heli glass" data-el="heli-hud" aria-label="헬기">
+    <div class="hh-slot" data-el="hh-gun">${GUN_ICON}<span>기관총</span><kbd>F</kbd></div>
+    <div class="hh-slot" data-el="hh-bomb">${BOMB_ICON}<span>폭탄</span><kbd>G</kbd><i><b data-el="hh-bomb-bar"></b></i></div>
+    <div class="hh-meter"><span>고도</span><b data-el="hh-alt">0</b><small>m</small></div>
+    <div class="hh-meter"><span>속도</span><b data-el="hh-speed">0</b><small>km/h</small></div>
+    <div class="hh-hint" data-el="hh-hint"></div>
+</div>
 <div class="wk-help glass" data-el="help" hidden role="dialog" aria-label="조작법">
     <div class="h-head"><b>조작법</b><button data-el="help-close">닫기 (Esc)</button></div>
     <div class="h-body" data-el="help-body"></div>
@@ -586,7 +597,7 @@ const mount: MountViewer = (root, arch, env) => {
     onCaught(name, n, total) {
       caughtNames.add(name);
       renderBattle();
-      if (n < total) { toast(`${name} 잡았다! (${n}/${total})`); return; }
+      if (n < total || heli.state !== 'hidden') { toast(`${name} 잡았다! (${n}/${total})`); return; }
       toast('모두 잡았어요! 헬기가 내려옵니다 — 가까이 가서 H', 5000);
       const spot = freeSpotNear(pos.x, pos.z, 9, 30);
       heli.arrive(spot.x, spot.z, Math.atan2((bounds.minX + bounds.maxX) / 2 - spot.x, (bounds.minZ + bounds.maxZ) / 2 - spot.z));
@@ -699,6 +710,55 @@ const mount: MountViewer = (root, arch, env) => {
     for (const b of nearby(x, z, 4)) if (gap(b, x, z) < 3) floor = Math.max(floor, b.h + 0.16 + 1.2);
     return floor;
   };
+  const partsOf = new Map<WalkBuilding, Part[]>();
+  parts.forEach((p) => partsOf.set(p.b, [...(partsOf.get(p.b) ?? []), p]));
+  const surfaceAt = (x: number, z: number) => {
+    let top = 0;
+    grid.get(key(Math.floor(x / GRID), Math.floor(z / GRID)))?.forEach((b) => partsOf.get(b)?.forEach((p) => {
+      if (Math.abs(x - p.x) <= p.w / 2 && Math.abs(z - p.z) <= p.d / 2) top = Math.max(top, 0.16 + p.base + p.h);
+    }));
+    return top;
+  };
+  // Every heli bullet and bomb lands here, so new kinds of targets only need to be added once.
+  function heliHit(x: number, y: number, z: number, radius: number, damage: number, fromX: number, fromZ: number) {
+    if (y > radius + 1.5) return 0;
+    return battle.damageArea(x, z, radius, damage, fromX, fromZ);
+  }
+  const heliArms = createHeliArms(scene, heli, {
+    surfaceAt,
+    hit: heliHit,
+    blast: (x, y, z) => { shake = Math.max(shake, shakeAt(camera.position.distanceTo(v.set(x, y, z)))); },
+    sparks,
+    tracers,
+  });
+  let aimPitch = 0.55;
+  let flyYaw = 0;
+  const hud = { alt: '', speed: '', hint: '', bomb: -1, gun: false };
+  function renderHeliHud() {
+    const set = (el: string, key: 'alt' | 'speed' | 'hint', text: string, html = false) => {
+      if (hud[key] === text) return;
+      hud[key] = text;
+      if (html) $(el).innerHTML = text; else $(el).textContent = text;
+    };
+    set('hh-alt', 'alt', String(Math.round(heli.altitude)));
+    set('hh-speed', 'speed', String(Math.round(heli.speed * 3.6)));
+    const hp0 = heli.root.position;
+    const outside = hp0.x < bounds.minX || hp0.x > bounds.maxX || hp0.z < bounds.minZ || hp0.z > bounds.maxZ;
+    set('hh-hint', 'hint', heli.rpm < 0.8 ? '로터 도는 중…'
+      : heli.autoLanding ? '착륙하는 중… <kbd>Space</kbd> 취소'
+      : outside ? '도시 밖 — 돌아와야 착륙할 수 있어요'
+      : '<kbd>H</kbd> 착륙', true);
+    const charge = Math.round(heliArms.bombCharge * 100);
+    if (charge !== hud.bomb) {
+      hud.bomb = charge;
+      $('hh-bomb-bar').style.width = `${charge}%`;
+      $('hh-bomb').classList.toggle('ready', charge === 100);
+    }
+    if (heliArms.firing !== hud.gun) {
+      hud.gun = heliArms.firing;
+      $('hh-gun').classList.toggle('on', hud.gun);
+    }
+  }
   function toggleHeli() {
     if (mode === 'walk') {
       const hpos = heli.root.position;
@@ -706,10 +766,12 @@ const mount: MountViewer = (root, arch, env) => {
         heli.board();
         mode = 'fly';
         keys.clear();
+        triggerHeld = false;
         hero.root.visible = false;
         blob.visible = false;
         setFocus(null);
-        toast('비행 시작 — W/S 앞뒤 · A/D 회전 · Space/C 위아래 · Shift 가속 · 낮게 내려와 H로 착륙', 5000);
+        root.classList.add('flying');
+        toast('비행 시작 — WASD 이동 · Q/E 옆으로 · Space/C 위아래 · F 기관총 · G 폭탄 · H 착륙', 5000);
       } else if (heli.state === 'hidden') {
         toast(`헬기는 ${RIVALS.length}명을 모두 잡으면 나타나요 (${battle.caught}/${RIVALS.length})`);
       } else if (heli.state === 'parked') {
@@ -719,9 +781,13 @@ const mount: MountViewer = (root, arch, env) => {
     }
     const hp0 = heli.root.position;
     if (hp0.x < bounds.minX || hp0.x > bounds.maxX || hp0.z < bounds.minZ || hp0.z > bounds.maxZ) { toast('도시 안으로 돌아와야 착륙할 수 있어요'); return; }
-    if (!heli.land()) { toast('더 낮게 내려와야 착륙할 수 있어요'); return; }
+    heli.land();
+  }
+  function disembark() {
     mode = 'walk';
     keys.clear();
+    triggerHeld = false;
+    root.classList.remove('flying');
     const hpos = heli.root.position;
     pos.copy(freeSpotNear(hpos.x, hpos.z, 4, 20));
     vel.set(0, 0, 0);
@@ -892,6 +958,8 @@ const mount: MountViewer = (root, arch, env) => {
       return;
     }
     if (mode === 'fly') {
+      if (e.code === 'KeyF') { triggerHeld = true; return; }
+      if (e.code === 'KeyG') { if (!e.repeat) heliArms.bomb(); return; }
       keys.add(e.code);
       if (e.code === 'Space') e.preventDefault();
       return;
@@ -918,10 +986,13 @@ const mount: MountViewer = (root, arch, env) => {
     if (!detailOpen && !entering) Promise.resolve(renderer.domElement.requestPointerLock?.()).catch(() => {});
   });
   listen(renderer.domElement, 'pointerdown', (e) => {
-    if (document.pointerLockElement !== renderer.domElement || e.button !== 0) return;
+    if (document.pointerLockElement !== renderer.domElement) return;
+    if (mode === 'fly' && e.button === 2) { heliArms.bomb(); return; }
+    if (e.button !== 0) return;
     triggerHeld = true;
     attack();
   });
+  listen(renderer.domElement, 'contextmenu', (e) => { if (mode === 'fly') e.preventDefault(); });
   listen(window, 'pointerup', () => { if (document.pointerLockElement === renderer.domElement) triggerHeld = false; });
   let dragging = false;
   listen(renderer.domElement, 'pointerdown', () => (dragging = true));
@@ -929,6 +1000,11 @@ const mount: MountViewer = (root, arch, env) => {
   listen(document, 'mousemove', (e) => {
     if (detailOpen || entering) return;
     if (document.pointerLockElement !== renderer.domElement && !dragging) return;
+    if (mode === 'fly') {
+      flyYaw -= e.movementX * 0.0026;
+      aimPitch = Math.min(1.35, Math.max(0.15, aimPitch + e.movementY * 0.002));
+      return;
+    }
     yaw -= e.movementX * 0.0032;
     pitch = Math.min(1.15, Math.max(-0.05, pitch + e.movementY * 0.0026));
   });
@@ -1165,8 +1241,15 @@ const mount: MountViewer = (root, arch, env) => {
     }
     blob.position.set(pos.x, 0.18, pos.z);
     blob.scale.setScalar(1 / (1 + footY * 0.6));
-    heli.update(dt, time, flying ? { forward: fz, turn: -fx, lift: input(['Space'], ['KeyC', 'ControlLeft']), boost: running } : { forward: 0, turn: 0, lift: 0, boost: false }, floorAt);
-    if (flying) pos.set(heli.root.position.x, 0, heli.root.position.z);
+    heli.update(dt, time, flying
+      ? { forward: fz, strafe: input(['KeyE'], ['KeyQ']), turn: -fx, lift: input(['Space'], ['KeyC']), boost: running, yaw: flyYaw }
+      : { forward: 0, strafe: 0, turn: 0, lift: 0, boost: false, yaw: 0 }, floorAt);
+    flyYaw = 0;
+    heliArms.update(dt, time, { active: flying, firing: triggerHeld, pitch: aimPitch });
+    if (flying) {
+      pos.set(heli.root.position.x, 0, heli.root.position.z);
+      if (heli.state === 'parked') disembark(); else renderHeliHud();
+    }
     const impact = vehicles.update(dt, mode === 'drive' ? { throttle: fz, steer: -fx, boost: running, handbrake: keys.has('Space') } : { throttle: 0, steer: 0, boost: false, handbrake: false }, pos);
     const drivenNow = vehicles.driving;
     if (mode === 'drive' && drivenNow) {
@@ -1261,10 +1344,17 @@ const mount: MountViewer = (root, arch, env) => {
       $('fade').style.opacity = '0';
       const hpos = heli.root.position;
       const want = heli.heading + Math.PI;
-      yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * Math.min(1, dt * 2.5);
-      camPos.set(Math.sin(yaw) * Math.cos(0.3), Math.sin(0.3), Math.cos(yaw) * Math.cos(0.3)).multiplyScalar(17 + heli.speed * 0.15).add(v.set(hpos.x, hpos.y + 2.5, hpos.z));
+      yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * Math.min(1, dt * 3);
+      // Rising with the aim and looking down with altitude keeps the heli, its aim point and the bomb drop point in one frame.
+      const elev = 0.3 + aimPitch * 0.35;
+      let reach = 17 + heli.speed * 0.15;
+      do {
+        camPos.set(Math.sin(yaw) * Math.cos(elev), Math.sin(elev), Math.cos(yaw) * Math.cos(elev)).multiplyScalar(reach).add(v.set(hpos.x, hpos.y + 2.5, hpos.z));
+        reach -= 1;
+      } while (reach > 6 && insideBuilding(camPos));
       camera.position.lerp(camPos, Math.min(1, dt * 5));
-      lookAt.lerp(v.set(hpos.x, hpos.y + 2, hpos.z), Math.min(1, dt * 10));
+      const ahead = Math.min(0.25, 15 / Math.max(1, heliArms.aim.distanceTo(hpos)));
+      lookAt.lerp(v.set(hpos.x, hpos.y + 2 - heli.altitude * 0.45, hpos.z).lerp(heliArms.aim, ahead), Math.min(1, dt * 8));
       camera.lookAt(lookAt);
     } else {
       $('fade').style.opacity = '0';
@@ -1351,6 +1441,7 @@ const mount: MountViewer = (root, arch, env) => {
     vehicles.dispose();
     sparks.dispose();
     markers.dispose();
+    heliArms.dispose();
     heli.dispose();
     window.clearTimeout(toastTimer);
     traffic.dispose();
@@ -1364,6 +1455,6 @@ const mount: MountViewer = (root, arch, env) => {
     renderer.dispose();
     renderer.forceContextLoss();
     root.innerHTML = '';
-    root.classList.remove('wk-walk', 'entering');
+    root.classList.remove('wk-walk', 'entering', 'flying');
   };
 };

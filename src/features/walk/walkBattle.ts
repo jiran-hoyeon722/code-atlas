@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { spawnRobot, type Robot } from './walkRobot';
-import { RIVAL_HP, damageAt, dealWeapons, type HeldWeapon, type Weapon, type WeaponKit } from './walkWeapons';
+import { RIVAL_HP, damageAt, dealWeapons, splash, type HeldWeapon, type Weapon, type WeaponKit } from './walkWeapons';
 
 export const RIVALS: { name: string; tint: string }[] = [
   { name: '김준석', tint: '#e8554e' },
@@ -33,6 +33,8 @@ export interface Battle {
   shoot(at: THREE.Vector3, heading: number, weapon: Weapon, out: THREE.Vector3): THREE.Vector3;
   /** A vehicle body at (x, z) moving along (dx, dz) at `speed` runs into rivals; returns how many it hit. */
   ram(x: number, z: number, r: number, dx: number, dz: number, speed: number): number;
+  /** Hurts every rival within `radius` of (x, z), fading towards the edge, and knocks them away from (fromX, fromZ); returns how many it hit. */
+  damageArea(x: number, z: number, radius: number, damage: number, fromX: number, fromZ: number): number;
   /** Who holds what, available before the models finish loading. */
   roster(): { name: string; weapon: Weapon }[];
   positions(): { x: number; z: number; down: boolean; tint: string; hp: number; name: string; weapon: Weapon }[];
@@ -189,6 +191,17 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
         if (Math.hypot(r.x - x, r.z - z) > radius + 0.45) return;
         count++;
         hurt(r, speed > 14 ? 5 : 3, dx, dz, speed * 0.7, 1.2);
+      });
+      return count;
+    },
+    damageArea(x, z, radius, damage, fromX, fromZ) {
+      let count = 0;
+      rivals.forEach((r) => {
+        if (!r.robot || r.down) return;
+        const amount = splash(damage, Math.hypot(r.x - x, r.z - z), radius + 0.45);
+        if (!amount) return;
+        count++;
+        hurt(r, amount, r.x - fromX, r.z - fromZ, 2 + amount * 1.4, 0.25 + amount * 0.06);
       });
       return count;
     },
