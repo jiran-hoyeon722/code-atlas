@@ -8,9 +8,10 @@ beforeAll(() => {
 
 test('build emits CSP meta and wasm', () => {
   const html = readFileSync('dist/index.html', 'utf8');
-  expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; worker-src 'self' blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'">`);
+  expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.github.com https://raw.githubusercontent.com; img-src 'self' data: blob:; worker-src 'self' blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'">`);
   for (const f of ['web-tree-sitter.wasm', 'tree-sitter-php.wasm', 'tree-sitter-tsx.wasm']) expect(existsSync(`dist/wasm/${f}`)).toBe(true);
-  expect(html).not.toMatch(/https?:\/\/(?!www\.w3\.org)/);
+  // the only outside origins are the GitHub hosts the CSP allows; nothing is loaded from them by the page itself
+  expect(html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '')).not.toMatch(/https?:\/\/(?!www\.w3\.org)/);
 });
 
 test('build ships production React (no dev-only warnings)', () => {

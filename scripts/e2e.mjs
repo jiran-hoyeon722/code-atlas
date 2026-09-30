@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { mkdir, readdir, readFile } from 'node:fs/promises';
+import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 
@@ -13,6 +13,9 @@ const LARAVEL = resolve(ROOT, 'tests/fixtures/laravel-mini');
 let preview = null;
 const results = [];
 const external = [];
+const githubRequests = [];
+const GITHUB_HOSTS = ['https://api.github.com/', 'https://raw.githubusercontent.com/'];
+const GH_SHA = 'e2e0'.repeat(10);
 const consoleErrors = [];
 const cspEvents = [];
 const notes = [];
@@ -119,6 +122,45 @@ async function openFolder(page, dir, loadingShot) {
   return { captured: !!miniCity, miniCity, ...(await page.evaluate(() => window.__loading)) };
 }
 
+async function readTree(root) {
+  const out = {};
+  const walk = async (dir) => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const p = resolve(dir, e.name);
+      if (e.isDirectory()) await walk(p);
+      else out[relative(root, p).split('\\').join('/')] = await readFile(p, 'utf8');
+    }
+  };
+  await walk(root);
+  return out;
+}
+
+const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-expose-headers': '*' };
+
+/** Stands in for GitHub: `acme/react-mini` serves the react-mini fixture; `rateLimit` makes the API refuse. */
+async function mockGithub(page, mode = 'ok') {
+  const files = await readTree(REACT);
+  await page.unrouteAll({ behavior: 'wait' });
+  await page.route((url) => GITHUB_HOSTS.some((h) => url.href.startsWith(h)), (route) => {
+    const req = route.request();
+    const url = req.url();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS });
+    const json = (body, status = 200, headers = {}) => route.fulfill({ status, headers: { ...CORS, ...headers, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (url.startsWith('https://api.github.com/') && mode === 'rateLimit') {
+      return json({ message: 'API rate limit exceeded' }, 403, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 1800) });
+    }
+    if (url === 'https://api.github.com/repos/acme/react-mini') return json({ name: 'react-mini', owner: { login: 'acme' }, default_branch: 'main' });
+    if (url === 'https://api.github.com/repos/acme/react-mini/commits/main') return route.fulfill({ status: 200, headers: CORS, body: GH_SHA });
+    if (url.startsWith(`https://api.github.com/repos/acme/react-mini/git/trees/${GH_SHA}`)) {
+      return json({ truncated: false, tree: Object.entries(files).map(([path, t]) => ({ path, type: 'blob', size: Buffer.byteLength(t) })) });
+    }
+    const raw = `https://raw.githubusercontent.com/acme/react-mini/${GH_SHA}/`;
+    const path = url.startsWith(raw) ? decodeURIComponent(url.slice(raw.length)) : null;
+    if (path !== null && path in files) return route.fulfill({ status: 200, headers: CORS, body: files[path] });
+    return json({ message: 'Not Found' }, 404);
+  });
+}
+
 // hard upper bound so a hung browser or server can never stall the run
 const watchdog = setTimeout(() => {
   console.error('e2e watchdog: exceeded 8 minutes, aborting');
@@ -148,7 +190,9 @@ async function main() {
     const page = await context.newPage();
     page.on('request', (r) => {
       // blob: URLs of this origin are in-memory (the analysis worker wrapper), not network requests
-      if (!r.url().startsWith(BASE) && !r.url().startsWith(`blob:${new URL(BASE).origin}/`)) external.push(r.url());
+      // GitHub is only ever reached through mockGithub's routes, which answer before anything leaves the machine
+      if (GITHUB_HOSTS.some((h) => r.url().startsWith(h))) githubRequests.push(r.url());
+      else if (!r.url().startsWith(BASE) && !r.url().startsWith(`blob:${new URL(BASE).origin}/`)) external.push(r.url());
       else if (/\/assets\/worker-[^/]*\.js$/.test(r.url())) workerScripts.push(r.url());
     });
     page.on('console', (m) => {
@@ -242,6 +286,81 @@ async function main() {
       const meta = await page.locator('.ca-shell-brand span').textContent();
       assert(meta.startsWith('Laravel'), `expected Laravel detection, got "${meta}"`);
       await shot(page, 'laravel-city.png');
+    });
+
+    await step('landing: GitHub form and sample gallery', async () => {
+      await page.click('.ca-shell-actions button:has-text("다른 레포 열기")');
+      await page.waitForSelector('.ca-land-sample', { timeout: 10_000 });
+      const cards = await page.locator('.ca-land-sample').count();
+      assert(cards >= 4, `expected sample cards, got ${cards}`);
+      await page.fill('.ca-land-gh-form input', 'https://github.com/acme/react-mini/tree/main/src');
+      const hint = await page.locator('.ca-land-gh-hint').textContent();
+      assert(hint === '✓ acme/react-mini · main 브랜치 · src 폴더만', `unexpected parse hint "${hint}"`);
+      await page.locator('.ca-land-sample').first().hover();
+      await page.screenshot({ path: resolve(OUT, 'landing-github.png'), fullPage: true });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.screenshot({ path: resolve(OUT, 'landing-github-mobile.png'), fullPage: true });
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.fill('.ca-land-gh-form input', '');
+    });
+
+    await step('sample card → city without analysis', async () => {
+      await page.evaluate(() => (window.__loading = { seen: false, reading: false }));
+      const name = (await page.locator('.ca-land-sample strong').first().textContent()).trim();
+      await page.locator('.ca-land-sample').first().click();
+      await waitForCity(page);
+      const brand = await page.locator('.ca-shell-brand strong').textContent();
+      assert(brand.endsWith(`/${name}`), `sample opened "${brand}", expected …/${name}`);
+      assert(!(await page.evaluate(() => window.__loading.seen)), 'a sample should open without the loading screen');
+      assert((await page.locator('.ca-shell-origin code').textContent()).length === 7, 'short commit sha missing from the header');
+      await shot(page, 'sample-city.png');
+    });
+
+    await step('GitHub URL (mocked) → loading → city → code from raw', async () => {
+      await mockGithub(page);
+      await page.click('.ca-shell-actions button:has-text("다른 레포 열기")');
+      await page.waitForSelector('.ca-land-gh-form input');
+      await page.evaluate(() => (window.__loading = { seen: false, reading: false }));
+      const loading = page.waitForSelector('.cc-load', { timeout: 30_000 }).then(() => shot(page, 'github-loading.png')).catch(() => null);
+      await page.fill('.ca-land-gh-form input', 'acme/react-mini');
+      await page.press('.ca-land-gh-form input', 'Enter');
+      await waitForCity(page);
+      await loading;
+      assert(await page.evaluate(() => window.__loading.seen), 'loading screen never appeared for the GitHub repo');
+      const brand = await page.locator('.ca-shell-brand strong').textContent();
+      assert(brand === 'acme/react-mini', `unexpected repo name "${brand}"`);
+      const reanalyze = await page.locator('.ca-shell-actions button', { hasText: '최신 커밋으로 다시 분석' }).count();
+      assert(reanalyze === 1, 'GitHub analysis should offer "최신 커밋으로 다시 분석"');
+      await page.locator('.ca-shell-mount canvas').first().click({ position: { x: 5, y: 5 } }).catch(() => {});
+      await page.keyboard.press('/');
+      await page.keyboard.type('userService');
+      await page.waitForSelector('[data-el=results].open button');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('[data-el=panel-body] [data-open-code]');
+      await page.click('[data-el=panel-body] [data-open-code]');
+      await page.waitForFunction(() => document.querySelector('[data-el=code-src]')?.textContent?.includes('export const fetchUsers'), null, { timeout: 10_000 });
+      assert(githubRequests.some((u) => u.startsWith(`https://raw.githubusercontent.com/acme/react-mini/${GH_SHA}/`)), 'code was not fetched from the pinned commit');
+      await page.waitForTimeout(500);
+      await shot(page, 'github-city-code.png');
+      await page.keyboard.press('Escape');
+    });
+
+    await step('GitHub rate limit (mocked) → notice with ZIP fallback', async () => {
+      await mockGithub(page, 'rateLimit');
+      const before = consoleErrors.length;
+      await page.click('.ca-shell-actions button:has-text("다른 레포 열기")');
+      await page.fill('.ca-land-gh-form input', 'acme/other');
+      await page.press('.ca-land-gh-form input', 'Enter');
+      await page.waitForSelector('.ca-land-notice-link', { timeout: 10_000 });
+      const text = await page.locator('.ca-land-notice').textContent();
+      assert(text.includes('GitHub 요청 한도'), `unexpected notice "${text}"`);
+      const href = await page.locator('.ca-land-notice-link').getAttribute('href');
+      assert(href === 'https://github.com/acme/other/archive/HEAD.zip', `unexpected ZIP link ${href}`);
+      await shot(page, 'github-rate-limit.png');
+      await page.unrouteAll({ behavior: 'wait' });
+      // the browser logs the refused request itself; that 403 is the point of this step
+      const stepConsole = consoleErrors.splice(before);
+      assert(stepConsole.every((m) => m.includes('403') && m.includes('api.github.com')), `unexpected console errors: ${stepConsole.join('\n')}`);
     });
 
     await step('analysis worker script is loaded (via the blob: wrapper)', async () => {

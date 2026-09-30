@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import './shell.css';
 import type { Architecture } from '../../engine/architecture';
+import type { GithubOrigin } from '../../app/files/github';
 import type { MountViewer, Selection, TabId, ViewerEnv } from '../viewer-env';
 import { downloadCodeCharta } from './codecharta';
 import { formatHash, parseHash } from './hash';
@@ -14,6 +15,8 @@ export interface ViewerShellProps {
   onReconnect(): void;
   onReanalyze(): void;
   onOpenOther(): void;
+  /** the analysis is of a public GitHub repo at this commit */
+  origin?: GithubOrigin;
 }
 
 const LOADERS: Record<TabId, () => Promise<MountViewer>> = {
@@ -45,7 +48,9 @@ function initialState(webgl: boolean): { tab: TabId; sel: Selection } {
   return { tab: explicit ? parsed.tab : webgl ? 'city' : 'explorer', sel: parsed.sel };
 }
 
-export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onReanalyze, onOpenOther }: ViewerShellProps) {
+const treeUrl = (o: GithubOrigin) => `https://github.com/${o.owner}/${o.repo}/tree/${o.sha}${o.subdir ? `/${o.subdir.split('/').map(encodeURIComponent).join('/')}` : ''}`;
+
+export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onReanalyze, onOpenOther, origin }: ViewerShellProps) {
   const webgl = useMemo(() => hasWebGL(), []);
   const initial = useMemo(() => initialState(webgl), [webgl]);
   const [tab, setTab] = useState<TabId>(initial.tab);
@@ -150,7 +155,14 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
     <div className="ca-shell">
       <header className="ca-shell-top">
         <div className="ca-shell-brand">
-          <strong>{arch.name}</strong>
+          {origin ? (
+            <a className="ca-shell-origin" href={treeUrl(origin)} target="_blank" rel="noreferrer" title="GitHub 에서 이 커밋 보기">
+              <strong>{arch.name}</strong>
+              <code>{origin.sha.slice(0, 7)}</code>
+            </a>
+          ) : (
+            <strong>{arch.name}</strong>
+          )}
           <span>{`${arch.framework ? FRAMEWORK_LABEL[arch.framework] : LANG_LABEL[arch.lang]} · 파일 ${arch.nodes.length.toLocaleString('ko-KR')}개 · ${formatTime(arch.generatedAt)} 분석`}</span>
         </div>
         <nav className="ca-shell-tabs" role="tablist" aria-label="화면">
@@ -187,7 +199,9 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
           {canReconnect && (
             <button type="button" className="primary" onClick={onReconnect}>폴더 다시 연결</button>
           )}
-          <button type="button" onClick={onReanalyze}>다시 분석</button>
+          <button type="button" onClick={onReanalyze} title={origin ? 'GitHub 에서 최신 커밋을 받아 다시 분석해요' : undefined}>
+            {origin ? '최신 커밋으로 다시 분석' : '다시 분석'}
+          </button>
           <button type="button" onClick={() => downloadCodeCharta(arch)}>cc.json 내려받기</button>
           <button type="button" onClick={onOpenOther}>다른 레포 열기</button>
         </div>
