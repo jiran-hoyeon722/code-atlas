@@ -37,6 +37,9 @@ const FINAL_TICKS = ticksOf(CLOCK.finalSeconds);
 // Charge counts in spd-per-tick units so a speed-1 soldier reaches exactly 10, not 0.1 × 10 ≈ 0.9999.
 const CHARGE_FULL = ticksOf(1);
 const REACH2 = FIELD.reach * FIELD.reach;
+const GAP2 = FIELD.minGap * FIELD.minGap;
+/** Grid cell keys are cx * CELL_ROW + cz; the field is far narrower than CELL_ROW / 2 cells. */
+const CELL_ROW = 8192;
 const LANE_Z: Record<Lane, number> = { top: -FIELD.laneGap, mid: 0, bottom: FIELD.laneGap };
 
 export function hitDamage(atk: number, u1: number, u2: number): { damage: number; crit: boolean } {
@@ -206,6 +209,15 @@ class BattleRun implements Battle {
   /** Per side, the fighters' positions as x0, z0, x1, z1, … for the nearest-foe scans. */
   private readonly pos: [Float64Array, Float64Array] = [new Float64Array(2 * ARMY.soldiers + 2), new Float64Array(2 * ARMY.soldiers + 2)];
   private nearestD2 = 0;
+  private readonly sep = {
+    x: new Float64Array(ARMY.soldiers + 1),
+    z: new Float64Array(ARMY.soldiers + 1),
+    px: new Float64Array(ARMY.soldiers + 1),
+    pz: new Float64Array(ARMY.soldiers + 1),
+    key: new Float64Array(ARMY.soldiers + 1),
+    idx: [] as number[],
+    keys: new Float64Array(ARMY.soldiers + 1),
+  };
   private duelCount = 0;
   private res: BattleResult | null = null;
 
@@ -386,6 +398,8 @@ class BattleRun implements Battle {
         u.z = u.nz;
       }
     }
+    this.separate(P[0], 0);
+    this.separate(P[1], 1);
 
     pos = [this.snapshot(0, P[0]), this.snapshot(1, P[1])];
     for (let c = 0; c < 2; c++) {
@@ -399,6 +413,79 @@ class BattleRun implements Battle {
         u.charge -= CHARGE_FULL;
         this.attack(arena, u, t);
       }
+    }
+  }
+
+  /**
+   * Pushes apart allies closer than FIELD.minGap. Works in the side's own mirrored x (x for c=0,
+   * −x for c=1) and visits pairs in an order fixed by list position (and grid cell for big crowds),
+   * so a mirrored side gets bit-for-bit mirrored pushes. All pushes read the pre-push positions.
+   */
+  private separate(units: Unit[], c: C): void {
+    const n = units.length;
+    if (n < 2) return;
+    const { x, z, px, pz, key, idx, keys } = this.sep;
+    const flip = c === 0 ? 1 : -1;
+    const G = FIELD.minGap;
+    for (let i = 0; i < n; i++) {
+      x[i] = units[i].x * flip;
+      z[i] = units[i].z;
+      px[i] = 0;
+      pz[i] = 0;
+    }
+    // i < j always: list order breaks the tie when two allies stand on the very same spot.
+    const pair = (i: number, j: number) => {
+      const dx = x[j] - x[i];
+      const dz = z[j] - z[i];
+      const d2 = dx * dx + dz * dz;
+      if (d2 >= GAP2) return;
+      if (d2 === 0) {
+        pz[i] -= G * FIELD.push;
+        pz[j] += G * FIELD.push;
+        return;
+      }
+      const d = Math.sqrt(d2);
+      const k = ((G - d) / d) * FIELD.push;
+      px[i] -= dx * k;
+      pz[i] -= dz * k;
+      px[j] += dx * k;
+      pz[j] += dz * k;
+    };
+
+    if (n <= ARMY.squadSize) {
+      // One squad: all pairs beat sorting into a grid.
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) pair(i, j);
+    } else {
+      idx.length = n;
+      for (let i = 0; i < n; i++) {
+        key[i] = Math.floor(x[i] / G) * CELL_ROW + Math.floor(z[i] / G);
+        idx[i] = i;
+      }
+      idx.sort((p, q) => key[p] - key[q] || p - q);
+      for (let s = 0; s < n; s++) keys[s] = key[idx[s]];
+      const lowerBound = (v: number) => {
+        let lo = 0;
+        let hi = n;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (keys[mid] < v) lo = mid + 1;
+          else hi = mid;
+        }
+        return lo;
+      };
+      const meet = (i: number, j: number) => (i < j ? pair(i, j) : pair(j, i));
+      for (let s = 0; s < n; s++) {
+        const i = idx[s];
+        const k = keys[s];
+        // Rest of this cell, the next cell in z, and the three cells of the next x column: every
+        // pair closer than one cell meets exactly once.
+        for (let t = s + 1; t < n && keys[t] <= k + 1; t++) meet(i, idx[t]);
+        for (let t = lowerBound(k + CELL_ROW - 1); t < n && keys[t] <= k + CELL_ROW + 1; t++) meet(i, idx[t]);
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      units[i].x += px[i] * flip;
+      units[i].z += pz[i];
     }
   }
 

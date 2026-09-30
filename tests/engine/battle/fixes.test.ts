@@ -69,7 +69,7 @@ describe('fixCandidates', { timeout: 60_000 }, () => {
   const loser = spoil({ ...base, name: 'loser', fingerprint: 'l' }, 2);
 
   test('fixing the bad file does not lower the win share', () => {
-    const out = fixCandidates(loser, winner, 'a', { seeds: 8, count: 2 });
+    const out = fixCandidates(loser, winner, 'a', { seeds: 20, count: 2 });
     expect(out[0].path).toBe(loser.files[2].path);
     expect(out[0].delta).toBeGreaterThan(0);
     for (const c of out) {

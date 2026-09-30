@@ -138,6 +138,23 @@ describe('buildCommentary on a synthetic battle', () => {
   });
 });
 
+describe('highlight count', () => {
+  test('synthetic battles keep 명장면 to a handful', () => {
+    const pairs = [
+      [synthQuality({ name: 'p1', seed: 1 }), synthQuality({ name: 'p2', seed: 2 })],
+      [synthQuality({ name: 'q1', seed: 5, totalLines: 20_000 }), synthQuality({ name: 'q2', seed: 6, totalLines: 20_000, testRatio: 0.6 })],
+      [synthQuality({ name: 's1', seed: 11, totalLines: 30_000, removableShare: 0.1 }), synthQuality({ name: 's2', seed: 11, totalLines: 30_000 })],
+    ];
+    for (const [qa, qb] of pairs) {
+      for (const match of [1, 2, 3]) {
+        const n = buildCommentary(inputFor(qa, qb, match)).highlights.length;
+        expect(n).toBeGreaterThan(0);
+        expect(n).toBeLessThanOrEqual(6);
+      }
+    }
+  });
+});
+
 describe('cause picking', () => {
   test('a squad with much lower attack loses to complexity', () => {
     const weak = tinyQuality('weak', plainFiles('w', { ccn: 3 }));
@@ -167,8 +184,11 @@ describe('highlights on hand-built results', () => {
   const armies = { a: buildArmy(qa), b: buildArmy(qb) };
   const quality = { a: qa, b: qb };
 
-  function duel(id: number, lane: Lane, a: number, b: number, winner: Side, streak: number, hp: number, t0: number): DuelRecord {
-    const lose = { soldiers: 0, hp: 0 };
+  function duel(
+    id: number, lane: Lane, a: number, b: number, winner: Side, streak: number, hp: number, t0: number,
+    outcome: DuelRecord['outcome'] = 'rout',
+  ): DuelRecord {
+    const lose = outcome === 'rout' ? { soldiers: 0, hp: 0 } : { soldiers: 1, hp: hp / 2 };
     const win = { soldiers: Math.max(1, Math.round(20 * hp)), hp };
     return {
       id,
@@ -176,7 +196,7 @@ describe('highlights on hand-built results', () => {
       squads: { a, b },
       startTick: t0,
       endTick: t0 + 100,
-      outcome: 'rout',
+      outcome,
       winner,
       streak,
       remaining: winner === 'a' ? { a: win, b: lose } : { a: lose, b: win },
@@ -242,6 +262,32 @@ describe('highlights on hand-built results', () => {
     expect(h.title).toContain('체력 20%로 버티며');
     expect(h.arena).toBe('top');
     expect(h.laneLabel).toBe('상단');
+  });
+
+  test('a timeout win on little hp is not a highlight', () => {
+    const duels = [duel(0, 'top', lane('top')[0], armies.b.lanes.top[0], 'b', 1, 0.2, 0, 'timeout')];
+    const out = buildCommentary({ result: result(duels, 'b', 'commander'), armies, quality, prior: { a: 0.5, b: 0.5 } });
+    const e = out.entries.find((x) => x.id === 'duel-0')!;
+    expect(e.badge).toBe('advantage');
+    expect(e.title).toContain('시간 끝까지');
+  });
+
+  test('only the closest held-on rout win of a lane is a highlight', () => {
+    const t = lane('top');
+    const q = armies.b.lanes.top;
+    const m = lane('mid');
+    const duels = [
+      duel(0, 'top', t[0], q[0], 'b', 1, 0.2, 0),
+      duel(1, 'top', t[1], q[0], 'b', 2, 0.1, 100),
+      duel(2, 'top', t[2], q[0], 'b', 3, 0.5, 200),
+      duel(3, 'mid', m[0], armies.b.lanes.mid[0], 'a', 1, 0.15, 0),
+    ];
+    const out = buildCommentary({ result: result(duels, 'b', 'commander'), armies, quality, prior: { a: 0.5, b: 0.5 } });
+    const ids = out.highlights.filter((e) => e.id.startsWith('duel-')).map((e) => e.id);
+    expect([...ids].sort()).toEqual(['duel-1', 'duel-2', 'duel-3']);
+    const first = out.entries.find((e) => e.id === 'duel-0')!;
+    expect(first.badge).toBe('advantage');
+    expect(first.title).toContain('체력 20%로 버티며');
   });
 
   test('a winner above 25% is not a highlight', () => {

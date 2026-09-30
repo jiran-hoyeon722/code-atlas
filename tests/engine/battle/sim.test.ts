@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import { buildArmy, chunkStart, isShield, placeSquads } from '../../../src/engine/battle/sim/army';
 import { chainExtra, cloneBurst, guardDamage, hitDamage } from '../../../src/engine/battle/sim/battle';
-import { ATTACK_BY_TIER, EFFECTS, SPEED_BY_TIER } from '../../../src/engine/battle/rules';
+import { ATTACK_BY_TIER, EFFECTS, FIELD, LUCK, SPEED_BY_TIER } from '../../../src/engine/battle/rules';
 import { createBattle, predict, simulate, victoryLabel } from '../../../src/engine/battle/sim';
-import type { BattleEvent, Squad } from '../../../src/engine/battle/sim';
+import type { BattleEvent, Squad, UnitState } from '../../../src/engine/battle/sim';
 import { synthQuality, tinyQuality } from './synth';
 
 const fivePaths = (lines: number) =>
@@ -100,10 +100,10 @@ describe('army', () => {
 
 describe('mechanics', () => {
   test('hit damage: luck range and crit', () => {
-    expect(hitDamage(1, 0, 0.5).damage).toBeCloseTo(8.5);
+    expect(hitDamage(1, 0, 0.5).damage).toBeCloseTo(10 * LUCK.hitMin);
     expect(hitDamage(1, 0, 0.5).crit).toBe(false);
     expect(hitDamage(0.5, 1, 0.5).damage).toBeCloseTo(5);
-    expect(hitDamage(1, 0, 0.01).damage).toBeCloseTo(12.75);
+    expect(hitDamage(1, 0, 0.01).damage).toBeCloseTo(10 * LUCK.hitMin * LUCK.critMul);
     expect(hitDamage(1, 0, 0.01).crit).toBe(true);
   });
 
@@ -219,6 +219,49 @@ describe('battle', () => {
     }
     expect(steps).toBe(battle.tick);
     expect(JSON.stringify(battle.result())).toBe(JSON.stringify(simulate(A, B, 2, { record: true })));
+  });
+
+  const nearestAlly = (units: readonly UnitState[]) =>
+    units.map((u) => {
+      let best = Infinity;
+      for (const v of units) if (v !== u) best = Math.min(best, Math.sqrt((u.x - v.x) ** 2 + (u.z - v.z) ** 2));
+      return best;
+    });
+
+  test('fighting allies keep apart instead of piling onto one spot', () => {
+    const battle = createBattle(A, B, 1);
+    const near: number[] = [];
+    while (battle.tick < 300 && battle.phase === 'lanes') {
+      battle.step();
+      if (battle.tick % 10 !== 0) continue;
+      for (const lane of battle.lanes) {
+        if (!lane.duel) continue;
+        for (const side of ['a', 'b'] as const) {
+          const units = battle.soldiers[side].filter((u) => u.alive && u.squad === lane.duel!.squads[side]);
+          if (units.length > 1) near.push(...nearestAlly(units));
+        }
+      }
+    }
+    expect(near.length).toBeGreaterThan(100);
+    const mean = near.reduce((s, d) => s + d, 0) / near.length;
+    expect(mean).toBeGreaterThan(FIELD.minGap * 0.8);
+    expect(Math.min(...near)).toBeGreaterThan(FIELD.minGap * 0.3);
+  });
+
+  test('allies on the exact same spot are split the same way on both sides', () => {
+    const battle = createBattle(A, A, 1);
+    const duel = battle.lanes[1].duel!;
+    const squad = (side: 'a' | 'b') => battle.soldiers[side].filter((u) => u.squad === duel.squads[side]) as { x: number; z: number }[];
+    for (const u of squad('a')) Object.assign(u, { x: -3, z: 0 });
+    for (const u of squad('b')) Object.assign(u, { x: 3, z: 0 });
+    battle.step();
+    const a = squad('a');
+    const b = squad('b');
+    for (let j = 0; j < a.length; j++) {
+      expect(b[j].x).toBe(-a[j].x);
+      expect(b[j].z).toBe(a[j].z);
+    }
+    expect(new Set(a.map((u) => `${u.x},${u.z}`)).size).toBeGreaterThan(1);
   });
 
   test('result has duels and a final', () => {
