@@ -459,9 +459,27 @@ function streakDuels(duels: DuelRecord[]): Set<number> {
   return new Set([...best.values()].map((d) => d.id));
 }
 
+const heldOn = (d: DuelRecord) => d.winner !== null && d.outcome === 'rout' && d.remaining[d.winner].hp <= HIGHLIGHT.lowHp;
+
+/**
+ * The closest held-on rout win of each lane. Evenly matched squads often win a rout on little hp,
+ * so marking every one of them buried the few real scenes.
+ */
+function closeCalls(duels: DuelRecord[]): Set<number> {
+  const best = new Map<Lane, DuelRecord>();
+  for (const d of duels) {
+    if (!heldOn(d)) continue;
+    const cur = best.get(d.lane);
+    const hp = d.remaining[d.winner!].hp;
+    if (!cur || hp < cur.remaining[cur.winner!].hp) best.set(d.lane, d);
+  }
+  return new Set([...best.values()].map((d) => d.id));
+}
+
 function duelDrafts(input: CommentaryInput, tallies: Tallies): Draft[] {
   const out: Draft[] = [];
   const streaks = streakDuels(input.result.duels);
+  const close = closeCalls(input.result.duels);
   for (const d of input.result.duels) {
     if (d.outcome === 'cut') continue;
     const g = tallies.byDuel.get(d.id);
@@ -497,7 +515,7 @@ function duelDrafts(input: CommentaryInput, tallies: Tallies): Draft[] {
     const W = win.label;
 
     const streak = streaks.has(d.id) ? d.streak : 0;
-    const low = left.hp <= HIGHLIGHT.lowHp;
+    const low = heldOn(d);
     const hpText = `${pct(left.hp)}%`;
     let title: string;
     if (streak && low) title = `${withParticle(W, '이/가')} 체력 ${withParticle(hpText, '으로/로')} 버티며 ${streak}연승했어요`;
@@ -510,7 +528,7 @@ function duelDrafts(input: CommentaryInput, tallies: Tallies): Draft[] {
       d.outcome === 'timeout'
         ? `${CLOCK.duelSeconds}초 안에 끝나지 않아 체력이 더 남은 쪽이 이겼어요. ${why.text}`
         : `${why.text} ${left.soldiers === win.size ? '한 명도 잃지 않았어요.' : `${win.size}명 중 ${left.soldiers}명이 남았어요.`}`;
-    const highlight = streak > 0 || low;
+    const highlight = streak > 0 || close.has(d.id);
     out.push({
       kind: 'duel',
       entry: entry({

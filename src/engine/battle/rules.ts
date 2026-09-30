@@ -2,7 +2,7 @@
  * Every number the battle is judged by. Changing one changes results, so bump RULE_VERSION with it
  * and keep the rulebook in step.
  */
-export const RULE_VERSION = '1.4';
+export const RULE_VERSION = '1.5';
 
 /** SIG/TÜViT 2015 four-star limits: share of code lines allowed above each threshold. */
 export const FOUR_STAR = {
@@ -41,7 +41,7 @@ export const ARMY = {
 
 export const EFFECTS = {
   chainShare: 0.3,
-  cloneBurst: 0.45,
+  cloneBurst: 0.55,
   shieldCut: 0.15,
   burnPerSecond: 0.01,
   burnCap: 0.5,
@@ -49,7 +49,7 @@ export const EFFECTS = {
 } as const;
 
 export const LUCK = {
-  hitMin: 0.85,
+  hitMin: 0.86,
   hitMax: 1.0,
   critChance: 0.05,
   critMul: 1.5,
@@ -70,6 +70,10 @@ export const FIELD = {
   /** Movers stop this close so float rounding never leaves them a hair outside `reach`. */
   hold: 0.9,
   spacing: 1.0,
+  /** Closest two living allies may stand; closer ones are pushed apart after each move. */
+  minGap: 0.7,
+  /** Share of an overlap each of the two allies gives up per tick. */
+  push: 0.25,
   columns: 5,
   startX: 10,
   laneGap: 15,
