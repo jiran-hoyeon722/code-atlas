@@ -98,7 +98,7 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
       root.add(robot.root);
       root.visible = true;
       robot.play('Idle', 0);
-    });
+    }).catch(() => {});
     return r;
   });
 

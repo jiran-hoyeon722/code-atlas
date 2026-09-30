@@ -99,7 +99,7 @@ export function createVehicles(scene: THREE.Scene, layout: WalkLayout, blocked: 
   type Unit = Vehicle & { parts: ReturnType<typeof buildCar>; spin: number; steerAngle: number; left: boolean };
   let nextId = 0;
   const units: Unit[] = [];
-  (['car', 'bike'] as VehicleKind[]).forEach((kind) => {
+  if (layout.lanes.length) (['car', 'bike'] as VehicleKind[]).forEach((kind) => {
     for (let k = 0; k < COUNT[kind]; k++) {
       const paint = mat(PAINT[Math.floor(random() * PAINT.length)], { metalness: 0.6, roughness: 0.3 });
       const parts = kind === 'car' ? buildCar(paint) : buildBike(paint);

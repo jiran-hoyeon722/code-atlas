@@ -11,6 +11,8 @@ export function loadRobot(url: string): Promise<GLTF> {
         import('three/examples/jsm/loaders/GLTFLoader.js'),
       ]).then(([{ GLTFLoader }]) => new GLTFLoader().loadAsync(url)),
     };
+    // A failed load must not stick: the next mount retries instead of reusing the rejection.
+    cached.promise.catch(() => { if (cached?.url === url) cached = null; });
   }
   return cached.promise;
 }

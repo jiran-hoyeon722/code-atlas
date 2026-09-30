@@ -66,6 +66,15 @@ function rng(seed: number) {
 }
 
 export const mountWalk: MountViewer = (root, arch, env) => {
+  try {
+    return mount(root, arch, env);
+  } catch (err) {
+    root.classList.remove('wk-walk', 'entering');
+    throw err;
+  }
+};
+
+const mount: MountViewer = (root, arch, env) => {
   root.classList.add('wk-walk');
   root.innerHTML = MARKUP;
   const $ = <T extends HTMLElement = HTMLElement>(name: string) => root.querySelector<T>(`[data-el="${name}"]`)!;
@@ -562,6 +571,8 @@ export const mountWalk: MountViewer = (root, arch, env) => {
       }
       return;
     }
+    const hp0 = heli.root.position;
+    if (hp0.x < bounds.minX || hp0.x > bounds.maxX || hp0.z < bounds.minZ || hp0.z > bounds.maxZ) { toast('도시 안으로 돌아와야 착륙할 수 있어요'); return; }
     if (!heli.land()) { toast('더 낮게 내려와야 착륙할 수 있어요'); return; }
     mode = 'walk';
     keys.clear();
@@ -706,12 +717,13 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   // ---- input ----
   const typing = () => document.activeElement instanceof HTMLInputElement;
   listen(window, 'keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (typing()) { if (e.key === 'Escape') (document.activeElement as HTMLElement).blur(); return; }
     if (e.key === 'Escape' && (detailOpen || entering)) { leave(); return; }
     if (detailOpen || entering) return;
     const isE = e.key === 'e' || e.key === 'E' || e.key === 'ㄷ';
     if (e.code === 'KeyT') { applyTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]); return; }
-    if (e.code === 'KeyH' && (mode === 'walk' || mode === 'fly')) { toggleHeli(); return; }
+    if (e.code === 'KeyH' && alive && (mode === 'walk' || mode === 'fly')) { toggleHeli(); return; }
     if (mode === 'drive' || mode === 'ride') {
       if (isE) { if (mode === 'drive') leaveVehicle(); else hopOff(); return; }
       if (e.code === 'KeyR') { toggleRain(); return; }
@@ -746,7 +758,7 @@ export const mountWalk: MountViewer = (root, arch, env) => {
   listen(window, 'blur', () => keys.clear());
   listen(renderer.domElement, 'click', () => {
     if (document.pointerLockElement === renderer.domElement) { punch(); return; }
-    if (!detailOpen && !entering) renderer.domElement.requestPointerLock?.();
+    if (!detailOpen && !entering) Promise.resolve(renderer.domElement.requestPointerLock?.()).catch(() => {});
   });
   let dragging = false;
   listen(renderer.domElement, 'pointerdown', () => (dragging = true));
@@ -762,10 +774,17 @@ export const mountWalk: MountViewer = (root, arch, env) => {
     distance = Math.min(22, Math.max(2.5, distance + e.deltaY * 0.01));
   });
 
+  const clampToCity = (p: THREE.Vector3) => p.set(Math.min(bounds.maxX - 2, Math.max(bounds.minX + 2, p.x)), 0, Math.min(bounds.maxZ - 2, Math.max(bounds.minZ + 2, p.z)));
   function teleport(to: THREE.Vector3) {
-    pos.copy(to);
+    pos.copy(clampToCity(to.clone()));
     vel.set(0, 0, 0);
-    for (let r = 0; r < 30 && blocked(pos.x, pos.z); r++) pos.z += 1;
+    const want = pos.clone();
+    // Nearest free point in widening rings, so a door-front target stays at the door even if something parks there.
+    search: for (let r = 0; r <= 12 && blockedWalker(pos.x, pos.z); r += 0.75)
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+        clampToCity(pos.set(want.x + Math.cos(a) * r, 0, want.z + Math.sin(a) * r));
+        if (!blockedWalker(pos.x, pos.z)) break search;
+      }
     updateLampLights(pos.x, pos.z);
   }
   listen($<HTMLInputElement>('q'), 'keydown', (e) => {
