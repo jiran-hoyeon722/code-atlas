@@ -47,7 +47,7 @@ export function sideSign(battle: Battle, side: Side): number {
  * Display positions for one tick. Units on the field use the sim's x/z as-is; units the sim has not placed yet
  * (queued), or that left the field (retreated), stand in their queue slot behind the line.
  */
-export function readFrame(battle: Battle, sign: Record<Side, number>, placed: Record<Side, Uint8Array>, out: Frame): void {
+export function readFrame(battle: Battle, sign: Record<Side, number>, placed: Record<Side, Uint8Array>, out: Frame, flip = 1): void {
   for (const side of SIDES) {
     const f = out[side];
     const squads = battle.squads[side];
@@ -57,7 +57,7 @@ export function readFrame(battle: Battle, sign: Record<Side, number>, placed: Re
       if (u.status === 'fighting' || u.status === 'final') pl[i] = 1;
       const onField = u.status === 'fighting' || u.status === 'final' || (u.status === 'waiting' && pl[i] === 1) || (u.status === 'dead' && pl[i] === 1);
       if (onField) {
-        f.x[i] = u.x;
+        f.x[i] = u.x * flip;
         f.z[i] = u.z;
         f.mode[i] = u.alive ? MODE_FIELD : MODE_DEAD;
         continue;
@@ -71,7 +71,7 @@ export function readFrame(battle: Battle, sign: Record<Side, number>, placed: Re
     }
     const k = battle.commanders[side];
     const inFinal = k.status === 'final' || (k.status === 'dead' && battle.phase !== 'lanes');
-    f.x[CMD_SLOT] = inFinal ? k.x : sign[side] * COMMANDER_REST_X;
+    f.x[CMD_SLOT] = inFinal ? k.x * flip : sign[side] * COMMANDER_REST_X;
     f.z[CMD_SLOT] = inFinal ? k.z : 0;
     f.mode[CMD_SLOT] = k.alive ? MODE_FIELD : MODE_DEAD;
   }
@@ -94,7 +94,10 @@ export class Replay {
   clock: Clock;
   readonly prev = makeFrame();
   readonly cur = makeFrame();
-  readonly sign: Record<Side, number>;
+  /** Screen side of each army: A is always drawn on the left, whatever canonical order the sim used. */
+  readonly sign: Record<Side, number> = { a: -1, b: 1 };
+  /** −1 when the sim put A on the right, so display x = sim x × flip. */
+  readonly flip: number;
   private readonly placed: Record<Side, Uint8Array> = { a: new Uint8Array(SLOTS), b: new Uint8Array(SLOTS) };
   private cursor = 0;
   /** True when the last update stepped several ticks at once (skip), so effects should stay quiet. */
@@ -103,8 +106,8 @@ export class Replay {
   constructor(a: Quality, b: Quality, match: number, end: number, readonly finalTick: number) {
     this.battle = createBattle(a, b, match, { record: true });
     this.clock = createClock(end);
-    this.sign = { a: sideSign(this.battle, 'a'), b: sideSign(this.battle, 'b') };
-    readFrame(this.battle, this.sign, this.placed, this.cur);
+    this.flip = sideSign(this.battle, 'a') > 0 ? -1 : 1;
+    readFrame(this.battle, this.sign, this.placed, this.cur, this.flip);
     copyFrame(this.cur, this.prev);
   }
 
@@ -147,10 +150,10 @@ export class Replay {
 
   private sync(): boolean {
     const steps = syncBattle(this.battle, targetTick(this.clock), () => {
-      readFrame(this.battle, this.sign, this.placed, this.cur);
+      readFrame(this.battle, this.sign, this.placed, this.cur, this.flip);
       copyFrame(this.cur, this.prev);
     });
-    if (steps > 0) readFrame(this.battle, this.sign, this.placed, this.cur);
+    if (steps > 0) readFrame(this.battle, this.sign, this.placed, this.cur, this.flip);
     this.jumped = steps > 3;
     return steps > 0;
   }
