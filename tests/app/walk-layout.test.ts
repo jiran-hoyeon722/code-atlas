@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import type { Architecture, ArchNode } from '../../src/engine/architecture';
 import type { Role } from '../../src/engine/presets';
-import { LANE, layoutWalk, type WalkBuilding } from '../../src/features/walk/walkLayout';
+import { FLOOR, LANE, buildingKind, layoutWalk, type WalkBuilding } from '../../src/features/walk/walkLayout';
 import { routeBetween } from '../../src/features/walk/walkTraffic';
 
 const node = (path: string, role: number, lines: number, fanIn: number): ArchNode => ({
@@ -47,6 +47,15 @@ test('one building per file, none overlapping, every front door facing its lane'
 
 test('same input gives the same city', () => {
   expect(layoutWalk(fakeArch())).toEqual(layoutWalk(fakeArch()));
+});
+
+test('building kind follows floor count: house, apartment, then tower', () => {
+  expect([1, 2, 3, 9, 10, 40].map(buildingKind)).toEqual(['house', 'house', 'apartment', 'apartment', 'tower', 'tower']);
+  const arch = fakeArch();
+  const { buildings } = layoutWalk(arch);
+  for (const b of buildings) expect(b.kind).toBe(buildingKind(Math.round(b.h / FLOOR)));
+  expect(buildings.filter((b) => arch.nodes[b.i].fanIn === 0).every((b) => b.kind === 'house')).toBe(true);
+  expect(new Set(buildings.map((b) => b.kind))).toEqual(new Set(['house', 'apartment', 'tower']));
 });
 
 test('layer rows do not overlap and keep entry first (largest z)', () => {

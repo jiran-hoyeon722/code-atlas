@@ -8,7 +8,8 @@ export const STREET = 14;
 export const AVENUE = 24;
 export const FLOOR = 3.5;
 
-export interface WalkBuilding { i: number; x: number; z: number; w: number; d: number; h: number; face: 1 | -1; lane: number; district: number }
+export type BuildingKind = 'house' | 'apartment' | 'tower';
+export interface WalkBuilding { i: number; x: number; z: number; w: number; d: number; h: number; face: 1 | -1; lane: number; district: number; kind: BuildingKind }
 export interface WalkStrip { role: number; x: number; z: number; w: number; d: number }
 export interface WalkLane { x: number; z: number; w: number }
 export interface WalkDistrict { role: number; x: number; z: number; w: number; d: number; row: number }
@@ -23,6 +24,9 @@ export interface WalkLayout {
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+// Floors come from fan-in, so a file nobody uses is a house and a hub becomes an office tower.
+export const buildingKind = (floors: number): BuildingKind => (floors <= 2 ? 'house' : floors < 10 ? 'apartment' : 'tower');
 
 // Same reading as the overview city (layer = avenue row, role = district, path order inside), but every building fronts a lane.
 export function layoutWalk(arch: Architecture): WalkLayout {
@@ -76,6 +80,7 @@ export function layoutWalk(arch: Architecture): WalkLayout {
           face: back ? 1 : -1,
           lane: z0 + LOT_DEPTH + LANE / 2,
           district,
+          kind: buildingKind(floors),
         });
       });
       x += w + STREET;

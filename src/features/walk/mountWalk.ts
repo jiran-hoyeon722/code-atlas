@@ -287,14 +287,17 @@ const mount: MountViewer = (root, arch, env) => {
     if (changed) { trunks.instanceMatrix.needsUpdate = true; crowns.instanceMatrix.needsUpdate = true; }
   }
 
-  // ---- buildings: tall ones get a set-back upper tier ----
+  // ---- buildings: houses get a gable roof, apartments balconies, towers a set-back upper tier ----
   type Part = { k: number; b: WalkBuilding; x: number; z: number; w: number; d: number; h: number; base: number };
   const parts: Part[] = [];
   const roofs: Item[] = [];
+  const gables: (Item & { k: number })[] = [];
+  const balconies: (Item & { k: number })[] = [];
+  const ridge = (b: WalkBuilding) => (b.kind === 'house' ? Math.min(3, b.d * 0.3) : 0);
   const tallest = [...layout.buildings].sort((a, c) => c.h - a.h).slice(0, Math.max(1, Math.ceil(layout.buildings.length * 0.04)));
   layout.buildings.forEach((b, k) => {
     const floors = Math.round(b.h / FLOOR);
-    const tiered = floors >= 8;
+    const tiered = b.kind === 'tower';
     const lower = tiered ? Math.round(floors * 0.62) * FLOOR : b.h;
     parts.push({ k, b, x: b.x, z: b.z, w: b.w, d: b.d, h: lower, base: 0 });
     let top = { w: b.w, d: b.d, h: lower };
@@ -302,6 +305,14 @@ const mount: MountViewer = (root, arch, env) => {
       const shrink = 0.62 + random() * 0.15;
       top = { w: b.w * shrink, d: b.d * shrink, h: b.h };
       parts.push({ k, b, x: b.x, z: b.z - b.face * b.d * 0.08, w: top.w, d: top.d, h: b.h - lower, base: lower });
+    }
+    if (b.kind === 'house') {
+      gables.push({ k, x: b.x, y: b.h + 0.16, z: b.z, sx: b.w + 0.8, sy: ridge(b), sz: b.d + 0.8 });
+      roofs.push({ x: b.x + b.w * 0.25, y: b.h + 0.16 + ridge(b) * 0.7, z: b.z - b.face * b.d * 0.15, sx: 0.6, sy: 1.6, sz: 0.6 });
+      return;
+    }
+    if (b.kind === 'apartment') {
+      for (let f = 1; f < floors; f++) balconies.push({ k, x: b.x, y: 0.16 + f * FLOOR, z: b.z + b.face * (b.d / 2 + 0.5), sx: b.w - 1.4, ry: b.face > 0 ? 0 : Math.PI });
     }
     const units = 1 + Math.floor(random() * 3);
     for (let u = 0; u < units; u++) {
@@ -312,7 +323,8 @@ const mount: MountViewer = (root, arch, env) => {
   const bgeo = keep(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0));
   const pc = parts.length;
   const attr = (size: number) => new Float32Array(Math.max(1, pc) * size);
-  const aSize = attr(3), aColor = attr(3), aSeed = attr(1), aFace = attr(1), aBase = attr(1), aInfect = attr(1), aCap = attr(1);
+  const aSize = attr(3), aColor = attr(3), aSeed = attr(1), aFace = attr(1), aBase = attr(1), aInfect = attr(1), aCap = attr(1), aKind = attr(1);
+  const KIND = { house: 0, apartment: 1, tower: 2 } as const;
   const tmpColor = new THREE.Color();
   parts.forEach((p, j) => {
     aSize.set([p.w, p.h, p.d], j * 3);
@@ -322,6 +334,7 @@ const mount: MountViewer = (root, arch, env) => {
     aFace[j] = p.b.face;
     aBase[j] = p.base;
     aCap[j] = parts[j + 1]?.k === p.k ? 0 : 1;
+    aKind[j] = KIND[p.b.kind];
   });
   bgeo.setAttribute('aSize', new THREE.InstancedBufferAttribute(aSize, 3));
   bgeo.setAttribute('aColor', new THREE.InstancedBufferAttribute(aColor, 3));
@@ -329,6 +342,7 @@ const mount: MountViewer = (root, arch, env) => {
   bgeo.setAttribute('aFace', new THREE.InstancedBufferAttribute(aFace, 1));
   bgeo.setAttribute('aBase', new THREE.InstancedBufferAttribute(aBase, 1));
   bgeo.setAttribute('aCap', new THREE.InstancedBufferAttribute(aCap, 1));
+  bgeo.setAttribute('aKind', new THREE.InstancedBufferAttribute(aKind, 1));
   const infectAttr = new THREE.InstancedBufferAttribute(aInfect, 1);
   infectAttr.setUsage(THREE.DynamicDrawUsage);
   bgeo.setAttribute('aInfect', infectAttr);
@@ -342,6 +356,32 @@ const mount: MountViewer = (root, arch, env) => {
   scene.add(buildings);
   disposables.push(buildings);
   instanced(new THREE.BoxGeometry(1, 1, 1), std('#3a3e48', { metalness: 0.3, roughness: 0.6 }), roofs, { cast: true });
+  const gableGeo = new THREE.BufferGeometry();
+  gableGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+    -0.5, 0, -0.5, -0.5, 1, 0, 0.5, 1, 0, -0.5, 0, -0.5, 0.5, 1, 0, 0.5, 0, -0.5,
+    -0.5, 0, 0.5, 0.5, 0, 0.5, 0.5, 1, 0, -0.5, 0, 0.5, 0.5, 1, 0, -0.5, 1, 0,
+    0.5, 0, -0.5, 0.5, 1, 0, 0.5, 0, 0.5, -0.5, 0, -0.5, -0.5, 0, 0.5, -0.5, 1, 0,
+  ], 3));
+  gableGeo.computeVertexNormals();
+  const gableMesh = instanced(gableGeo, std('#ffffff', { roughness: 0.7 }), gables, { cast: true, receive: true });
+  const slabMesh = instanced(new THREE.BoxGeometry(1, 0.16, 1).translate(0, 0.08, 0), std('#ffffff', { roughness: 0.8 }), balconies, { cast: true });
+  const railMesh = instanced(new THREE.BoxGeometry(1, 1, 0.06).translate(0, 0.66, 0.47), std('#ffffff', { roughness: 0.35, metalness: 0.3 }), balconies);
+  const soot = new THREE.Color('#1b1e19');
+  const tintSets = [
+    { mesh: gableMesh, ks: gables.map((g) => g.k), base: gables.map((g) => tmpColor.set(roleColor(arch.nodes[layout.buildings[g.k].i].role)).lerp(new THREE.Color('#4a2e24'), 0.3).multiplyScalar(0.8).clone()) },
+    { mesh: slabMesh, ks: balconies.map((it) => it.k), base: balconies.map(() => new THREE.Color('#b4b7bd')) },
+    { mesh: railMesh, ks: balconies.map((it) => it.k), base: balconies.map((it) => tmpColor.set(roleColor(arch.nodes[layout.buildings[it.k].i].role)).lerp(new THREE.Color('#2a3140'), 0.45).clone()) },
+  ];
+  const tintInfected = (levels: ArrayLike<number>) => {
+    tintSets.forEach(({ mesh, ks, base }) => {
+      ks.forEach((k, j) => mesh.setColorAt(j, tmpColor.copy(base[j]).lerp(soot, (levels[k] ?? 0) * 0.7)));
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    });
+    // Infected house walls sag at least 6% of their height, so the roof sinks with them instead of floating.
+    gables.forEach((g, j) => place(gableMesh, { ...g, y: g.y - (levels[g.k] ?? 0) * 0.06 * layout.buildings[g.k].h }, j, true));
+    gableMesh.instanceMatrix.needsUpdate = true;
+  };
+  tintInfected([]);
   const beacons = instanced(new THREE.SphereGeometry(0.35, 10, 8), glow('#ff3b3b', 3), tallest.map((b) => ({ x: b.x, y: b.h + 4.6, z: b.z })));
   instanced(new THREE.CylinderGeometry(0.05, 0.08, 4.4, 6), std('#6b7080', { metalness: 0.7 }), tallest.map((b) => ({ x: b.x, y: b.h + 2.4, z: b.z })));
 
@@ -711,7 +751,7 @@ const mount: MountViewer = (root, arch, env) => {
   listen($('virus-btn'), 'click', (e) => { toggleVirus(); (e.currentTarget as HTMLElement).blur(); });
   const floorAt = (x: number, z: number) => {
     let floor = 0;
-    for (const b of nearby(x, z, 4)) if (gap(b, x, z) < 3) floor = Math.max(floor, b.h + 0.16 + 1.2);
+    for (const b of nearby(x, z, 4)) if (gap(b, x, z) < 3) floor = Math.max(floor, b.h + ridge(b) + 0.16 + 1.2);
     return floor;
   };
   const partsOf = new Map<WalkBuilding, Part[]>();
@@ -1300,6 +1340,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (virus.update(dt)) {
       parts.forEach((p, j) => { aInfect[j] = virus.levels[p.k]; });
       infectAttr.needsUpdate = true;
+      tintInfected(virus.levels);
     }
     if (core.visible) {
       core.rotation.y = time * 1.4;
