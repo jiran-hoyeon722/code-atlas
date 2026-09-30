@@ -316,6 +316,37 @@ test('reconnect with the same folder keeps the analysis and attaches source acce
   expect(store.get(key)!.handle).toBe(picked);
 });
 
+test('failed reconnects keep the viewer and show why', async () => {
+  const { deps, store } = fakes();
+  const base = archFor({ name: 'x', files: [{ path: 'app/A.php', text: '' }], configs: {} }, 'php');
+  store.set('k1', {
+    key: 'k1', name: 'shop-api', framework: null, lang: 'php', files: 1, analyzedAt: '2026-09-28T10:00:00.000Z',
+    architecture: { ...base, name: 'shop-api' },
+  });
+  render(<App deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: /^shop-api(?!.*삭제)/ }));
+  await screen.findByText('can-reconnect');
+
+  deps.pickDirectory = vi.fn(async () => dirHandle('shop-api', { 'README.md': 'x' }));
+  await act(async () => h.shell!.onReconnect());
+  expect((await screen.findByRole('alert')).textContent).toContain('폴더를 다시 연결하지 못했어요. PHP·TS/JS 파일을 찾지 못했어요.');
+  expect(screen.getByTestId('viewer')).toBeTruthy();
+  fireEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: '닫기' }));
+  expect(screen.queryByRole('alert')).toBeNull();
+
+  const broken = { kind: 'directory', name: 'shop-api', values: () => { throw new Error('gone'); } } as unknown as FileSystemDirectoryHandle;
+  deps.pickDirectory = vi.fn(async () => broken);
+  await act(async () => h.shell!.onReconnect());
+  expect((await screen.findByRole('alert')).textContent).toContain('폴더를 다시 연결하지 못했어요. 폴더를 읽지 못했어요.');
+  fireEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: '닫기' }));
+
+  deps.pickDirectory = vi.fn(async () => { throw new DOMException('denied', 'SecurityError'); });
+  await act(async () => h.shell!.onReconnect());
+  expect((await screen.findByRole('alert')).textContent).toContain('폴더를 다시 연결하지 못했어요. 폴더를 읽지 못했어요.');
+  expect(screen.getByText('can-reconnect')).toBeTruthy();
+  expect(deps.startAnalysis).not.toHaveBeenCalled();
+});
+
 test('too many files asks before analysing; declining returns to landing', async () => {
   const { deps, runs } = fakes();
   const src: Tree = {};

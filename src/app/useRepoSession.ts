@@ -45,7 +45,10 @@ export const NOTICE = {
   readFailed: '폴더를 읽지 못했어요. 다시 시도해 주세요.',
   analyzeFailed: '분석하지 못했어요. 다시 시도해 주세요.',
   missing: '저장된 분석을 찾지 못했어요.',
+  reconnectFailed: '폴더를 다시 연결하지 못했어요.',
 } as const;
+
+const reconnectNotice = (reason: string) => `${NOTICE.reconnectFailed} ${reason}`;
 
 const FRAMEWORK = { laravel: 'Laravel', react: 'React' } as const;
 
@@ -216,7 +219,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
       setState((s) => (alive() ? { ...s, loading: { ...(s.loading as LoadingInfo), ...extra, step } } : s));
 
     // a failed reconnect keeps the open analysis instead of dropping back to the landing screen
-    const fail = (notice?: string) => (mode === 'reconnect' ? undefined : toLanding(notice));
+    const fail = (notice: string) => (mode === 'reconnect' ? patch({ notice: reconnectNotice(notice) }) : toLanding(notice));
     let found = 0;
     const onFound = throttled(() => setStep({ phase: 'list', found }));
     const enterLoading = () =>
@@ -244,6 +247,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     if (mode === 'reconnect' && current.current?.key === key) {
       current.current = cur;
       setCanReconnect(false);
+      patch({ notice: undefined });
       const entry = src.handle ? await deps.cache.loadAnalysis(key).catch(() => undefined) : undefined;
       if (entry && src.handle) await save({ ...entry, handle: src.handle });
       return;
@@ -328,7 +332,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     try {
       handle = await picker();
     } catch (e) {
-      if (!isAbort(e)) patch({ notice: NOTICE.readFailed });
+      if (!isAbort(e)) patch({ notice: mode === 'reconnect' ? reconnectNotice(NOTICE.readFailed) : NOTICE.readFailed });
       return;
     }
     await run({ dir: fromDirectoryHandle(handle), handle }, mode);
@@ -361,6 +365,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     inputMode.current = 'open';
     if (list.length === 0) {
       if (mode === 'open') patch({ notice: NOTICE.noFiles });
+      else if (mode === 'reconnect') patch({ notice: reconnectNotice(NOTICE.noFiles) });
       return;
     }
     void run({ dir: fromFileList(list) }, mode);
@@ -461,5 +466,6 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     onReconnect,
     onReanalyze,
     onOpenOther,
+    onDismissNotice: () => patch({ notice: undefined }),
   };
 }
