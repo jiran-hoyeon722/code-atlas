@@ -33,7 +33,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'graph', label: '그래프' },
   { id: 'explorer', label: '탐색기' },
   { id: 'battle', label: '대결' },
-  { id: 'walk', label: '걷기 (시험)' },
+  { id: 'walk', label: '코드시티GTA' },
 ];
 // the battle tab has its own fallback for the one 3D scene it shows
 const NEEDS_3D: ReadonlySet<TabId> = new Set(['city', 'graph', 'walk']);
