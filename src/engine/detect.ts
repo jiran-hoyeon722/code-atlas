@@ -31,6 +31,8 @@ export function detect(input: RepoInput, prefer?: Lang): Detection | null {
     const l = isSourcePath(f.path);
     if (l && hasExtractor(l) && !isBuildScript(f.path)) count[l] = (count[l] ?? 0) + 1;
   }
+  // Repos in any other language often carry helper scripts, so shell only wins when nothing else is there.
+  if (Object.keys(count).some((l) => l !== 'shell')) delete count.shell;
   let lang: Lang | null = prefer && (count[prefer] ?? 0) > 0 ? prefer : null;
   if (!lang) {
     for (const l of ALL_LANGS) if ((count[l] ?? 0) > (lang ? count[lang]! : 0)) lang = l;

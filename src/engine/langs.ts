@@ -18,7 +18,7 @@ export interface LangSpec {
   hljs: string;
   functions: ReadonlySet<string>;
   branches: ReadonlySet<string>;
-  logical?: { node: string; ops: ReadonlySet<string>; caseInsensitive?: boolean };
+  logical?: { node: string; ops: ReadonlySet<string>; caseInsensitive?: boolean; also?: ReadonlySet<string> };
 }
 
 const set = (...items: string[]): ReadonlySet<string> => new Set(items);
@@ -128,6 +128,7 @@ export const LANGS: Record<Lang, LangSpec> = {
     hljs: 'bash',
     functions: set('function_definition'),
     branches: set('if_statement', 'elif_clause', 'for_statement', 'c_style_for_statement', 'while_statement', 'case_item'),
+    logical: { node: 'binary_expression', ops: set('&&', '||'), also: set('list') },
   },
   swift: {
     label: 'Swift',

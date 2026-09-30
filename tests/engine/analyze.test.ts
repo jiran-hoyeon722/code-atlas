@@ -28,7 +28,7 @@ function loadRepo(name: string): RepoInput {
 const NOW = new Date('2026-01-01T00:00:00Z');
 let parsers: Parsers;
 beforeAll(async () => {
-  parsers = await loadParsers(nodeLocate, ['php', 'ts', 'py', 'go', 'java', 'kotlin']);
+  parsers = await loadParsers(nodeLocate, ['php', 'ts', 'py', 'go', 'java', 'kotlin', 'shell']);
 });
 
 describe('analyze', () => {
@@ -113,6 +113,38 @@ describe('analyze', () => {
     expect(kind('internal/service/order_test.go')).toBe('test');
     expect(kind('cmd/shop/main.go')).toBe('main');
     expect(kind('internal/model/order.go')).toBe('module');
+  });
+
+  test('shell fixture end to end', () => {
+    const a = analyze(loadRepo('shell-mini'), parsers, { now: NOW });
+    expect(a.lang).toBe('shell');
+    expect(a.framework).toBeNull();
+    expect(a.nodes.length).toBe(8);
+    const path = (i: number) => a.nodes[i].path;
+    expect(a.edges.map(([from, to]) => `${path(from)}→${path(to)}`).sort()).toEqual([
+      'build.sh→ci/run.sh',
+      'build.sh→lib/common.sh',
+      'build.sh→lib/log.sh',
+      'build.sh→scripts/deploy.sh',
+      'build.sh→scripts/test.sh',
+      'lib/common.sh→env.sh',
+      'scripts/deploy.sh→lib/common.sh',
+      'scripts/test.sh→lib/log.sh',
+    ]);
+    expect(a.unresolved).toBe(1);
+    expect(a.failed).toEqual([]);
+    const byRole: Record<string, string[]> = {};
+    for (const n of a.nodes) (byRole[a.roles[n.role].name] ??= []).push(n.path);
+    expect(byRole).toEqual({
+      ci: ['ci/run.sh'],
+      lib: ['lib/common.sh', 'lib/log.sh'],
+      scripts: ['scripts/deploy.sh', 'scripts/orphan.bash', 'scripts/test.sh'],
+      기타: ['build.sh', 'env.sh'],
+    });
+    expect(a.nodes.every((n) => n.kind === 'script')).toBe(true);
+    const common = a.nodes.find((n) => n.path === 'lib/common.sh')!;
+    expect(common.name).toBe('common.sh');
+    expect([common.functions, common.complexity, common.maxComplexity]).toEqual([2, 6, 5]);
   });
 
   test('java fixture end to end', () => {

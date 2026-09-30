@@ -46,8 +46,15 @@ test('a python-only repo is detected once python has an extractor', () => {
   expect(detect({ name: 'x', configs: {}, files: [{ path: 'm/a.py', text: '' }, { path: 'm/b.py', text: '' }] })).toEqual({ lang: 'py', framework: null, sourceDir: '', routeDirs: [] });
 });
 test('prefer for a language without an extractor is ignored', () => {
-  const files = [{ path: 'a.ts', text: '' }, { path: 'run.sh', text: '' }, { path: 'x.sh', text: '' }];
-  expect(detect({ name: 'x', configs: {}, files }, 'shell')?.lang).toBe('ts');
+  const files = [{ path: 'a.ts', text: '' }, { path: 'run.rb', text: '' }, { path: 'x.rb', text: '' }];
+  expect(detect({ name: 'x', configs: {}, files }, 'swift')?.lang).toBe('ts');
+});
+test('shell only wins when nothing else is there', () => {
+  const sh = ['scripts/a.sh', 'scripts/b.sh', 'scripts/c.bash'].map((path) => ({ path, text: '' }));
+  const go = [{ path: 'main.go', text: '' }];
+  expect(detect({ name: 'x', configs: {}, files: [...go, ...sh] })?.lang).toBe('go');
+  expect(detect({ name: 'x', configs: {}, files: [...go, ...sh] }, 'shell')?.lang).toBe('go');
+  expect(detect({ name: 'x', configs: {}, files: sh })).toEqual({ lang: 'shell', framework: null, sourceDir: '', routeDirs: [] });
 });
 test('ties go to the earlier language in ALL_LANGS', () => {
   expect(detect({ name: 'x', configs: {}, files: [{ path: 'a.ts', text: '' }, { path: 'b.php', text: '' }] })?.lang).toBe('php');

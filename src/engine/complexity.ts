@@ -10,8 +10,9 @@ export interface Complexity {
 function isBranch(node: Node, spec: LangSpec): boolean {
   if (spec.branches.has(node.type)) return true;
   const logical = spec.logical;
-  if (!logical || node.type !== logical.node) return false;
-  const op = node.childForFieldName('operator');
+  if (!logical || (node.type !== logical.node && !logical.also?.has(node.type))) return false;
+  // Bash `list` nodes (a && b) carry the operator as an unnamed child without a field name.
+  const op = node.childForFieldName('operator') ?? node.children.find((c) => c !== null && !c.isNamed) ?? null;
   // PHP keyword operators may be written in any case ("AND", "Or").
   return op !== null && logical.ops.has(logical.caseInsensitive ? op.type.toLowerCase() : op.type);
 }
