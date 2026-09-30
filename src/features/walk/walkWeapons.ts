@@ -50,6 +50,10 @@ export function dealWeapons(count: number, random: () => number): Weapon[] {
 export const damageAt = (w: Weapon, distance: number) =>
   w.id === 'shotgun' ? Math.max(1, Math.round(w.damage * (1 - Math.min(1, distance / w.range) * 0.7))) : w.damage;
 
+/** Area damage: full strength within 40% of `radius`, fading to at least 1 at the edge, nothing beyond it. */
+export const splash = (damage: number, distance: number, radius: number) =>
+  distance > radius ? 0 : Math.max(1, Math.round(damage * Math.min(1, (1 - distance / radius) / 0.6)));
+
 export interface HeldWeapon {
   readonly id: WeaponId;
   set(id: WeaponId): void;
