@@ -46,12 +46,12 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-test('the 대결 tab sits between 탐색기 and 걷기 and mounts the battle view', async () => {
+test('the 대결 tab sits between 탐색기 and 코드시티GTA and mounts the battle view', async () => {
   render(<ViewerShell {...props()} />);
   await screen.findByText('view:city');
   const names = screen.getAllByRole('tab').map((t) => t.textContent);
   expect(names.indexOf('대결')).toBe(names.indexOf('탐색기') + 1);
-  expect(names[names.indexOf('대결') + 1]).toMatch(/^걷기/);
+  expect(names[names.indexOf('대결') + 1]).toBe('코드시티GTA');
   fireEvent.click(screen.getByRole('tab', { name: '대결' }));
   await screen.findByText('view:battle');
   expect(location.hash).toBe('#battle');
