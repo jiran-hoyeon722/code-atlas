@@ -1,0 +1,52 @@
+.rb-tab-host {
+  height: 100%;
+}
+
+/* inside the viewer the shell's top bar takes part of the viewport, so screens fill the tab area instead */
+.rb-root.rb-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.rb-tab > .rb-screen {
+  flex: 1 0 auto;
+  min-height: 0;
+}
+
+.rb-tab > .rb-engage {
+  height: 100%;
+}
+
+.rb-tab-empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.rb-tab-empty-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 520px;
+  padding: 28px;
+  border-radius: 24px;
+  background: var(--rb-card);
+  text-align: center;
+}
+
+.rb-tab-empty-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.rb-tab-empty-sub {
+  color: var(--rb-text-2);
+}
+
+@media (max-width: 1100px) {
+  .rb-tab > .rb-engage {
+    height: auto;
+  }
+}

@@ -114,6 +114,29 @@
   cursor: not-allowed;
 }
 
+.rb-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.rb-dot-a {
+  background: var(--rb-team-a);
+}
+
+.rb-dot-b {
+  background: var(--rb-team-b);
+}
+
+.rb-warn-dot {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--rb-warn);
+}
+
 .rb-screen {
   animation: rb-enter var(--rb-mid) var(--rb-ease);
 }

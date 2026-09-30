@@ -63,20 +63,6 @@
   color: var(--rb-text-2);
 }
 
-.rb-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.rb-dot-a {
-  background: var(--rb-team-a);
-}
-
-.rb-dot-b {
-  background: var(--rb-team-b);
-}
-
 .rb-card-body {
   display: flex;
   flex: 1;
@@ -162,15 +148,6 @@
   background: var(--rb-inner);
   font-size: 13px;
   font-weight: 500;
-}
-
-.rb-warn-dot {
-  display: inline-block;
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--rb-warn);
 }
 
 .rb-card-title .rb-warn-dot {

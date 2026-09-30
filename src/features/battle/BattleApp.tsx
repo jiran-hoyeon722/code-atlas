@@ -5,6 +5,7 @@ import type { Quality } from '../../engine/battle/types';
 import { BriefingScreen } from './briefing/BriefingScreen';
 import type { BattleDeps, FixesJob } from './deps';
 import { EngageScreen } from './engage/EngageScreen';
+import { priorShares } from './prior';
 import { ResultScreen } from './result/ResultScreen';
 import { SelectScreen } from './select/SelectScreen';
 
@@ -18,11 +19,7 @@ export type Screen =
   | ({ name: 'battle'; match: number; prior: Prediction } & Pair)
   | ({ name: 'result'; match: number; prior: Prediction; result: BattleResult } & Pair);
 
-/** Win shares out of the prediction runs, the shape the replay and result screens read. */
-export function priorShares(p: Prediction): { a: number; b: number } {
-  const runs = Math.max(1, p.runs);
-  return { a: p.aWins / runs, b: p.bWins / runs };
-}
+export { priorShares };
 
 export function BattleApp({ deps }: { deps: BattleDeps }) {
   const [screen, setScreen] = useState<Screen>({ name: 'select' });
