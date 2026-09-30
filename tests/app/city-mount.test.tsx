@@ -4,7 +4,7 @@ import type { Architecture, ArchNode } from '../../src/engine/architecture';
 import type { ViewerEnv } from '../../src/features/viewer-env';
 
 // jsdom has no WebGL or 2D canvas: the renderer is faked, the raycaster reports a chosen hit, and label text is recorded
-const h = vi.hoisted(() => ({ hit: [] as { instanceId: number }[], labels: [] as string[] }));
+const h = vi.hoisted(() => ({ hit: [] as { instanceId: number }[], labels: [] as string[], loop: null as ((now: number) => void) | null }));
 vi.mock('three', async (importOriginal) => {
   const three = await importOriginal<typeof import('three')>();
   class WebGLRenderer {
@@ -12,7 +12,9 @@ vi.mock('three', async (importOriginal) => {
     shadowMap = { enabled: false, type: 0 };
     setPixelRatio() {}
     setSize() {}
-    setAnimationLoop() {}
+    setAnimationLoop(cb: ((now: number) => void) | null) {
+      if (cb) h.loop = cb;
+    }
     render() {}
     dispose() {}
     forceContextLoss() {}
@@ -141,10 +143,19 @@ test('blast type toggle recomputes', () => {
   const { root, button, dispose } = mountBlast();
   fireEvent.click(button());
   const toggle = root.querySelector<HTMLInputElement>('input[data-blast-types]')!;
+  toggle.focus();
   toggle.checked = true;
   fireEvent.change(toggle);
+  expect(document.activeElement).toBe(root.querySelector('input[data-blast-types]'));
   expect(root.querySelector('.blast-summary')!.textContent).toBe('직접 1 · 간접 1 · 도시의 67% · 최대 2단계');
   expect(root.querySelector<HTMLInputElement>('input[data-blast-types]')!.checked).toBe(true);
+  dispose();
+});
+
+test('blast pulse survives a frame timestamp earlier than the click', () => {
+  const { button, dispose } = mountBlast();
+  fireEvent.click(button());
+  expect(() => h.loop!(-1000)).not.toThrow();
   dispose();
 });
 

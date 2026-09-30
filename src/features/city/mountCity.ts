@@ -539,6 +539,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     if (!input.matches('[data-blast-types]') || !state.blast) return;
     state.blast.skipTypeOnly = input.checked;
     setBlast(true);
+    $('panel-body').querySelector<HTMLInputElement>('input[data-blast-types]')?.focus();
   });
 
   // ---- source viewer ----
@@ -755,7 +756,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     }
     const b = state.blast;
     if (b && !b.done) {
-      const elapsed = now - b.startedAt;
+      const elapsed = Math.max(0, now - b.startedAt); // rAF timestamps can predate performance.now() at click
       const total = b.result.maxDepth * BLAST_STEP;
       if (elapsed >= total) {
         finishWave();
