@@ -133,9 +133,17 @@ describe('analyze', () => {
       `${J}/service/OrderService.java→${J}/util/Money.java`,
       `${T}/service/OrderServiceTest.java→${J}/service/OrderService.java`,
     ]);
-    const kinds = (from: string, to: string) => a.edges.find(([f, t]) => path(f) === from && path(t) === to)![3];
-    expect(kinds(`${J}/ShopApplication.java`, `${J}/controller/OrderController.java`)).toEqual({ import: 1 });
-    expect(kinds(`${J}/controller/OrderController.java`, `${J}/service/OrderService.java`)).toEqual({ 'class-ref': 1 });
+    const kinds = Object.fromEntries(a.edges.map(([from, to, , k]) => [`${path(from)}→${path(to)}`, k]));
+    expect(kinds).toEqual({
+      [`${J}/ShopApplication.java→${J}/controller/OrderController.java`]: { import: 1 },
+      [`${J}/controller/OrderController.java→${J}/domain/Order.java`]: { import: 1 },
+      [`${J}/controller/OrderController.java→${J}/service/OrderService.java`]: { 'class-ref': 2 },
+      [`${J}/domain/Order.java→${J}/domain/OrderStatus.java`]: { 'class-ref': 4 },
+      [`${J}/service/OrderService.java→${J}/domain/Order.java`]: { import: 1 },
+      [`${J}/service/OrderService.java→${J}/service/PriceCalculator.java`]: { 'class-ref': 1 },
+      [`${J}/service/OrderService.java→${J}/util/Money.java`]: { import: 1 },
+      [`${T}/service/OrderServiceTest.java→${J}/service/OrderService.java`]: { 'class-ref': 2 },
+    });
     expect(a.unresolved).toBe(1);
     expect(a.failed).toEqual([]);
     const byRole: Record<string, string[]> = {};

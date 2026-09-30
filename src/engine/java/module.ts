@@ -57,20 +57,21 @@ function headerOf(root: Node): Header {
   return h;
 }
 
+/** Every occurrence, duplicates included: the linker counts each one as edge weight. */
 function mentionsOf(root: Node): string[] {
-  const names = new Set<string>();
+  const names: string[] = [];
   const stack: Node[] = [root];
   while (stack.length > 0) {
     const node = stack.pop()!;
-    if (node.type === 'type_identifier') names.add(node.text);
+    if (node.type === 'type_identifier') names.push(node.text);
     else if (RECEIVERS.has(node.type)) {
       const obj = node.childForFieldName('object');
-      if (obj?.type === 'identifier' && /^[A-Z]/.test(obj.text)) names.add(obj.text);
+      if (obj?.type === 'identifier' && /^[A-Z]/.test(obj.text)) names.push(obj.text);
     }
     if (node.type === 'package_declaration' || node.type === 'import_declaration') continue;
     for (const c of node.namedChildren) if (c) stack.push(c);
   }
-  return [...names];
+  return names;
 }
 
 function extractFile(parser: Parser, file: SourceFile): FileFacts {

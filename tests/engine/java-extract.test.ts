@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, test } from 'vitest';
 import type { Parser } from 'web-tree-sitter';
 import { loadParsers } from '../../src/engine/parsers';
 import { nodeLocate } from '../../src/engine/node';
-import type { FileFacts, ProjectIndex } from '../../src/engine/link';
+import { extractProject, type FileFacts, type ProjectIndex } from '../../src/engine/link';
 import { javaModule } from '../../src/engine/java/module';
 import { resolveJvmImport } from '../../src/engine/jvm/resolve';
 
@@ -50,11 +50,11 @@ describe('javaModule.extractFile', () => {
     expect(f.declares).toEqual(['A', 'I', 'E', 'R', 'Ann']);
   });
 
-  test('mentions every type name and capitalised call/field receivers, once each', () => {
+  test('mentions every type name and capitalised call/field receivers, every occurrence', () => {
     const f = facts(
       'package a;\nclass A extends Base implements Api {\n  Map<Key, List<Item>> m;\n  Outer.Inner x = new Outer.Inner();\n  void f() { Util.run(); int n = Const.MAX; local.go(); x.y.Z.go(); Util.stop(); }\n}\n',
     );
-    expect([...f.mentions].sort()).toEqual(['Api', 'Base', 'Const', 'Inner', 'Item', 'Key', 'List', 'Map', 'Outer', 'Util']);
+    expect([...f.mentions].sort()).toEqual(['Api', 'Base', 'Const', 'Inner', 'Inner', 'Item', 'Key', 'List', 'Map', 'Outer', 'Outer', 'Util', 'Util']);
   });
 
   test('names and kinds', () => {
@@ -100,6 +100,19 @@ describe('resolveJvmImport', () => {
     expect(resolve('com.acme.shop.Order.Line.Part')).toEqual(['shop/Order.java']);
     expect(resolve('com.acme.other.Order')).toEqual(['other/Order.java']);
     expect(resolve('com.acme.shop.*')).toEqual([]);
+
+    const files = {
+      'a/b/C.java': 'package a.b;\npublic class C {\n  public static void m() {}\n  public static class In {}\n}\n',
+      'a/b/D.java': 'package a.b;\npublic class D {}\n',
+      'x/User.java': 'package x;\nimport a.b.*;\nimport static a.b.C.m;\nimport a.b.C.In;\nclass User { D d; }\n',
+    };
+    const input = { name: 'toy', configs: {}, files: Object.entries(files).map(([path, text]) => ({ path, text })) };
+    const x = extractProject('java', javaModule, input, { lang: 'java', framework: null, sourceDir: '', routeDirs: [] }, { get: () => parser });
+    expect(x.edges.sort((p, q) => (p.to < q.to ? -1 : 1))).toEqual([
+      { from: 'x/User.java', to: 'a/b/C.java', weight: 2, kinds: { import: 2 } },
+      { from: 'x/User.java', to: 'a/b/D.java', weight: 1, kinds: { 'class-ref': 1 } },
+    ]);
+    expect(x.unresolved).toBe(0);
   });
 
   test('missing classes under a project package are unresolved; JDK and libraries are outside', () => {
