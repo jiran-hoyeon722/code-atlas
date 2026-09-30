@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { fixCandidates, rankFixes, withLowRiskFile } from '../../../src/engine/battle/fixes';
 import { predict } from '../../../src/engine/battle/sim';
 import type { Quality, QualityFile } from '../../../src/engine/battle/types';
+import { EFFECTS } from '../../../src/engine/battle/rules';
 import { synthQuality } from './synth';
 
 const CLEAN = { ccnShares: [0.85, 0.1, 0.05, 0] as const, lenShares: [0.7, 0.2, 0.1, 0] as const };
@@ -36,7 +37,7 @@ describe('rankFixes', () => {
     const [top] = rankFixes(tangled);
     expect(top.path).toBe(f.path);
     expect(top.reasons).toEqual(['tangle', 'duplication']);
-    expect(top.penalty).toBeCloseTo(f.lines * 0.3 + 10 * 0.5, 9);
+    expect(top.penalty).toBeCloseTo(f.lines * EFFECTS.chainShare + 10 * EFFECTS.cloneBurst, 9);
   });
 });
 
