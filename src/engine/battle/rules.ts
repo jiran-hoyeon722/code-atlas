@@ -23,8 +23,8 @@ export const FOUR_STAR = {
 export const CCN_TIERS = [5, 10, 25] as const;
 export const LENGTH_TIERS = [15, 30, 60] as const;
 
-export const ATTACK_BY_TIER = [1.0, 0.9, 0.7, 0.5] as const;
-export const SPEED_BY_TIER = [1.0, 0.9, 0.8, 0.6] as const;
+export const ATTACK_BY_TIER = [1.0, 0.95, 0.86, 0.77] as const;
+export const SPEED_BY_TIER = [1.0, 0.97, 0.93, 0.88] as const;
 
 export const CLONE_MIN_LINES = 6;
 
@@ -41,8 +41,8 @@ export const ARMY = {
 
 export const EFFECTS = {
   chainShare: 0.3,
-  cloneBurst: 0.5,
-  shieldCut: 0.3,
+  cloneBurst: 0.45,
+  shieldCut: 0.15,
   burnPerSecond: 0.01,
   burnCap: 0.5,
   lookThreshold: 0.5,
@@ -57,7 +57,7 @@ export const LUCK = {
 
 export const CLOCK = {
   tick: 0.1,
-  duelSeconds: 30,
+  duelSeconds: 60,
   laneSeconds: 180,
   finalSeconds: 60,
   tieMargin: 0.01,

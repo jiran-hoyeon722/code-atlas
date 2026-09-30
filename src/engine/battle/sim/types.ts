@@ -149,13 +149,14 @@ export interface HitEvent {
   arena: Arena;
   attacker: UnitRef;
   target: UnitRef;
-  /** Damage after shield/commander guard, before chain sharing. */
+  /** Damage after shield/commander guard, before the chain extra. */
   damage: number;
   crit: boolean;
   /** Damage the target's tests (shield or commander guard) absorbed. */
   blocked: number;
 }
 
+/** Extra damage a linked (cycle) soldier takes on top of a hit; `from` and `target` are the same unit. */
 export interface ChainEvent {
   kind: 'chain';
   tick: number;

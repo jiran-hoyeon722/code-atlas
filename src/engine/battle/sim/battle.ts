@@ -50,10 +50,13 @@ export function guardDamage(raw: number, shield: boolean, guard: number): { dama
   return { damage, blocked: raw - damage };
 }
 
-export function chainSplit(damage: number, r: number, allies: number): { self: number; each: number } {
-  if (allies <= 0) return { self: damage, each: 0 };
-  const share = damage * EFFECTS.chainShare * r;
-  return { self: damage - share, each: share / allies };
+/**
+ * Extra damage a linked soldier takes on top of the hit. It stays on the target: splitting the hit
+ * with allies spread it thin and made cycles a shield, and handing the extra to allies only worked
+ * in small repos, where one cycle covers many soldiers of the same fight.
+ */
+export function chainExtra(damage: number, r: number): number {
+  return damage * EFFECTS.chainShare * r;
 }
 
 export function cloneBurst(maxHp: number, d: number): number {
@@ -92,9 +95,14 @@ class Unit implements UnitState {
     readonly cloneGroup: number,
     readonly shield: boolean,
     readonly guard: number,
+    /** Walking speed: the squad's mean, so a squad arrives together whatever its members' spread. */
+    readonly march: number,
   ) {
     this.hp = maxHp;
     this.order = index === COMMANDER ? ARMY.soldiers : index;
+    // Staggered first swing: equal-speed soldiers swinging in step overkill the same targets, which
+    // cost evenly built (big-repo) armies against mixed ones.
+    this.charge = ((this.order * 37) % 100) / 10;
   }
 }
 
@@ -151,21 +159,14 @@ class LaneRt implements LaneState {
   ) {}
 }
 
-interface ChainGroup {
-  units: Unit[];
-  minSpd: number;
-}
-
-function chainGroups(units: Unit[]): Map<number, ChainGroup> | null {
-  let map: Map<number, ChainGroup> | null = null;
+/** Slowest walking speed per chain group among `units`. */
+function slowestMarch(units: Unit[]): Map<number, number> | null {
+  let map: Map<number, number> | null = null;
   for (const u of units) {
     if (u.chainGroup < 0) continue;
     map ??= new Map();
-    const g = map.get(u.chainGroup);
-    if (g) {
-      g.units.push(u);
-      if (u.spd < g.minSpd) g.minSpd = u.spd;
-    } else map.set(u.chainGroup, { units: [u], minSpd: u.spd });
+    const slowest = map.get(u.chainGroup);
+    if (slowest === undefined || u.march < slowest) map.set(u.chainGroup, u.march);
   }
   return map;
 }
@@ -189,9 +190,21 @@ class BattleRun implements Battle {
   private readonly clones: [Map<number, Unit[]>, Map<number, Unit[]>];
   private readonly startHp: [number, number];
   private readonly record: boolean;
+  /**
+   * Each army's hit-rate roll for the whole battle. Per-attack rolls average out over thousands of
+   * hits and left every war to hair-thin stat gaps; one roll per army keeps upsets possible.
+   */
+  private readonly form: [number, number];
+  /**
+   * Matches come in pairs (1-2, 3-4, …) on one seed with the two sides' rolls swapped, so over a
+   * pair both armies get exactly the same luck and a repo against itself splits every pair.
+   */
+  private readonly salt: [number, number];
   private finalUnits: [Unit[], Unit[]] = [[], []];
   private final: { tick: number; reason: FinalReason } = { tick: 0, reason: 'lane-time' };
   private touched: Unit[] = [];
+  /** Per side, the fighters' positions as x0, z0, x1, z1, … for the nearest-foe scans. */
+  private readonly pos: [Float64Array, Float64Array] = [new Float64Array(2 * ARMY.soldiers + 2), new Float64Array(2 * ARMY.soldiers + 2)];
   private nearestD2 = 0;
   private duelCount = 0;
   private res: BattleResult | null = null;
@@ -204,6 +217,8 @@ class BattleRun implements Battle {
     opts: BattleOptions,
   ) {
     this.record = opts.record === true;
+    this.salt = match % 2 === 1 ? [0, 1] : [1, 0];
+    this.form = [rollFor(seed, 0, 'form', this.salt[0]), rollFor(seed, 0, 'form', this.salt[1])];
     this.armies = this.pair((c) => armies[c]);
     this.units = [this.makeUnits(armies[0], 0), this.makeUnits(armies[1], 1)];
     this.cmd = [this.makeCommander(armies[0], 0), this.makeCommander(armies[1], 1)];
@@ -261,13 +276,13 @@ class BattleRun implements Battle {
   private makeUnits(army: Army, c: C): Unit[] {
     return army.soldiers.map(
       (s) =>
-        new Unit(c, this.sides[c], s.index, s.key, 'soldier', s.squad, ARMY.hp, s.atk, s.spd, s.r, s.chainGroup, s.d, s.cloneGroup, s.shield, 1),
+        new Unit(c, this.sides[c], s.index, s.key, 'soldier', s.squad, ARMY.hp, s.atk, s.spd, s.r, s.chainGroup, s.d, s.cloneGroup, s.shield, 1, army.squads[s.squad].spd),
     );
   }
 
   private makeCommander(army: Army, c: C): Unit {
     const k = army.commander;
-    const u = new Unit(c, this.sides[c], COMMANDER, k.key, 'commander', -1, k.hp, k.atk, k.spd, 0, -1, 0, -1, false, k.guard);
+    const u = new Unit(c, this.sides[c], COMMANDER, k.key, 'commander', -1, k.hp, k.atk, k.spd, 0, -1, 0, -1, false, k.guard, k.spd);
     u.status = 'waiting';
     return u;
   }
@@ -313,40 +328,53 @@ class BattleRun implements Battle {
     });
   }
 
-  private nearest(u: Unit, foes: Unit[]): Unit {
-    let best = foes[0];
+  /** Nearest of `foes`, whose positions are mirrored in `pos` as x0, z0, x1, z1, … */
+  private nearest(u: Unit, foes: Unit[], pos: Float64Array): Unit {
+    let best = 0;
     let bd = Infinity;
-    for (const f of foes) {
-      const dx = f.x - u.x;
-      const dz = f.z - u.z;
+    const ux = u.x;
+    const uz = u.z;
+    for (let i = 0, n = foes.length; i < n; i++) {
+      const dx = pos[2 * i] - ux;
+      const dz = pos[2 * i + 1] - uz;
       const d2 = dx * dx + dz * dz;
-      if (d2 < bd || (d2 === bd && f.key < best.key)) {
-        best = f;
+      if (d2 < bd || (d2 === bd && foes[i].key < foes[best].key)) {
+        best = i;
         bd = d2;
       }
     }
     this.nearestD2 = bd;
-    return best;
+    return foes[best];
+  }
+
+  private snapshot(c: C, units: Unit[]): Float64Array {
+    const pos = this.pos[c];
+    for (let i = 0; i < units.length; i++) {
+      pos[2 * i] = units[i].x;
+      pos[2 * i + 1] = units[i].z;
+    }
+    return pos;
   }
 
   private fight(arena: Arena, side0: Unit[], side1: Unit[]): void {
     const P: [Unit[], Unit[]] = [side0.filter((u) => u.alive), side1.filter((u) => u.alive)];
     if (P[0].length === 0 || P[1].length === 0) return;
-    const chains = [chainGroups(P[0]), chainGroups(P[1])];
+    const slowest = [slowestMarch(P[0]), slowestMarch(P[1])];
+    let pos = [this.snapshot(0, P[0]), this.snapshot(1, P[1])];
 
     for (let c = 0; c < 2; c++) {
       const foes = P[1 - c];
-      const groups = chains[c];
+      const groups = slowest[c];
       for (const u of P[c]) {
-        const t = u.target && u.target.alive ? u.target : this.nearest(u, foes);
+        const t = u.target && u.target.alive ? u.target : this.nearest(u, foes, pos[1 - c]);
         u.nx = u.x;
         u.nz = u.z;
         const dx = t.x - u.x;
         const dz = t.z - u.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
         if (dist <= FIELD.hold) continue;
-        let spd = u.spd;
-        if (groups && u.chainGroup >= 0 && u.r > 0) spd = u.spd * (1 - u.r) + groups.get(u.chainGroup)!.minSpd * u.r;
+        let spd = u.march;
+        if (groups && u.chainGroup >= 0 && u.r > 0) spd = u.march * (1 - u.r) + groups.get(u.chainGroup)! * u.r;
         const m = Math.min(FIELD.moveSpeed * spd * CLOCK.tick, dist - FIELD.hold);
         u.nx = u.x + (dx / dist) * m;
         u.nz = u.z + (dz / dist) * m;
@@ -359,39 +387,32 @@ class BattleRun implements Battle {
       }
     }
 
+    pos = [this.snapshot(0, P[0]), this.snapshot(1, P[1])];
     for (let c = 0; c < 2; c++) {
       const foes = P[1 - c];
-      const foeChains = chains[1 - c];
       for (const u of P[c]) {
-        const t = this.nearest(u, foes);
+        const t = this.nearest(u, foes, pos[1 - c]);
         u.target = t;
         if (this.nearestD2 > REACH2) continue;
         u.charge += u.spd;
         if (u.charge < CHARGE_FULL) continue;
         u.charge -= CHARGE_FULL;
-        this.attack(arena, u, t, foeChains);
+        this.attack(arena, u, t);
       }
     }
   }
 
-  private attack(arena: Arena, u: Unit, t: Unit, foeChains: Map<number, ChainGroup> | null): void {
-    const u1 = rollFor(this.seed, this.tick, u.key, u.c);
-    const u2 = rollFor(this.seed, this.tick, u.key, u.c + 2);
+  private attack(arena: Arena, u: Unit, t: Unit): void {
+    const u1 = this.form[u.c];
+    const u2 = rollFor(this.seed, this.tick, u.key, this.salt[u.c] + 2);
     const hit = hitDamage(u.atk, u1, u2);
     const g = guardDamage(hit.damage, t.shield, t.guard);
     this.emit({ kind: 'hit', tick: this.tick, arena, attacker: ref(u), target: ref(t), damage: g.damage, crit: hit.crit, blocked: g.blocked });
-    const group = t.r > 0 && t.chainGroup >= 0 && foeChains ? foeChains.get(t.chainGroup) : undefined;
-    if (!group || group.units.length < 2) {
-      this.hurt(t, g.damage);
-      return;
-    }
-    const split = chainSplit(g.damage, t.r, group.units.length - 1);
-    for (const m of group.units) {
-      if (m === t) continue;
-      this.hurt(m, split.each);
-      this.emit({ kind: 'chain', tick: this.tick, arena, from: ref(t), target: ref(m), damage: split.each });
-    }
-    this.hurt(t, split.self);
+    this.hurt(t, g.damage);
+    const extra = chainExtra(g.damage, t.r);
+    if (extra <= 0) return;
+    this.hurt(t, extra);
+    this.emit({ kind: 'chain', tick: this.tick, arena, from: ref(t), target: ref(t), damage: extra });
   }
 
   private hurt(u: Unit, amount: number): void {
@@ -426,11 +447,15 @@ class BattleRun implements Battle {
 
   private burstClones(deaths: Unit[]): void {
     for (const dead of deaths) {
-      if (dead.cloneGroup < 0) continue;
-      for (const m of this.clones[dead.c].get(dead.cloneGroup) ?? []) {
-        if (!m.alive) continue;
-        const amount = cloneBurst(m.maxHp, m.d);
-        if (amount <= 0) continue;
+      if (dead.role !== 'soldier' || dead.d <= 0) continue;
+      // The burst is the dead soldier's own share split among its copies, or among its squad when no
+      // copy is left: small chunks sit in many small groups, big chunks rarely share one, so a
+      // per-copy burst would make the same duplication hurt small repos far more.
+      let hit = (this.clones[dead.c].get(dead.cloneGroup) ?? []).filter((m) => m.alive);
+      if (hit.length === 0) hit = this.sq[dead.c][dead.squad].units.filter((m) => m.alive);
+      if (hit.length === 0) continue;
+      const amount = cloneBurst(dead.maxHp, dead.d) / hit.length;
+      for (const m of hit) {
         this.hurt(m, amount);
         this.emit({ kind: 'clone', tick: this.tick, source: ref(dead), target: ref(m), damage: amount });
       }
@@ -615,7 +640,7 @@ export function createBattleFromArmies(a: Army, b: Army, match: number, opts: Ba
   const swapped = b.id < a.id;
   const armies: [Army, Army] = swapped ? [b, a] : [a, b];
   const sides: [Side, Side] = swapped ? ['b', 'a'] : ['a', 'b'];
-  return new BattleRun(armies, sides, match, battleSeed(a.id, b.id, match), opts);
+  return new BattleRun(armies, sides, match, battleSeed(a.id, b.id, (match + (match % 2)) / 2), opts);
 }
 
 export function createBattle(a: Quality, b: Quality, match: number, opts: BattleOptions = {}): Battle {
