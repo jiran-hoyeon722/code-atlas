@@ -35,3 +35,16 @@ test('react without src uses root and app route dir', () => {
   const d = detect({ name: 'x', configs: { 'package.json': '{"devDependencies":{"react":"1"}}' }, files: [{ path: 'app/page.tsx', text: '' }] });
   expect(d).toEqual({ lang: 'ts', framework: 'react', sourceDir: '', routeDirs: ['app'] });
 });
+test('a new language with the most files wins and has no framework', () => {
+  const d = detect({ name: 'x', configs: {}, files: [{ path: 'a.php', text: '' }, { path: 'm/a.py', text: '' }, { path: 'm/b.py', text: '' }] });
+  expect(d).toEqual({ lang: 'py', framework: null, sourceDir: '', routeDirs: [] });
+});
+test('ties go to the earlier language in ALL_LANGS', () => {
+  const files = [{ path: 'a.go', text: '' }, { path: 'b.sh', text: '' }, { path: 'c.java', text: '' }];
+  expect(detect({ name: 'x', configs: {}, files })?.lang).toBe('go');
+  expect(detect({ name: 'x', configs: {}, files: [{ path: 'a.ts', text: '' }, { path: 'b.php', text: '' }] })?.lang).toBe('php');
+});
+test('prefer picks a new language when it has files', () => {
+  const d = detect({ name: 'x', configs: {}, files: [{ path: 'a.php', text: '' }, { path: 'b.php', text: '' }, { path: 'run.sh', text: '' }] }, 'shell');
+  expect(d).toEqual({ lang: 'shell', framework: null, sourceDir: '', routeDirs: [] });
+});

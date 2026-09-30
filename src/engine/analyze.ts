@@ -1,9 +1,10 @@
 import type { Parsers } from './parsers';
-import type { Lang, RepoInput } from './types';
-import { detect } from './detect';
+import type { Extraction, Lang, RepoInput } from './types';
+import { detect, type Detection } from './detect';
 import { sourcesFor } from './sources';
 import { extractPhpProject } from './php/project';
 import { extractTsProject } from './ts/project';
+import { extractProject, type LangModule } from './link';
 import { compileRoles, presetFor } from './presets';
 import { buildArchitecture, type Architecture } from './architecture';
 
@@ -14,9 +15,28 @@ export type Progress =
 
 export class UnsupportedRepoError extends Error {
   constructor() {
-    super('No supported source files (PHP or TypeScript/JavaScript) found');
+    super('No supported source files found');
     this.name = 'UnsupportedRepoError';
   }
+}
+
+type Extractor = (
+  input: RepoInput,
+  detection: Detection,
+  parsers: Parsers,
+  onFile?: (path: string) => void,
+  onLink?: () => void,
+) => Extraction;
+
+const MODULES: Partial<Record<Lang, LangModule>> = {};
+
+const EXTRACTORS: Partial<Record<Lang, Extractor>> = { php: extractPhpProject, ts: extractTsProject };
+
+function extractorFor(lang: Lang): Extractor | null {
+  const direct = EXTRACTORS[lang];
+  if (direct) return direct;
+  const mod = MODULES[lang];
+  return mod ? (...args) => extractProject(lang, mod, ...args) : null;
 }
 
 export interface AnalyzeOptions {
@@ -33,6 +53,8 @@ export function analyze(
   const { onProgress, now = new Date(), prefer } = options;
   const detection = detect(input, prefer);
   if (!detection) throw new UnsupportedRepoError();
+  const extract = extractorFor(detection.lang);
+  if (!extract) throw new UnsupportedRepoError();
 
   const prefix = detection.sourceDir === '' ? '' : detection.sourceDir + '/';
   const processed = sourcesFor(detection, input.files).map((f) => f.path);
@@ -48,9 +70,7 @@ export function analyze(
   };
 
   const onLink = () => onProgress?.({ phase: 'link' });
-  const extraction = detection.lang === 'php'
-    ? extractPhpProject(input, detection, parsers, onFile, onLink)
-    : extractTsProject(input, detection, parsers, onFile, onLink);
+  const extraction = extract(input, detection, parsers, onFile, onLink);
 
   onProgress?.({ phase: 'metrics' });
   return buildArchitecture(extraction, detection, preset, input.name, now);

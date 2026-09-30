@@ -1,5 +1,6 @@
 import type { Lang, RepoInput } from './types';
 import { isSourcePath } from './collect';
+import { ALL_LANGS } from './langs';
 
 export interface Detection {
   lang: Lang;
@@ -28,13 +29,12 @@ export function detect(input: RepoInput, prefer?: Lang): Detection | null {
     const l = isSourcePath(f.path);
     if (l) count[l] = (count[l] ?? 0) + 1;
   }
-  const php = count.php ?? 0;
-  const ts = count.ts ?? 0;
-  if (php + ts === 0) return null;
-
-  let lang: Lang;
-  if (prefer && (count[prefer] ?? 0) > 0) lang = prefer;
-  else lang = php >= ts ? 'php' : 'ts';
+  let lang: Lang | null = prefer && (count[prefer] ?? 0) > 0 ? prefer : null;
+  if (!lang) {
+    for (const l of ALL_LANGS) if ((count[l] ?? 0) > (lang ? count[lang]! : 0)) lang = l;
+  }
+  if (!lang) return null;
+  if (lang !== 'php' && lang !== 'ts') return { lang, framework: null, sourceDir: '', routeDirs: [] };
 
   const hasDir = (dir: string) => input.files.some((f) => f.path.startsWith(dir + '/'));
 
