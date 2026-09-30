@@ -1,0 +1,511 @@
+.rb-res-main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px 0 64px;
+}
+
+.rb-res-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 28px;
+  border-radius: 24px;
+  background: var(--rb-card);
+}
+
+.rb-res-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.rb-res-sub {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+}
+
+.rb-res-strong {
+  color: var(--rb-text);
+}
+
+.rb-res-empty {
+  color: var(--rb-text-2);
+}
+
+.rb-res-dot {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.rb-res-dot-a {
+  background: var(--rb-team-a);
+}
+
+.rb-res-dot-b {
+  background: var(--rb-team-b);
+}
+
+.rb-res-name {
+  overflow-wrap: anywhere;
+}
+
+.rb-res-name-a {
+  color: var(--rb-team-a);
+}
+
+.rb-res-name-b {
+  color: var(--rb-team-b);
+}
+
+/* verdict */
+
+.rb-res-verdict {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.rb-res-verdict-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rb-res-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  margin-bottom: 8px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--rb-inner);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.rb-res-headline {
+  max-width: 100%;
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.rb-res-lead {
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.rb-res-survivors {
+  display: grid;
+  grid-template-columns: repeat(2, 200px);
+  gap: 16px;
+}
+
+.rb-res-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 20px 24px;
+  border-radius: 16px;
+  background: var(--rb-inner);
+}
+
+.rb-res-tile-head,
+.rb-res-set-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+}
+
+.rb-res-tile-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-res-big {
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.rb-res-big-unit {
+  margin-left: 4px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--rb-text-2);
+}
+
+/* grid */
+
+.rb-res-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 24px;
+  align-items: start;
+}
+
+/* why */
+
+.rb-res-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.rb-res-table th,
+.rb-res-table td {
+  padding: 16px 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.rb-res-table tbody tr + tr > * {
+  border-top: 1px solid var(--rb-divider);
+}
+
+.rb-res-th-metric {
+  width: 46%;
+}
+
+.rb-res-th-side {
+  padding-bottom: 8px !important;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+}
+
+.rb-res-th-side .rb-res-dot {
+  display: inline-block;
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+
+.rb-res-th-name {
+  display: inline-block;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.rb-res-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 24px !important;
+  font-weight: 400;
+}
+
+.rb-res-metric-label {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.rb-res-metric-hint {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-3);
+}
+
+.rb-res-metric-note {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--rb-inner);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+}
+
+.rb-res-value {
+  padding-right: 12px !important;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--rb-text-2);
+}
+
+.rb-res-value > span:first-child {
+  display: block;
+}
+
+.rb-res-value-lead {
+  font-weight: 700;
+  color: var(--rb-text);
+}
+
+.rb-res-value-muted {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-3);
+}
+
+.rb-res-lead-tag {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+}
+
+.rb-res-value-lead[data-side='a'] .rb-res-lead-tag {
+  color: var(--rb-team-a);
+}
+
+.rb-res-value-lead[data-side='b'] .rb-res-lead-tag {
+  color: var(--rb-team-b);
+}
+
+/* fixes */
+
+.rb-res-fixes,
+.rb-res-scenes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rb-res-fix {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--rb-inner);
+}
+
+.rb-res-fix-file {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rb-res-fix-path {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rb-res-fix-base {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-res-fix-dir {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-res-fix-why {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+}
+
+.rb-res-fix-delta {
+  flex: none;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--rb-text-3);
+}
+
+.rb-res-fix-up {
+  color: var(--rb-text);
+}
+
+.rb-res-fix-wait {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rb-res-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rb-res-skeleton span {
+  height: 64px;
+  border-radius: 14px;
+  background: var(--rb-inner);
+  animation: rb-res-pulse 1.2s var(--rb-ease) infinite alternate;
+}
+
+@keyframes rb-res-pulse {
+  to {
+    opacity: 0.45;
+  }
+}
+
+.rb-res-fix-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 16px;
+  background: var(--rb-inner);
+}
+
+.rb-res-fix-error .rb-btn-secondary {
+  background: var(--rb-raised);
+}
+
+/* scenes */
+
+.rb-res-scene {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: var(--rb-inner);
+}
+
+.rb-res-scene-when {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-3);
+}
+
+.rb-res-scene-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.rb-res-scene-body {
+  font-size: 14px;
+  color: var(--rb-text-2);
+}
+
+/* settings */
+
+.rb-res-set-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.rb-res-set {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: var(--rb-inner);
+}
+
+.rb-res-set dl {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.rb-res-set dt {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-3);
+}
+
+.rb-res-set dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-2);
+  overflow-wrap: anywhere;
+}
+
+/* actions */
+
+.rb-res-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.rb-root .rb-res-rematch {
+  width: 240px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.rb-root .rb-res-home {
+  font-weight: 500;
+  height: 56px;
+  padding: 0 28px;
+  border-radius: 16px;
+  font-size: 17px;
+}
+
+.rb-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .rb-res-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 860px) {
+  .rb-res-verdict {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rb-res-survivors {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rb-res-headline {
+    font-size: 36px;
+  }
+
+  .rb-res-set-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rb-root .rb-res-rematch {
+    width: 100%;
+  }
+}
