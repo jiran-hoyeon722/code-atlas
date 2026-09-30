@@ -29,7 +29,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'city', label: '도시' },
   { id: 'graph', label: '그래프' },
   { id: 'explorer', label: '탐색기' },
-  { id: 'walk', label: '걷기 (시험)' },
+  { id: 'walk', label: '코드시티GTA' },
 ];
 const NO_WEBGL = '이 브라우저에서는 3D 화면을 쓸 수 없어요. 탐색기에서 같은 정보를 볼 수 있어요.';
 const FAIL_REASON = { syntax: '구문 오류', read: '읽기 실패' } as const;
