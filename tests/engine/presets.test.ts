@@ -202,7 +202,10 @@ describe('presetFor', () => {
     expect(p.roles[0].name).toBe('테스트');
     expect(roleOf('Tests/KitTests/Views/HomeViewTests.swift')).toBe('테스트');
     expect(roleOf('ShopTests/Models/CartTests.swift')).toBe('테스트');
-    expect(roleOf('Shop/App/Main.swift')).toBe('진입점');
+    expect(roleOf('Shop/App/Main.swift')).toBe('앱 타깃');
+    expect(roleOf('Sources/App/main.swift')).toBe('앱 타깃');
+    expect(roleOf('Sources/App/Models/User.swift')).toBe('도메인');
+    expect(roleOf('Sources/App/Controllers/Home.swift')).toBe('앱 타깃');
     expect(roleOf('ShopApp.swift')).toBe('진입점');
     expect(roleOf('Shop/AppDelegate.swift')).toBe('진입점');
     expect(roleOf('Shop/SceneDelegate.swift')).toBe('진입점');

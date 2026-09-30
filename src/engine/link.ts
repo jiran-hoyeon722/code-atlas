@@ -33,6 +33,8 @@ export interface LangModule {
   /** 대상 파일 목록. [] = 프로젝트 밖(무시), null = 프로젝트 안인데 못 찾음(미해결 +1). */
   resolveImport(from: string, specifier: string, index: ProjectIndex): string[] | null;
   symbolLinks: boolean;
+  /** Runs once after the index is built and before linking; may rewrite `scope` on `index.facts` entries. */
+  adjust?(index: ProjectIndex): void;
 }
 
 const dirOf = (path: string): string => {
@@ -85,6 +87,7 @@ export function extractProject(
 
   onLink?.();
   const index: ProjectIndex = { paths: new Set(sources.map((f) => f.path)), configs: input.configs, byDir, bySymbol, facts };
+  mod.adjust?.(index);
   const edges = new Map<string, Edge>();
   let unresolved = 0;
   const link = (from: string, to: string, kind: RefKind) => {

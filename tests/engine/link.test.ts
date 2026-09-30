@@ -47,6 +47,20 @@ const run = (files: Record<string, string>, mod = toy()) => extractProject('py',
 const pairs = (x: ReturnType<typeof run>) => x.edges.map((e) => `${e.from}→${e.to}`).sort();
 
 describe('extractProject', () => {
+  test('adjust runs once after the index is built and before linking', () => {
+    const seen: string[][] = [];
+    const mod: LangModule = {
+      ...toy(),
+      adjust(index) {
+        seen.push([...index.facts.keys()]);
+        for (const f of index.facts.values()) f.scope = 'merged';
+      },
+    };
+    const x = run({ 'a.py': 'scope one\nuse N', 'b.py': 'scope two\ndecl N' }, mod);
+    expect(seen).toEqual([['a.py', 'b.py']]);
+    expect(pairs(x)).toEqual(['a.py→b.py']);
+  });
+
   test('imports become weighted edges and self-imports are dropped', () => {
     const x = run({ 'a.py': 'import b\nimport b\nimport a', 'b.py': '' });
     expect(x.edges).toEqual([{ from: 'a.py', to: 'b.py', weight: 2, kinds: { import: 2 } }]);

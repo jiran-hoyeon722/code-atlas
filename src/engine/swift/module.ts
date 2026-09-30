@@ -1,6 +1,6 @@
 import type { Node, Parser } from 'web-tree-sitter';
 import { measure } from '../complexity';
-import type { FileFacts, LangModule } from '../link';
+import type { FileFacts, LangModule, ProjectIndex } from '../link';
 import type { SourceFile } from '../types';
 
 const nameOf = (path: string): string => path.slice(path.lastIndexOf('/') + 1).replace(/\.swift$/, '');
@@ -12,8 +12,17 @@ const kindOf = (path: string): string => {
   return /View(Controller)?$/.test(nameOf(path)) ? 'view' : 'type';
 };
 
-/** A SwiftPM target is one module; anything outside `Sources/<T>/`·`Tests/<T>/` (e.g. an Xcode project) counts as a single module. */
+/** Candidate SwiftPM target (`Sources/<T>/`·`Tests/<T>/`); `adjust` keeps it only beside a Package.swift. */
 const scopeOf = (path: string): string => /^(?:.*?\/)??(?:Sources|Tests)\/[^/]+\//.exec(path)?.[0] ?? '';
+
+/** Xcode/Tuist projects also use `Sources/` folders, but without a Package.swift the whole project is one module. */
+function adjust(index: ProjectIndex): void {
+  for (const f of index.facts.values()) {
+    if (f.scope === '') continue;
+    const root = f.scope.replace(/(?:Sources|Tests)\/[^/]+\/$/, '');
+    if (!index.paths.has(`${root}Package.swift`)) f.scope = '';
+  }
+}
 
 const DECLARATIONS = new Set(['class_declaration', 'protocol_declaration', 'typealias_declaration', 'function_declaration']);
 
@@ -66,4 +75,4 @@ function extractFile(parser: Parser, file: SourceFile): FileFacts {
 /** Swift imports name whole modules (`import UIKit`), so they never point at a file. */
 const resolveImport = (): string[] => [];
 
-export const swiftModule: LangModule = { extractFile, resolveImport, symbolLinks: true };
+export const swiftModule: LangModule = { extractFile, resolveImport, symbolLinks: true, adjust };

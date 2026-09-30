@@ -19,7 +19,7 @@ describe('swiftModule.extractFile', () => {
     expect(f.wildcards).toEqual([]);
   });
 
-  test('scope is the SwiftPM target folder, else the whole project', () => {
+  test('scope is the SwiftPM target folder candidate, else the whole project', () => {
     expect(facts('struct A {}', 'Sources/Kit/Models/A.swift').scope).toBe('Sources/Kit/');
     expect(facts('struct A {}', 'Tests/KitTests/ATests.swift').scope).toBe('Tests/KitTests/');
     expect(facts('struct A {}', 'Packages/Core/Sources/Core/A.swift').scope).toBe('Packages/Core/Sources/Core/');
@@ -109,6 +109,7 @@ describe('swift project linking', () => {
 
   test('mentions link inside one target only; imports add nothing', () => {
     const x = run({
+      'Package.swift': 'import PackageDescription\n',
       'Sources/Kit/Note.swift': 'public struct Note {}\n',
       'Sources/Kit/Store.swift': 'import Foundation\npublic final class Store { var notes: [Note] = []; func add() { notes.append(Note()) } }\n',
       'Sources/App/Main.swift': 'import Kit\nlet store = Store()\nlet n: Note? = nil\n',
@@ -122,5 +123,24 @@ describe('swift project linking', () => {
       ['Sources/Kit/Store.swift→Sources/Kit/Note.swift', { 'class-ref': 2 }],
     ]);
     expect(x.unresolved).toBe(0);
+  });
+
+  test('without a Package.swift beside it, Sources/ is just a folder', () => {
+    const x = run({
+      'App/Sources/Views/HomeView.swift': 'struct HomeView { let u: User }\n',
+      'App/Sources/Models/User.swift': 'struct User {}\n',
+    });
+    expect(x.edges.map((e) => `${e.from}→${e.to}`)).toEqual(['App/Sources/Views/HomeView.swift→App/Sources/Models/User.swift']);
+  });
+
+  test('a nested package keeps its target scopes', () => {
+    const x = run({
+      'Packages/Kit/Package.swift': 'import PackageDescription\n',
+      'Packages/Kit/Sources/Kit/Store.swift': 'struct Store { let n: Note }\n',
+      'Packages/Kit/Sources/Kit/Note.swift': 'struct Note {}\n',
+      'Packages/Kit/Sources/Other/Uses.swift': 'let s = Store()\n',
+      'App/Main.swift': 'let s = Store()\n',
+    });
+    expect(x.edges.map((e) => `${e.from}→${e.to}`)).toEqual(['Packages/Kit/Sources/Kit/Store.swift→Packages/Kit/Sources/Kit/Note.swift']);
   });
 });
