@@ -1,10 +1,8 @@
 import type { Parsers } from './parsers';
-import type { Extraction, Lang, RepoInput } from './types';
-import { detect, type Detection } from './detect';
+import type { Lang, RepoInput } from './types';
+import { detect } from './detect';
 import { sourcesFor } from './sources';
-import { extractPhpProject } from './php/project';
-import { extractTsProject } from './ts/project';
-import { extractProject, type LangModule } from './link';
+import { extractorFor } from './extractors';
 import { compileRoles, presetFor } from './presets';
 import { buildArchitecture, type Architecture } from './architecture';
 
@@ -18,25 +16,6 @@ export class UnsupportedRepoError extends Error {
     super('No supported source files found');
     this.name = 'UnsupportedRepoError';
   }
-}
-
-type Extractor = (
-  input: RepoInput,
-  detection: Detection,
-  parsers: Parsers,
-  onFile?: (path: string) => void,
-  onLink?: () => void,
-) => Extraction;
-
-const MODULES: Partial<Record<Lang, LangModule>> = {};
-
-const EXTRACTORS: Partial<Record<Lang, Extractor>> = { php: extractPhpProject, ts: extractTsProject };
-
-function extractorFor(lang: Lang): Extractor | null {
-  const direct = EXTRACTORS[lang];
-  if (direct) return direct;
-  const mod = MODULES[lang];
-  return mod ? (...args) => extractProject(lang, mod, ...args) : null;
 }
 
 export interface AnalyzeOptions {

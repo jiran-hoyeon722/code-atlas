@@ -35,16 +35,17 @@ test('react without src uses root and app route dir', () => {
   const d = detect({ name: 'x', configs: { 'package.json': '{"devDependencies":{"react":"1"}}' }, files: [{ path: 'app/page.tsx', text: '' }] });
   expect(d).toEqual({ lang: 'ts', framework: 'react', sourceDir: '', routeDirs: ['app'] });
 });
-test('a new language with the most files wins and has no framework', () => {
-  const d = detect({ name: 'x', configs: {}, files: [{ path: 'a.php', text: '' }, { path: 'm/a.py', text: '' }, { path: 'm/b.py', text: '' }] });
-  expect(d).toEqual({ lang: 'py', framework: null, sourceDir: '', routeDirs: [] });
+test('languages without an extractor are not counted', () => {
+  const files = ['a.php', 'b.php', 's/1.sh', 's/2.sh', 's/3.sh', 'tool.py'].map((path) => ({ path, text: '' }));
+  expect(detect({ name: 'x', configs: {}, files })).toEqual({ lang: 'php', framework: null, sourceDir: '', routeDirs: [] });
+});
+test('a repo with only unsupported sources → null', () => {
+  expect(detect({ name: 'x', configs: {}, files: [{ path: 'm/a.py', text: '' }, { path: 'm/b.py', text: '' }] })).toBeNull();
+});
+test('prefer for a language without an extractor is ignored', () => {
+  const files = [{ path: 'a.ts', text: '' }, { path: 'run.sh', text: '' }, { path: 'x.sh', text: '' }];
+  expect(detect({ name: 'x', configs: {}, files }, 'shell')?.lang).toBe('ts');
 });
 test('ties go to the earlier language in ALL_LANGS', () => {
-  const files = [{ path: 'a.go', text: '' }, { path: 'b.sh', text: '' }, { path: 'c.java', text: '' }];
-  expect(detect({ name: 'x', configs: {}, files })?.lang).toBe('go');
   expect(detect({ name: 'x', configs: {}, files: [{ path: 'a.ts', text: '' }, { path: 'b.php', text: '' }] })?.lang).toBe('php');
-});
-test('prefer picks a new language when it has files', () => {
-  const d = detect({ name: 'x', configs: {}, files: [{ path: 'a.php', text: '' }, { path: 'b.php', text: '' }, { path: 'run.sh', text: '' }] }, 'shell');
-  expect(d).toEqual({ lang: 'shell', framework: null, sourceDir: '', routeDirs: [] });
 });

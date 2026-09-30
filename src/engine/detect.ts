@@ -1,6 +1,7 @@
 import type { Lang, RepoInput } from './types';
 import { isSourcePath } from './collect';
 import { ALL_LANGS } from './langs';
+import { hasExtractor } from './extractors';
 
 export interface Detection {
   lang: Lang;
@@ -27,7 +28,7 @@ export function detect(input: RepoInput, prefer?: Lang): Detection | null {
   const count: Partial<Record<Lang, number>> = {};
   for (const f of input.files) {
     const l = isSourcePath(f.path);
-    if (l) count[l] = (count[l] ?? 0) + 1;
+    if (l && hasExtractor(l)) count[l] = (count[l] ?? 0) + 1;
   }
   let lang: Lang | null = prefer && (count[prefer] ?? 0) > 0 ? prefer : null;
   if (!lang) {

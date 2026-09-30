@@ -79,6 +79,11 @@ describe('extractProject', () => {
     expect(run(files, toy(false)).edges).toEqual([]);
   });
 
+  test('a name declared twice in one file is indexed once', () => {
+    const x = run({ 'a.py': 'use X', 'b.py': 'decl X\ndecl X' });
+    expect(x.edges).toEqual([{ from: 'a.py', to: 'b.py', weight: 1, kinds: { 'class-ref': 1 } }]);
+  });
+
   test('a file that throws is kept as a node and reported as read failure', () => {
     const seen: string[] = [];
     let linked = 0;

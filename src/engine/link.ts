@@ -24,6 +24,7 @@ export interface ProjectIndex {
   configs: Record<string, string>;
   byDir: ReadonlyMap<string, string[]>;
   bySymbol: ReadonlyMap<string, string[]>;
+  /** Files whose extraction threw are in `paths`/`byDir` but not here. */
   facts: ReadonlyMap<string, FileFacts>;
 }
 
@@ -77,7 +78,7 @@ export function extractProject(
     }
     if (f.hasError) failed.push({ path: file.path, reason: 'syntax' });
     facts.set(file.path, f);
-    for (const name of f.declares) push(bySymbol, name, file.path);
+    for (const name of new Set(f.declares)) push(bySymbol, name, file.path);
     nodes.push({ id: file.path, name: f.name, kind: f.kind, lines: f.lines, functions: f.functions, complexity: f.complexity, maxComplexity: f.maxComplexity });
     onFile?.(file.path);
   }
