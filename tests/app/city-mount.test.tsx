@@ -221,3 +221,26 @@ test('a hub level lists 40 files and counts the rest', () => {
   expect(section()!.textContent).toContain('외 5개');
   dispose();
 });
+
+test('reduced motion paints final state at once', () => {
+  vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce') }));
+  const { root, button, dispose } = mountBlast();
+  fireEvent.click(button());
+  expect(root.dataset.blastDone).toBe('1');
+  fireEvent.click(button());
+  expect(root.dataset.blastDone).toBeUndefined();
+  dispose();
+});
+
+test('re-selecting the same building keeps blast on', () => {
+  const { root, button, section, last, dispose } = mountBlast();
+  fireEvent.click(button());
+  const q = root.querySelector<HTMLInputElement>('[data-el="q"]')!;
+  q.value = 'lib/core';
+  fireEvent.input(q);
+  fireEvent.keyDown(q, { key: 'Enter' });
+  expect(section()).not.toBeNull();
+  expect(button().getAttribute('aria-pressed')).toBe('true');
+  expect(last()).toEqual({ file: 'lib/core.ts', blast: true });
+  dispose();
+});

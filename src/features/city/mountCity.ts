@@ -23,6 +23,9 @@ function blastColor(level: number, maxDepth: number) {
   const t = maxDepth <= 1 ? 0 : (level - 1) / (maxDepth - 1);
   return new THREE.Color().setHSL(0.14 * t, 0.85, 0.5 + 0.12 * t);
 }
+const BLAST_STEP = 400;
+const BLAST_PULSE = 300;
+const reduceMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 type HeightKey = 'fanIn' | 'fanOut' | 'centrality' | 'routeRefs' | 'functions' | 'maxComplexity' | 'lines';
 type ColorKey = 'role' | 'instability' | 'upward' | 'maxComplexity';
@@ -271,7 +274,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
 
   const state = {
     height: 'fanIn' as HeightKey, color: 'role' as ColorKey, selected: null as CityNode | null, hidden: new Set<number>(),
-    blast: null as { result: BlastResult; skipTypeOnly: boolean; startedAt: number } | null,
+    blast: null as { result: BlastResult; skipTypeOnly: boolean; startedAt: number; shown: number; pulse: number; reach: number; done: boolean } | null,
   };
   const routeRefs = nodes.map((n) => n.routeRefs);
   const matrix = new THREE.Matrix4();
@@ -279,14 +282,19 @@ export const mountCity: MountViewer = (root, arch, env) => {
   const gray = new THREE.Color('#2a2d35');
   const tmp = new THREE.Color();
 
+  const position = new THREE.Vector3();
+  const scale = new THREE.Vector3();
+  function placeBuilding(n: CityNode, stretch = 1) {
+    const visible = !state.hidden.has(n.role);
+    const fp = visible ? n.fp : 0.0001;
+    matrix.compose(position.set(n.cx, 0.5, n.cz), quaternion, scale.set(fp, visible ? n.h * stretch : 0.0001, fp));
+    buildings.setMatrixAt(n.i, matrix);
+  }
   function applyHeights() {
     const max = Math.max(1, ...nodes.map((n) => n[state.height]));
     nodes.forEach((n) => {
-      const visible = !state.hidden.has(n.role);
       n.h = 0.8 + ((MAX_HEIGHT - 0.8) * Math.sqrt(Math.max(0, n[state.height]))) / Math.sqrt(max);
-      const fp = visible ? n.fp : 0.0001;
-      matrix.compose(new THREE.Vector3(n.cx, 0.5, n.cz), quaternion, new THREE.Vector3(fp, visible ? n.h : 0.0001, fp));
-      buildings.setMatrixAt(n.i, matrix);
+      placeBuilding(n);
     });
     buildings.instanceMatrix.needsUpdate = true;
     buildings.computeBoundingSphere();
@@ -310,11 +318,12 @@ export const mountCity: MountViewer = (root, arch, env) => {
   function applyColors() {
     const sel = state.selected;
     const blast = state.blast?.result;
+    const shown = state.blast?.shown ?? 0;
     nodes.forEach((n) => {
       const c = baseColor(n);
       if (blast) {
         const d = blast.depth[n.i];
-        if (d > 0) c.copy(blastColor(d, blast.maxDepth)); else if (d < 0) c.lerp(gray, 0.88);
+        if (d > 0 && d <= shown) c.copy(blastColor(d, blast.maxDepth)); else if (d !== 0) c.lerp(gray, 0.88);
       } else if (sel && n !== sel && !sel.neighbors.has(n.i)) c.lerp(gray, 0.88);
       buildings.setColorAt(n.i, c);
     });
@@ -331,6 +340,30 @@ export const mountCity: MountViewer = (root, arch, env) => {
     const fp = n.fp + 0.35;
     box.position.set(n.cx, 0.5, n.cz);
     box.scale.set(fp, n.h + 0.3, fp);
+  }
+
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.92, 1, 96),
+    new THREE.MeshBasicMaterial({ color: '#ff5c5c', transparent: true, side: THREE.DoubleSide, depthWrite: false }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.visible = false;
+  scene.add(ring);
+  function pulseLevel(level: number, stretch: number) {
+    state.blast!.result.levels[level - 1].forEach((i) => placeBuilding(nodes[i], stretch));
+    buildings.instanceMatrix.needsUpdate = true;
+  }
+  function endWave() {
+    ring.visible = false;
+    delete root.dataset.blastDone;
+    if (state.blast?.pulse) pulseLevel(state.blast.pulse, 1);
+  }
+  function finishWave() {
+    const b = state.blast!;
+    if (b.pulse) pulseLevel(b.pulse, 1);
+    Object.assign(b, { shown: b.result.maxDepth, pulse: 0, done: true });
+    ring.visible = false;
+    root.dataset.blastDone = '1';
   }
 
   // ---- dependency arcs for the selected building ----
@@ -396,10 +429,13 @@ export const mountCity: MountViewer = (root, arch, env) => {
   function select(n: CityNode | null, fly = false) {
     const prev = state.selected;
     const hadBlast = !!state.blast;
-    state.blast = null;
+    if (!n || n !== prev) {
+      endWave();
+      state.blast = null;
+    }
     state.selected = n;
     applyColors();
-    drawArcs(n);
+    drawArcs(state.blast ? null : n);
     placeBox(selectBox, n);
     reporter.report(currentSelection());
     if (!n) {
@@ -414,7 +450,19 @@ export const mountCity: MountViewer = (root, arch, env) => {
     const n = state.selected;
     if (!n) return;
     const skipTypeOnly = on && !!state.blast?.skipTypeOnly;
-    state.blast = on ? { result: blastRadius(nodes.length, arch.edges, n.i, routeRefs, { skipTypeOnly }), skipTypeOnly, startedAt: performance.now() } : null;
+    endWave();
+    state.blast = null;
+    if (on) {
+      const result = blastRadius(nodes.length, arch.edges, n.i, routeRefs, { skipTypeOnly });
+      const reach = nodes.reduce((m, o) => (result.depth[o.i] > 0 ? Math.max(m, Math.hypot(o.cx - n.cx, o.cz - n.cz)) : m), 0) + 10;
+      state.blast = { result, skipTypeOnly, startedAt: performance.now(), shown: 0, pulse: 0, reach, done: false };
+      if (reduceMotion() || !result.maxDepth) finishWave();
+      else {
+        ring.position.set(n.cx, 0.3, n.cz);
+        ring.scale.setScalar(0.001);
+        ring.visible = true;
+      }
+    }
     drawArcs(on ? null : n);
     applyColors();
     renderPanel(n);
@@ -705,6 +753,24 @@ export const mountCity: MountViewer = (root, arch, env) => {
       controls.target.lerpVectors(flight.fromTarget, flight.toTarget, k);
       if (t === 1) flight = null;
     }
+    const b = state.blast;
+    if (b && !b.done) {
+      const elapsed = now - b.startedAt;
+      const total = b.result.maxDepth * BLAST_STEP;
+      if (elapsed >= total) {
+        finishWave();
+        applyColors();
+      } else {
+        const shown = Math.min(b.result.maxDepth, Math.floor(elapsed / BLAST_STEP) + 1);
+        if (shown !== b.shown) { b.shown = shown; applyColors(); }
+        const p = (elapsed - (shown - 1) * BLAST_STEP) / BLAST_PULSE;
+        if (b.pulse && (p >= 1 || b.pulse !== shown)) { pulseLevel(b.pulse, 1); b.pulse = 0; }
+        if (p < 1) { b.pulse = shown; pulseLevel(shown, 1 + 0.15 * Math.sin(Math.PI * p)); }
+        const t = elapsed / total;
+        ring.scale.setScalar(Math.max(0.001, t * b.reach));
+        (ring.material as THREE.MeshBasicMaterial).opacity = 0.6 * (1 - t);
+      }
+    }
     controls.update();
     renderer.render(scene, camera);
   });
@@ -731,6 +797,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     renderer.dispose();
     renderer.forceContextLoss();
     root.innerHTML = '';
+    delete root.dataset.blastDone;
     root.classList.remove('cc-city');
   };
 };

@@ -194,6 +194,15 @@ async function main() {
       await shot(page, 'city-code.png');
     });
 
+    await step('city: blast radius', async () => {
+      await page.keyboard.press('Escape');
+      await page.click('[data-el=panel-body] [data-blast]');
+      await page.waitForSelector('.cc-city[data-blast-done]', { state: 'attached', timeout: 10_000 });
+      const summary = await page.locator('.blast-summary').textContent();
+      assert(summary.startsWith('직접'), `unexpected blast summary: "${summary}"`);
+      await shot(page, 'city-blast.png');
+    });
+
     await step('graph tab renders', async () => {
       await page.click('.ca-shell [role=tab]:has-text("그래프")');
       await page.waitForSelector('.ca-shell-mount .cg-canvas canvas', { timeout: 30_000 });
