@@ -14,7 +14,7 @@ import { GithubError, fetchGithubText, githubLabel, openGithub, parseGithubUrl, 
 import { loadSample, loadSampleManifest, type SampleRepo } from './files/samples';
 import { fromDirectoryHandle, fromEntry, fromFileList } from './files/sources';
 import type { Entry, FsDir, Listing } from './files/types';
-import { isTooMany, listRepo, loadRepo } from './files/walk';
+import { forLang, isTooMany, listRepo, loadRepo } from './files/walk';
 
 export interface SessionDeps {
   startAnalysis: typeof startAnalysis;
@@ -273,7 +273,6 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
       listing = await listRepo(counting(src.dir, () => { found++; onFound(undefined); }));
       if (!alive()) return;
       if (listing.sources.length === 0) return fail(NOTICE.noFiles);
-      if (src.origin && listing.sources.length > GITHUB_MAX_FILES) return toLanding(githubTooMany(listing.sources.length), src.origin);
       key = src.origin ? githubKey(src.origin) : await deps.cache.cacheKey(listing);
     } catch {
       if (alive()) fail(NOTICE.readFailed);
@@ -306,14 +305,15 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
 
     setStep({ phase: 'list', found: listing.sources.length });
 
-    if (isTooMany(listing)) {
+    // GitHub is held to its own, smaller cap on the chosen language below.
+    if (!src.origin && isTooMany(listing)) {
       const ok = await ask<boolean>({ phase: 'confirmTooMany', tooMany: listing.sources.length });
       if (!alive()) return;
       if (!ok) return toLanding();
     }
 
     const counts = countLangs(listing.sources.map((e) => e.path));
-    const { ask: choices } = pickLang(counts);
+    const { lang: picked, ask: choices } = pickLang(counts);
     const phpTs = (counts.php ?? 0) > 0 && (counts.ts ?? 0) > 0;
     let prefer: Lang | undefined;
     if (phpTs) prefer = await frameworkLang(listing);
@@ -325,9 +325,13 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
       prefer = choice;
     }
 
+    const lang = prefer ?? picked;
+    const chosen = lang ? forLang(listing, lang) : listing;
+    if (src.origin && chosen.sources.length > GITHUB_MAX_FILES) return toLanding(githubTooMany(chosen.sources.length), src.origin);
+
     setState((s) => ({ ...s, phase: 'reading', tooMany: undefined, langCounts: undefined, langChoices: undefined }));
     const onRead = throttled((v: { done: number; total: number }) => setStep({ phase: 'read', ...v }));
-    const input = await loadRepo(listing, (done, total) => onRead({ done, total }));
+    const input = await loadRepo(chosen, (done, total) => onRead({ done, total }));
     if (!alive()) return;
 
     const detection = detect(input, prefer);

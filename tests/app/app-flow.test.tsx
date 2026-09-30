@@ -481,6 +481,7 @@ test('go folder with helper shell scripts opens as go without asking', async () 
   await waitFor(() => expect(runs).toHaveLength(1));
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(runs[0].input.configs['go.mod']).toBe('module example.com/svc');
+  expect(runs[0].input.files.map((f) => f.path)).toEqual(['main.go']);
   await finish(runs[0], 'go');
   expect(await screen.findByText('viewer:svc:go')).toBeTruthy();
 });
@@ -499,6 +500,20 @@ test('folder with both laravel and react still asks', async () => {
   fireEvent.click(within(dialog).getByRole('button', { name: /PHP/ }));
   await waitFor(() => expect(runs).toHaveLength(1));
   expect(runs[0].prefer).toBe('php');
+  expect(runs[0].input.files.map((f) => f.path).sort()).toEqual(['app/User.php', 'resources/js/App.tsx']);
+});
+
+test('a ts folder with python files reads only the chosen language', async () => {
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  drop(items(dirHandle('web', {
+    ...tsRepo,
+    tools: { 'gen.py': 'print(1)', 'sync.py': 'print(2)', 'lint.py': 'print(3)' },
+  })));
+  const dialog = await screen.findByRole('dialog', { name: LANG_QUESTION });
+  fireEvent.click(within(dialog).getByRole('button', { name: /TypeScript/ }));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(runs[0].input.files.map((f) => f.path).sort()).toEqual(['src/a.ts', 'src/b.ts']);
 });
 
 test('while the language dialog is open the landing is inert and ignores drops', async () => {
@@ -616,6 +631,17 @@ test('a huge github repo asks for a subfolder instead of downloading', async () 
   expect(alert.textContent).toContain('하위 폴더 주소');
   expect(github.calls.filter((u) => u.startsWith('https://raw.githubusercontent.com')).length).toBeLessThanOrEqual(1);
   expect(runs).toHaveLength(0);
+});
+
+test('a github repo opens when its language is under the cap even if other files push it over', async () => {
+  github.files = { 'src/a.ts': 'export const a = 1;', 'src/b.ts': 'import { a } from "./a";' };
+  for (let i = 0; i < GITHUB_MAX_FILES; i++) github.files[`scripts/s${i}.sh`] = 'echo hi';
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  openGithub('acme/shop');
+  await waitFor(() => expect(runs).toHaveLength(1), { timeout: 5000 });
+  expect(runs[0].input.files.map((f) => f.path).sort()).toEqual(['src/a.ts', 'src/b.ts']);
+  expect(github.calls.filter((u) => u.startsWith('https://raw.githubusercontent.com') && u.endsWith('.sh'))).toEqual([]);
 });
 
 test('cancelling while GitHub resolves drops the result', async () => {

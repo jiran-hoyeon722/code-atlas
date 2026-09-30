@@ -1,5 +1,6 @@
 import { MAX_FILES, isConfigPath, isSourcePath, parseGitignore, shouldSkipDir } from '../../engine/collect';
-import type { RepoInput } from '../../engine/types';
+import { isBuildScript } from '../../engine/sources';
+import type { Lang, RepoInput } from '../../engine/types';
 import type { Entry, FsDir, Listing } from './types';
 
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -80,4 +81,17 @@ export async function loadRepo(
 
 export function isTooMany(listing: Listing): boolean {
   return listing.sources.length > MAX_FILES;
+}
+
+// PHP and TS repos keep both languages, as before multi-language support: detect() still looks at the other's folders.
+const OLD_PAIR: ReadonlySet<Lang> = new Set(['php', 'ts']);
+
+/** The listing narrowed to the files the analysis of `lang` reads. */
+export function forLang(listing: Listing, lang: Lang): Listing {
+  const keep = (path: string) => {
+    const l = isSourcePath(path);
+    if (!l || isBuildScript(path)) return false;
+    return l === lang || (OLD_PAIR.has(lang) && OLD_PAIR.has(l));
+  };
+  return { ...listing, sources: listing.sources.filter((e) => keep(e.path)) };
 }
