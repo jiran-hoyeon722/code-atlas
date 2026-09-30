@@ -3,7 +3,9 @@ import { nodeLocate } from '../../../src/engine/node';
 import type { RepoInput } from '../../../src/engine/types';
 import type { FromWorker } from '../../../src/features/battle/worker/protocol';
 import { handle } from '../../../src/features/battle/worker/worker';
-import { startQuality, QualityCancelled, QualityError } from '../../../src/features/battle/worker/client';
+import { startPredict, startQuality, QualityCancelled, QualityError } from '../../../src/features/battle/worker/client';
+import { predict } from '../../../src/engine/battle/sim';
+import { qfile, quality } from './fakes';
 import { loadFixture } from '../../engine/battle/fixture';
 
 const locate = () => nodeLocate;
@@ -112,5 +114,64 @@ describe('battle worker client', () => {
     } finally {
       createObjectURL.mockRestore();
     }
+  });
+});
+
+describe('battle worker predict', () => {
+  const pair = () => {
+    const a = quality('alpha', { totals: { prodLines: 1200, testLines: 0, testFiles: 0 }, files: [qfile('src/a.ts', 1200, { ccnTier: new Array(1200).fill(2) })] });
+    const b = quality('beta', { totals: { prodLines: 1200, testLines: 0, testFiles: 0 }, files: [qfile('src/b.ts', 1200)] });
+    return { a, b };
+  };
+
+  test('posts one progress per finished match, then the same counts as the engine', async () => {
+    const { a, b } = pair();
+    const msgs: FromWorker[] = [];
+    await handle({ type: 'predict', a, b, runs: 6 }, (m) => msgs.push(m));
+    const progress = msgs.filter((m) => m.type === 'predict-progress');
+    expect(progress).toEqual([1, 2, 3, 4, 5, 6].map((done) => ({ type: 'predict-progress', done, runs: 6 })));
+    const last = msgs.at(-1)!;
+    expect(last).toEqual({ type: 'predict-done', prediction: predict(a, b, 6) });
+    if (last.type === 'predict-done') expect(last.prediction.aWins + last.prediction.bWins + last.prediction.draws).toBe(6);
+  });
+
+  test('an army that cannot be built reports an error', async () => {
+    const { b } = pair();
+    const tiny = quality('tiny', { files: [qfile('a.ts', 10)] });
+    const msgs: FromWorker[] = [];
+    await handle({ type: 'predict', a: tiny, b, runs: 3 }, (m) => msgs.push(m));
+    expect(msgs).toEqual([expect.objectContaining({ type: 'error', code: 'failed' })]);
+  });
+
+  describe('client', () => {
+    beforeEach(() => vi.stubGlobal('document', { baseURI: 'http://localhost/app/index.html' }));
+    afterEach(() => vi.unstubAllGlobals());
+
+    test('startPredict posts the pair with 100 runs, reports progress and resolves', async () => {
+      const { a, b } = pair();
+      const w = new FakeWorker();
+      const onProgress = vi.fn();
+      const { result } = startPredict(a, b, { onProgress, createWorker: () => w as unknown as Worker });
+      expect(w.posted[0]).toEqual({ type: 'predict', a, b, runs: 100 });
+      w.emit({ type: 'predict-progress', done: 1, runs: 100 });
+      expect(onProgress).toHaveBeenCalledWith(1, 100);
+      const prediction = { runs: 100, aWins: 60, bWins: 40, draws: 0 };
+      w.emit({ type: 'predict-done', prediction });
+      await expect(result).resolves.toEqual(prediction);
+      expect(w.terminate).toHaveBeenCalledTimes(1);
+    });
+
+    test('startPredict cancel and errors reject', async () => {
+      const { a, b } = pair();
+      const w = new FakeWorker();
+      const job = startPredict(a, b, { runs: 5, onProgress: vi.fn(), createWorker: () => w as unknown as Worker });
+      expect(w.posted[0]).toMatchObject({ runs: 5 });
+      job.cancel();
+      await expect(job.result).rejects.toBeInstanceOf(QualityCancelled);
+      const w2 = new FakeWorker();
+      const job2 = startPredict(a, b, { onProgress: vi.fn(), createWorker: () => w2 as unknown as Worker });
+      w2.emit({ type: 'error', code: 'failed', message: 'boom' });
+      await expect(job2.result).rejects.toMatchObject({ code: 'failed', message: 'boom' });
+    });
   });
 });

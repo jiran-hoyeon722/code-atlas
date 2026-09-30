@@ -59,7 +59,8 @@
   margin: 0;
 }
 
-.rb-root button {
+/* zero specificity so .rb-btn-* sizes and weights win */
+:where(.rb-root button) {
   font: inherit;
   letter-spacing: inherit;
 }

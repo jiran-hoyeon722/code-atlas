@@ -5,7 +5,7 @@ import { isTooMany, listRepo, loadRepo } from '../../../app/files/walk';
 import { LIMITS } from '../../../engine/battle/rules';
 import type { Quality } from '../../../engine/battle/types';
 import { MAX_FILES } from '../../../engine/collect';
-import type { BattleDeps } from '../deps';
+import { MEASURE_MSG, MeasureError, type BattleDeps } from '../deps';
 
 export type SlotState =
   | { kind: 'empty' }
@@ -15,13 +15,13 @@ export type SlotState =
   | { kind: 'error'; message: string; detail?: string };
 
 export const MSG = {
-  tooSmall: `코드가 ${LIMITS.minLines}줄보다 적어서 대결할 수 없어요`,
+  tooSmall: MEASURE_MSG.tooSmall,
   tooMany: `파일이 ${MAX_FILES.toLocaleString('ko-KR')}개보다 많아요. 소스 폴더(예: src)만 골라 주세요`,
   noSources: '이 폴더에서 PHP나 TypeScript·JavaScript 코드를 찾지 못했어요',
   noFiles: '폴더가 비어 있어요. 코드가 있는 폴더를 골라 주세요',
   notFolder: '파일 말고 폴더를 끌어다 놓아 주세요',
   readFailed: '폴더를 읽지 못했어요. 다시 골라 주세요',
-  measureFailed: '품질을 재지 못했어요',
+  measureFailed: MEASURE_MSG.failed,
   measuring: '품질을 재는 중이에요',
 } as const;
 
@@ -73,7 +73,8 @@ export function useSlot(deps: BattleDeps, initial?: Quality) {
     } catch (e) {
       if (!alive()) return;
       cancelJob.current = null;
-      setState({ kind: 'error', message: MSG.measureFailed, detail: e instanceof Error && e.message ? e.message : undefined });
+      if (e instanceof MeasureError) setState({ kind: 'error', message: e.message, detail: e.detail });
+      else setState({ kind: 'error', message: MSG.measureFailed, detail: e instanceof Error && e.message ? e.message : undefined });
     }
   }, [deps, stop]);
 
