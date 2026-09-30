@@ -117,8 +117,13 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
     LOADERS[tab]().then(
       (mount) => {
         if (!live) return;
-        setStatus('idle');
-        dispose = mount(host, arch, env);
+        try {
+          dispose = mount(host, arch, env);
+          setStatus('idle');
+        } catch {
+          host.replaceChildren();
+          setStatus('error');
+        }
       },
       () => {
         if (live) setStatus('error');

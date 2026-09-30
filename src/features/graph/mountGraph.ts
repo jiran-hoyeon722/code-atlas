@@ -339,6 +339,8 @@ export const mountGraph: MountViewer = (root, arch, env) => {
     observer?.disconnect();
     timers.forEach(clearTimeout);
     listeners.forEach(([t, type, fn]) => t.removeEventListener(type, fn));
+    // _destructor leaves the WebGL context alive; browsers cap live contexts, so tab switches would exhaust them
+    Graph.renderer().forceContextLoss();
     Graph._destructor();
     wrap.remove();
   };

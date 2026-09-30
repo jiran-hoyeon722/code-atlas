@@ -111,6 +111,35 @@ describe('client', () => {
     await expect(result).rejects.toBeInstanceOf(UnsupportedRepo);
   });
 
+  test('default worker is a blob: module worker that imports the real worker script', async () => {
+    const calls: { url: string; opts: WorkerOptions }[] = [];
+    const blobs: Blob[] = [];
+    vi.stubGlobal(
+      'Worker',
+      class extends FakeWorker {
+        constructor(url: string | URL, opts: WorkerOptions) {
+          super();
+          calls.push({ url: String(url), opts });
+        }
+        addEventListener() {}
+      },
+    );
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => {
+      blobs.push(b as Blob);
+      return 'blob:http://localhost/1';
+    });
+    try {
+      startAnalysis(input, { onProgress: vi.fn() });
+      expect(calls).toEqual([{ url: 'blob:http://localhost/1', opts: { type: 'module' } }]);
+      const src = await blobs[0].text();
+      expect(src).toMatch(/^import "[^"]+";$/);
+      expect(src).toMatch(/worker/);
+      expect(blobs[0].type).toBe('text/javascript');
+    } finally {
+      createObjectURL.mockRestore();
+    }
+  });
+
   test('failed error and worker onerror reject with Error', async () => {
     const w = new FakeWorker();
     const { result } = start(w);

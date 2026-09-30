@@ -7,3 +7,4 @@ body { font-family: system-ui, sans-serif; background: #0b0f17; color: #e6e8eb; 
   background: rgba(22, 28, 40, .9); border: 1px solid rgba(255, 169, 77, .35); color: #ffd8a8; font-size: 12.5px;
 }
 .ca-app-skipped button { border: 0; background: transparent; color: inherit; font-size: 15px; cursor: pointer; }
+.ca-app-notice { top: 104px; border-color: rgba(255, 107, 107, .45); color: #ffc9c9; }

@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+import workerUrl from './worker.ts?worker&url';
 import type { Architecture } from '../../engine/architecture';
 import type { Progress } from '../../engine/analyze';
 import type { Lang, RepoInput } from '../../engine/types';
@@ -17,7 +19,17 @@ export class UnsupportedRepo extends Error {
   }
 }
 
-const defaultWorker = () => new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+// A worker loaded from its own URL takes CSP from response headers (none on static hosting);
+// a blob: worker inherits the document's meta CSP, so the repo sources stay behind connect-src 'self'.
+const defaultWorker = () => {
+  const src = `import ${JSON.stringify(new URL(workerUrl, document.baseURI).href)};`;
+  const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+  const worker = new Worker(url, { type: 'module' });
+  const revoke = () => URL.revokeObjectURL(url);
+  worker.addEventListener('message', revoke, { once: true });
+  worker.addEventListener('error', revoke, { once: true });
+  return worker;
+};
 
 export function startAnalysis(
   input: RepoInput,

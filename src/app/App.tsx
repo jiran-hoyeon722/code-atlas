@@ -25,6 +25,12 @@ export function App({ deps }: { deps?: Partial<SessionDeps> }) {
           onOpenOther={s.onOpenOther}
         />
         {v.skipped > 0 && <SkippedNote key={v.id} count={v.skipped} />}
+        {state.notice && (
+          <div className="ca-app-skipped ca-app-notice" role="alert">
+            <span>{state.notice}</span>
+            <button type="button" aria-label="닫기" onClick={s.onDismissNotice}>×</button>
+          </div>
+        )}
         {!s.hasPicker && <FolderInput onFiles={s.onFiles} inputRef={s.viewerInput} />}
       </>
     );
