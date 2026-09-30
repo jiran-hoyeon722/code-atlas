@@ -79,24 +79,56 @@ export function findClones(files: { path: string; text: string }[]): CloneResult
     }
   });
 
-  const groupOf = new Map<string, number>();
-  for (const w of windows) {
-    if ((counts.get(w.key) ?? 0) < 2) continue;
-    let group = groupOf.get(w.key);
-    const first = group === undefined;
-    if (group === undefined) {
-      group = groupOf.size;
-      groupOf.set(w.key, group);
+  const keyId = new Map<string, number>();
+  const parent: number[] = [];
+  const find = (x: number): number => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
     }
+    return x;
+  };
+  const dup: (number | undefined)[] = windows.map((w) => {
+    if ((counts.get(w.key) ?? 0) < 2) return undefined;
+    let id = keyId.get(w.key);
+    if (id === undefined) {
+      id = parent.length;
+      keyId.set(w.key, id);
+      parent.push(id);
+    }
+    return id;
+  });
+  // A copy longer than one window yields a chain of shifted duplicate windows; they are one clone.
+  for (let j = 1; j < windows.length; j++) {
+    const a = dup[j - 1];
+    const b = dup[j];
+    if (a === undefined || b === undefined) continue;
+    if (windows[j - 1].file !== windows[j].file || windows[j - 1].start + 1 !== windows[j].start) continue;
+    parent[find(a)] = find(b);
+  }
+
+  const groupOfRoot = new Map<number, number>();
+  const seen = new Set<string>();
+  windows.forEach((w, j) => {
+    const id = dup[j];
+    if (id === undefined) return;
+    const root = find(id);
+    let group = groupOfRoot.get(root);
+    if (group === undefined) {
+      group = groupOfRoot.size;
+      groupOfRoot.set(root, group);
+    }
+    const first = !seen.has(w.key);
+    seen.add(w.key);
     const c = clone[w.file];
     const r = removable[w.file];
     for (let i = w.start; i < w.start + CLONE_MIN_LINES; i++) {
       if (c[i] === 0) c[i] = group + 1;
       if (!first) r[i] = 1;
     }
-  }
+  });
 
-  const groups: CloneGroup[] = Array.from({ length: groupOf.size }, (_, id) => ({ id, fragments: [] }));
+  const groups: CloneGroup[] = Array.from({ length: groupOfRoot.size }, (_, id) => ({ id, fragments: [] }));
   sorted.forEach((f, i) => {
     const c = clone[i];
     let s = 0;

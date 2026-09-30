@@ -90,17 +90,41 @@ describe('findClones', () => {
     expect(r.groups[0].fragments[1]).toEqual({ path: 'b.ts', start: 0, end: 5 });
   });
 
-  test('a longer copy gets one group per shifted window, first starter wins each line', () => {
+  test('a copy longer than one window is a single group spanning the whole copy', () => {
     const shared = block('Long', 8);
     const r = findClones([
       { path: 'a.ts', text: text(shared) },
-      { path: 'b.ts', text: text(shared) },
+      { path: 'b.ts', text: text(unique('b', 1), shared) },
     ]);
-    expect(r.groups.map((g) => g.id)).toEqual([0, 1, 2]);
-    expect(r.perFile.get('a.ts')!.clone).toEqual([1, 1, 1, 1, 1, 1, 2, 3]);
-    expect(r.groups[2].fragments).toEqual([
-      { path: 'a.ts', start: 7, end: 7 },
-      { path: 'b.ts', start: 7, end: 7 },
+    expect(r.groups).toEqual([
+      {
+        id: 0,
+        fragments: [
+          { path: 'a.ts', start: 0, end: 7 },
+          { path: 'b.ts', start: 1, end: 8 },
+        ],
+      },
+    ]);
+    expect(r.perFile.get('a.ts')!.clone).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
+    expect(r.perFile.get('b.ts')!.removable).toEqual([0, 1, 1, 1, 1, 1, 1, 1, 1]);
+  });
+
+  test('two separate copies are two groups, numbered by first appearance, none empty', () => {
+    const first = block('First', 7);
+    const second = block('Second', 9);
+    const r = findClones([
+      { path: 'a.ts', text: text(second, unique('a', 2), first) },
+      { path: 'b.ts', text: text(first, unique('b', 2), second) },
+    ]);
+    expect(r.groups.map((g) => g.id)).toEqual([0, 1]);
+    expect(r.groups.every((g) => g.fragments.length > 0)).toBe(true);
+    expect(r.groups[0].fragments).toEqual([
+      { path: 'a.ts', start: 0, end: 8 },
+      { path: 'b.ts', start: 9, end: 17 },
+    ]);
+    expect(r.groups[1].fragments).toEqual([
+      { path: 'a.ts', start: 11, end: 17 },
+      { path: 'b.ts', start: 0, end: 6 },
     ]);
   });
 
