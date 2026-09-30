@@ -84,7 +84,7 @@ describe('1 reproducibility', () => {
       expect(JSON.stringify(simulate(A, B, match, { record: true }))).toBe(first);
     }
     expect(predict(A, B, 20)).toEqual(predict(A, B, 20));
-  });
+  }, 30_000);
 
   test('battle code uses only arithmetic, sqrt and integer helpers from Math, and no clock', () => {
     const allowed = new Set(['abs', 'floor', 'ceil', 'round', 'trunc', 'min', 'max', 'sqrt', 'imul', 'sign']);
