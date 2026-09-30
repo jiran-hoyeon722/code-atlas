@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
-import type { Prediction } from '../../../src/engine/battle/sim/types';
+import type { FixCandidate } from '../../../src/engine/battle/fixes';
+import type { Prediction, Side } from '../../../src/engine/battle/sim/types';
 import type { Quality, QualityFile } from '../../../src/engine/battle/types';
 import type { RepoInput } from '../../../src/engine/types';
 import type { BattleDeps } from '../../../src/features/battle/deps';
@@ -56,9 +57,16 @@ function deferred<T>() {
   return { result, resolve, reject, cancel: vi.fn() };
 }
 
+export interface FixesRun extends Deferred<FixCandidate[]> {
+  loser: Quality;
+  winner: Quality;
+  loserSide: Side;
+}
+
 export function fakes(pickDirectory: BattleDeps['pickDirectory'] = null) {
   const runs: MeasureRun[] = [];
   const predictions: PredictRun[] = [];
+  const fixes: FixesRun[] = [];
   const deps: BattleDeps = {
     pickDirectory,
     measure(input, onProgress) {
@@ -71,8 +79,13 @@ export function fakes(pickDirectory: BattleDeps['pickDirectory'] = null) {
       predictions.push({ a, b, progress: onProgress, resolve: d.resolve, reject: d.reject, cancel: d.cancel });
       return { result: d.result, cancel: d.cancel };
     },
+    fixes(loser, winner, loserSide) {
+      const d = deferred<FixCandidate[]>();
+      fixes.push({ loser, winner, loserSide, resolve: d.resolve, reject: d.reject, cancel: d.cancel });
+      return { result: d.result, cancel: d.cancel };
+    },
   };
-  return { deps, runs, predictions };
+  return { deps, runs, predictions, fixes };
 }
 
 export class FakeWorker {

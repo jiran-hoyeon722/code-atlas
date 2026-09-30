@@ -1,8 +1,9 @@
 /// <reference types="vite/client" />
 import workerUrl from './worker.ts?worker&url';
+import type { FixCandidate } from '../../../engine/battle/fixes';
 import type { QualityProgress } from '../../../engine/battle/quality';
 import { PREDICTION_RUNS } from '../../../engine/battle/rules';
-import type { Prediction } from '../../../engine/battle/sim/types';
+import type { Prediction, Side } from '../../../engine/battle/sim/types';
 import type { Quality } from '../../../engine/battle/types';
 import type { Lang, RepoInput } from '../../../engine/types';
 import type { ErrorCode, FromWorker, ToWorker } from './protocol';
@@ -94,5 +95,20 @@ export function startPredict(
   return run<Prediction>(msg, opts.createWorker, (m, resolve) => {
     if (m.type === 'predict-progress') opts.onProgress(m.done, m.runs);
     else if (m.type === 'predict-done') resolve(m.prediction);
+  });
+}
+
+export const FIX_SEEDS = 20;
+export const FIX_COUNT = 5;
+
+export function startFixes(
+  loser: Quality,
+  winner: Quality,
+  loserSide: Side,
+  opts: { seeds?: number; count?: number; createWorker?: () => Worker } = {},
+): WorkerJob<FixCandidate[]> {
+  const msg: ToWorker = { type: 'fixes', loser, winner, loserSide, seeds: opts.seeds ?? FIX_SEEDS, count: opts.count ?? FIX_COUNT };
+  return run<FixCandidate[]>(msg, opts.createWorker, (m, resolve) => {
+    if (m.type === 'fixes-done') resolve(m.fixes);
   });
 }

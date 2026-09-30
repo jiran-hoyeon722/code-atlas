@@ -1,9 +1,10 @@
+import type { FixCandidate } from '../../engine/battle/fixes';
 import type { QualityProgress } from '../../engine/battle/quality';
 import { LIMITS } from '../../engine/battle/rules';
-import type { Prediction } from '../../engine/battle/sim/types';
+import type { Prediction, Side } from '../../engine/battle/sim/types';
 import type { Quality } from '../../engine/battle/types';
 import type { RepoInput } from '../../engine/types';
-import { QualityError, startPredict, startQuality } from './worker/client';
+import { QualityError, startFixes, startPredict, startQuality } from './worker/client';
 
 export interface MeasureJob {
   result: Promise<Quality>;
@@ -15,6 +16,11 @@ export interface PredictJob {
   cancel(): void;
 }
 
+export interface FixesJob {
+  result: Promise<FixCandidate[]>;
+  cancel(): void;
+}
+
 export interface BattleDeps {
   /** null when the browser has no `showDirectoryPicker`: the hidden folder input is used instead */
   pickDirectory: (() => Promise<FileSystemDirectoryHandle>) | null;
@@ -22,6 +28,8 @@ export interface BattleDeps {
   measure(input: RepoInput, onProgress: (step: string) => void): MeasureJob;
   /** Runs the pre-battle simulations; `onProgress` gets finished runs out of the total */
   predict(a: Quality, b: Quality, onProgress: (done: number, runs: number) => void): PredictJob;
+  /** The loser's files most worth fixing; `loserSide` keeps the replayed matches in the real side order */
+  fixes(loser: Quality, winner: Quality, loserSide: Side): FixesJob;
 }
 
 /** A failure whose message is already plain Korean for the person, not a debugging string. */
@@ -89,6 +97,9 @@ export function defaultDeps(opts: { createWorker?: () => Worker } = {}): BattleD
     },
     predict(a, b, onProgress) {
       return startPredict(a, b, { createWorker, onProgress });
+    },
+    fixes(loser, winner, loserSide) {
+      return startFixes(loser, winner, loserSide, { createWorker });
     },
   };
 }
