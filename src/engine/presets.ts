@@ -95,6 +95,15 @@ const GO_ROLES: Role[] = [
   r('기타', 3, [''], '위 역할에 속하지 않는 나머지 코드'),
 ];
 
+const JAVA_ROLES: Role[] = [
+  r('테스트', 3, anywhere('src/test/', '*Test.java', '*Tests.java'), '테스트 코드'),
+  r('진입점', 0, anywhere('controller/', 'controllers/', 'web/', 'api/', '*Application.java'), '앱을 시작하는 클래스와 요청을 처음 받는 컨트롤러'),
+  r('애플리케이션', 1, anywhere('service/', 'services/', 'usecase/', 'application/'), '업무 흐름을 처리하는 서비스·유스케이스'),
+  r('도메인', 2, anywhere('domain/', 'entity/', 'entities/', 'model/', 'repository/', 'dto/'), '엔티티·도메인 모델과 저장소 접근'),
+  r('기반', 3, anywhere('config/', 'util/', 'utils/', 'common/', 'exception/'), '어디서나 가져다 쓰는 설정·유틸·예외'),
+  r('기타', 3, [''], '위 역할에 속하지 않는 나머지 코드'),
+];
+
 const escapeGlob = (s: string) => s.replace(/[*\\]/g, '\\$&');
 
 const inner = (path: string, sourceDir: string) =>
@@ -105,6 +114,7 @@ export function presetFor(detection: Detection, paths: string[]): Preset {
   if (detection.framework === 'react') return { layers: layers('화면·기능', '상태·API'), roles: REACT_ROLES };
   if (detection.lang === 'py') return { layers: layers('애플리케이션', '도메인'), roles: PYTHON_ROLES };
   if (detection.lang === 'go') return { layers: layers('애플리케이션', '도메인'), roles: GO_ROLES };
+  if (detection.lang === 'java') return { layers: layers('애플리케이션', '도메인'), roles: JAVA_ROLES };
 
   const folders: string[] = [];
   for (const p of paths) {

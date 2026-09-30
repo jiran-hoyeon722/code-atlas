@@ -151,4 +151,26 @@ describe('presetFor', () => {
     expect(p.layers.map((l) => l.label)).toEqual(['진입점', '애플리케이션', '도메인', '기반']);
     expect(p.roles[p.roles.length - 1]).toMatchObject({ name: '기타', patterns: [''] });
   });
+  test('java preset: tests first, then Spring-style entry, application, domain, foundation', () => {
+    const d: Detection = { lang: 'java', framework: null, sourceDir: '', routeDirs: [] };
+    const p = presetFor(d, []);
+    const m = compileRoles(p.roles);
+    const roleOf = (path: string) => p.roles[m(path)].name;
+    expect(p.roles[0].name).toBe('테스트');
+    expect(roleOf('src/test/java/a/controller/HomeControllerIT.java')).toBe('테스트');
+    expect(roleOf('mod/src/test/java/a/Helper.java')).toBe('테스트');
+    expect(roleOf('src/main/java/a/service/OrderServiceTest.java')).toBe('테스트');
+    expect(roleOf('src/main/java/a/OrderTests.java')).toBe('테스트');
+    expect(roleOf('controller/Home.java')).toBe('진입점');
+    expect(roleOf('src/main/java/a/web/Home.java')).toBe('진입점');
+    expect(roleOf('src/main/java/a/ShopApplication.java')).toBe('진입점');
+    expect(roleOf('src/main/java/a/usecase/Pay.java')).toBe('애플리케이션');
+    expect(roleOf('src/main/java/a/application/Pay.java')).toBe('애플리케이션');
+    expect(roleOf('src/main/java/a/entity/User.java')).toBe('도메인');
+    expect(roleOf('src/main/java/a/dto/UserDto.java')).toBe('도메인');
+    expect(roleOf('src/main/java/a/exception/Oops.java')).toBe('기반');
+    expect(roleOf('src/main/java/a/Contest.java')).toBe('기타');
+    expect(p.layers.map((l) => l.label)).toEqual(['진입점', '애플리케이션', '도메인', '기반']);
+    expect(p.roles[p.roles.length - 1]).toMatchObject({ name: '기타', patterns: [''] });
+  });
 });

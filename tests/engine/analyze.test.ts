@@ -28,7 +28,7 @@ function loadRepo(name: string): RepoInput {
 const NOW = new Date('2026-01-01T00:00:00Z');
 let parsers: Parsers;
 beforeAll(async () => {
-  parsers = await loadParsers(nodeLocate, ['php', 'ts', 'py', 'go']);
+  parsers = await loadParsers(nodeLocate, ['php', 'ts', 'py', 'go', 'java']);
 });
 
 describe('analyze', () => {
@@ -113,6 +113,44 @@ describe('analyze', () => {
     expect(kind('internal/service/order_test.go')).toBe('test');
     expect(kind('cmd/shop/main.go')).toBe('main');
     expect(kind('internal/model/order.go')).toBe('module');
+  });
+
+  test('java fixture end to end', () => {
+    const a = analyze(loadRepo('java-mini'), parsers, { now: NOW });
+    expect(a.lang).toBe('java');
+    expect(a.framework).toBeNull();
+    expect(a.nodes.length).toBe(8);
+    const J = 'src/main/java/com/acme/shop';
+    const T = 'src/test/java/com/acme/shop';
+    const path = (i: number) => a.nodes[i].path;
+    expect(a.edges.map(([from, to]) => `${path(from)}→${path(to)}`).sort()).toEqual([
+      `${J}/ShopApplication.java→${J}/controller/OrderController.java`,
+      `${J}/controller/OrderController.java→${J}/domain/Order.java`,
+      `${J}/controller/OrderController.java→${J}/service/OrderService.java`,
+      `${J}/domain/Order.java→${J}/domain/OrderStatus.java`,
+      `${J}/service/OrderService.java→${J}/domain/Order.java`,
+      `${J}/service/OrderService.java→${J}/service/PriceCalculator.java`,
+      `${J}/service/OrderService.java→${J}/util/Money.java`,
+      `${T}/service/OrderServiceTest.java→${J}/service/OrderService.java`,
+    ]);
+    const kinds = (from: string, to: string) => a.edges.find(([f, t]) => path(f) === from && path(t) === to)![3];
+    expect(kinds(`${J}/ShopApplication.java`, `${J}/controller/OrderController.java`)).toEqual({ import: 1 });
+    expect(kinds(`${J}/controller/OrderController.java`, `${J}/service/OrderService.java`)).toEqual({ 'class-ref': 1 });
+    expect(a.unresolved).toBe(1);
+    expect(a.failed).toEqual([]);
+    const byRole: Record<string, string[]> = {};
+    for (const n of a.nodes) (byRole[a.roles[n.role].name] ??= []).push(n.path);
+    expect(byRole).toEqual({
+      진입점: [`${J}/ShopApplication.java`, `${J}/controller/OrderController.java`],
+      도메인: [`${J}/domain/Order.java`, `${J}/domain/OrderStatus.java`],
+      애플리케이션: [`${J}/service/OrderService.java`, `${J}/service/PriceCalculator.java`],
+      기반: [`${J}/util/Money.java`],
+      테스트: [`${T}/service/OrderServiceTest.java`],
+    });
+    const kind = (p: string) => a.nodes.find((n) => n.path === p)!.kind;
+    expect(kind(`${J}/service/PriceCalculator.java`)).toBe('interface');
+    expect(kind(`${J}/domain/Order.java`)).toBe('class');
+    expect(kind(`${T}/service/OrderServiceTest.java`)).toBe('test');
   });
 
   test('progress events', () => {
