@@ -1,0 +1,213 @@
+@font-face {
+  font-family: 'Pretendard Variable';
+  src: url('./fonts/PretendardVariable.woff2') format('woff2-variations'), url('./fonts/PretendardVariable.woff2') format('woff2');
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+}
+
+.rb-page {
+  margin: 0;
+  background: #111317;
+}
+
+.rb-root {
+  --rb-bg: #111317;
+  --rb-card: #1b1e24;
+  --rb-inner: #242832;
+  --rb-raised: #2e333d;
+  --rb-divider: #262a33;
+  --rb-text: #f2f4f6;
+  --rb-text-2: #9ea6b3;
+  --rb-text-3: #858d9a;
+  --rb-team-a: #3cc4b4;
+  --rb-team-b: #f2a541;
+  --rb-warn: #f0655a;
+  --rb-primary: #f2f4f6;
+  --rb-primary-text: #111317;
+  --rb-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --rb-fast: 120ms;
+  --rb-mid: 240ms;
+  --rb-slow: 480ms;
+  --rb-font: 'Pretendard Variable', Pretendard, system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+
+  box-sizing: border-box;
+  min-height: 100vh;
+  background: var(--rb-bg);
+  color: var(--rb-text);
+  font-family: var(--rb-font);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+.rb-root *,
+.rb-root *::before,
+.rb-root *::after {
+  box-sizing: inherit;
+}
+
+.rb-root h1,
+.rb-root h2,
+.rb-root h3,
+.rb-root p {
+  margin: 0;
+}
+
+.rb-root button {
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+.rb-root :focus-visible {
+  outline: 2px solid var(--rb-text-2);
+  outline-offset: 3px;
+}
+
+.rb-root [tabindex='-1']:focus {
+  outline: none;
+}
+
+.rb-btn {
+  height: 48px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--rb-fast) var(--rb-ease), color var(--rb-fast) var(--rb-ease);
+}
+
+.rb-btn-secondary {
+  background: var(--rb-inner);
+  color: var(--rb-text);
+}
+
+.rb-btn-secondary:hover {
+  background: var(--rb-raised);
+}
+
+.rb-btn-primary {
+  width: 100%;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--rb-primary);
+  color: var(--rb-primary-text);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.rb-btn-primary:hover {
+  background: #ffffff;
+}
+
+.rb-btn-primary:disabled {
+  background: var(--rb-inner);
+  color: var(--rb-text-3);
+  cursor: not-allowed;
+}
+
+.rb-screen {
+  animation: rb-enter var(--rb-mid) var(--rb-ease);
+}
+
+@keyframes rb-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rb-root *,
+  .rb-root *::before,
+  .rb-root *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.rb-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 0 48px;
+}
+
+.rb-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  margin-top: 28px;
+}
+
+.rb-brand {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.rb-note {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rb-text-3);
+}
+
+.rb-stage-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding-bottom: 72px;
+}
+
+.rb-stage-vs {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  max-width: 100%;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.rb-stage-a,
+.rb-stage-b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-stage-a {
+  color: var(--rb-team-a);
+}
+
+.rb-stage-b {
+  color: var(--rb-team-b);
+}
+
+.rb-stage-sep {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--rb-text-3);
+}
+
+.rb-stage-next {
+  width: 360px;
+  max-width: 100%;
+  margin-top: 16px;
+}
+
+@media (max-width: 760px) {
+  .rb-screen {
+    padding: 0 16px;
+  }
+}

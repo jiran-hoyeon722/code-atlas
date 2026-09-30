@@ -11,7 +11,8 @@
         "test": "vitest run",
         "compare": "tsx scripts/compare.ts",
         "typecheck:engine": "tsc -p tsconfig.engine.json --noEmit",
-        "e2e": "node scripts/e2e.mjs"
+        "e2e": "node scripts/e2e.mjs",
+        "e2e:battle": "node scripts/e2e-battle.mjs"
     },
     "dependencies": {
         "3d-force-graph": "1.80.0",
