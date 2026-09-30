@@ -286,6 +286,16 @@ test('cancel during analysis returns to landing', async () => {
   expect(saved).toHaveLength(0);
 });
 
+test('a recent entry in a language this build does not know still renders', async () => {
+  const { deps, store } = fakes();
+  const lang = 'rust' as Lang;
+  const arch = { ...archFor({ name: 'future', files: [], configs: {} }), lang };
+  store.set('k1', { key: 'k1', name: 'future', framework: null, lang, files: 3, analyzedAt: '2026-09-28T10:00:00.000Z', architecture: arch });
+  render(<App deps={deps} />);
+  const card = await screen.findByRole('button', { name: /^future(?!.*삭제)/ });
+  expect(card.textContent).toContain('rust · 3 파일 · ');
+});
+
 test('recent card opens cached analysis; delete and clear update the list', async () => {
   const { deps, store } = fakes();
   const base = archFor({ name: 'x', files: [{ path: 'app/A.php', text: '' }], configs: {} }, 'php');

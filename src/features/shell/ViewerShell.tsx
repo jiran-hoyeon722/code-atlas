@@ -163,7 +163,7 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
           ) : (
             <strong>{arch.name}</strong>
           )}
-          <span>{`${arch.framework ? FRAMEWORK_LABEL[arch.framework] : LANGS[arch.lang].label} · 파일 ${arch.nodes.length.toLocaleString('ko-KR')}개 · ${formatTime(arch.generatedAt)} 분석`}</span>
+          <span>{`${arch.framework ? FRAMEWORK_LABEL[arch.framework] : (LANGS[arch.lang]?.label ?? arch.lang)} · 파일 ${arch.nodes.length.toLocaleString('ko-KR')}개 · ${formatTime(arch.generatedAt)} 분석`}</span>
         </div>
         <nav className="ca-shell-tabs" role="tablist" aria-label="화면">
           {TABS.map((t) => (

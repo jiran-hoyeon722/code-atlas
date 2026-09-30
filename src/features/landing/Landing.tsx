@@ -135,7 +135,7 @@ function SampleGallery({ samples, onOpen }: { samples: SampleRepo[]; onOpen(samp
               </span>
               <span className="ca-land-sample-blurb">{s.blurb}</span>
               <span className="ca-land-sample-meta">
-                <span className="ca-land-tag">{s.framework ? (FRAMEWORK[s.framework] ?? s.framework) : LANGS[s.lang].label}</span>
+                <span className="ca-land-tag">{s.framework ? (FRAMEWORK[s.framework] ?? s.framework) : (LANGS[s.lang]?.label ?? s.lang)}</span>
                 <span>{`파일 ${s.files.toLocaleString('ko-KR')}`}</span>
                 {s.stars !== null && <span aria-label={`별 ${s.stars.toLocaleString('ko-KR')}개`}>{`★ ${compact.format(s.stars)}`}</span>}
               </span>
@@ -256,7 +256,7 @@ export function Landing({
                       {r.origin && <GithubMark size={12} />}
                       {r.name}
                     </strong>{' '}
-                    <span>{`${r.framework ? (FRAMEWORK[r.framework] ?? r.framework) : LANGS[r.lang].label} · ${r.files.toLocaleString('ko-KR')} 파일 · ${formatDate(r.analyzedAt)}`}</span>
+                    <span>{`${r.framework ? (FRAMEWORK[r.framework] ?? r.framework) : (LANGS[r.lang]?.label ?? r.lang)} · ${r.files.toLocaleString('ko-KR')} 파일 · ${formatDate(r.analyzedAt)}`}</span>
                   </button>
                   <button type="button" className="ca-land-del" aria-label={`${r.name} 삭제`} onClick={() => onDeleteRecent(r.key)}>
                     ×

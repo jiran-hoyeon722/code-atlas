@@ -555,7 +555,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     $('code-path').textContent = `${n.path} · ${fmt(n.lines)}줄`;
     $('code-vscode').innerHTML = vscodeAction(n.path);
     const code = $('code-src');
-    code.className = `hljs language-${LANGS[arch.lang].hljs}`;
+    code.className = `hljs language-${LANGS[arch.lang]?.hljs ?? 'plaintext'}`;
     code.textContent = '불러오는 중…';
     $('code-gutter').textContent = '';
     let source: string | null;

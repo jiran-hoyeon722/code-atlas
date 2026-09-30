@@ -8,6 +8,7 @@ import python from 'highlight.js/lib/languages/python';
 import swift from 'highlight.js/lib/languages/swift';
 import typescript from 'highlight.js/lib/languages/typescript';
 import { LANGS } from '../../engine/langs';
+import { esc } from '../escape';
 import type { Lang } from '../../engine/types';
 
 hljs.registerLanguage('php', php);
@@ -20,7 +21,9 @@ hljs.registerLanguage('bash', bash);
 hljs.registerLanguage('swift', swift);
 
 export function highlight(code: string, lang: Lang): string {
-  return hljs.highlight(code, { language: LANGS[lang].hljs }).value;
+  // A record from a newer build may name a language this one has no grammar for.
+  const language = LANGS[lang]?.hljs;
+  return language ? hljs.highlight(code, { language }).value : esc(code);
 }
 
 // highlight.js gets slow on huge files and can throw on odd input; plain text is always safe

@@ -1,10 +1,15 @@
 import hljs from 'highlight.js/lib/core';
 import { afterEach, expect, test, vi } from 'vitest';
-import { HIGHLIGHT_LIMIT, renderCode } from '../../src/features/code-viewer/highlight';
+import { HIGHLIGHT_LIMIT, highlight, renderCode } from '../../src/features/code-viewer/highlight';
+import type { Lang } from '../../src/engine/types';
 
 const el = () => ({ innerHTML: '', textContent: '' }) as unknown as HTMLElement;
 
 afterEach(() => vi.restoreAllMocks());
+
+test('an unknown language comes back as escaped plain text', () => {
+  expect(highlight('<b>&"x"</b>', 'rust' as Lang)).toBe('&lt;b&gt;&amp;&quot;x&quot;&lt;/b&gt;');
+});
 
 test('highlights normal sources as markup', () => {
   const e = el();
