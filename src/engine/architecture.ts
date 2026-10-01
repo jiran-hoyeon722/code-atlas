@@ -17,6 +17,7 @@ export interface ArchNode {
   centrality: number;
   routeRefs: number;
   routeFiles: string[];
+  lang?: Lang;
 }
 
 export interface Architecture {
@@ -32,7 +33,12 @@ export interface Architecture {
   edges: [from: number, to: number, weight: number, kinds: Edge['kinds'], upward: 0 | 1][];
   failed: Extraction['failed'];
   unresolved: number;
+  langs?: Lang[];
+  /** merged only, same order as `langs` */
+  frameworks?: Detection['framework'][];
 }
+
+export const nodeLang = (arch: Architecture, i: number): Lang => arch.nodes[i].lang ?? arch.lang;
 
 const CONCEPTUAL_KINDS = new Set(['binds', 'triggers']);
 const round2 = (v: number) => Math.round(v * 100) / 100;

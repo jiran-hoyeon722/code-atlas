@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import 'highlight.js/styles/github-dark.css';
 import './city.css';
-import type { ArchNode } from '../../engine/architecture';
+import { nodeLang, type ArchNode } from '../../engine/architecture';
 import { LANGS } from '../../engine/langs';
 import type { MountViewer, Selection } from '../viewer-env';
 import { esc } from '../escape';
+import { roleChip } from '../lang-label';
 import { LAYER_TINT, roleColors } from '../palette';
 import { renderCode } from '../code-viewer/highlight';
 import { ROAD, layoutCity } from './layout';
@@ -501,7 +502,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
       return `<div class="sec blast" data-el="blast">${summary}<label class="blast-types"><input type="checkbox" data-blast-types${skipTypeOnly ? ' checked' : ''}> 타입 참조 제외</label>${levels}</div>`;
     };
     $('panel-body').innerHTML = `
-        <span class="chip" style="--c:${esc(n.css)}">${esc(role.name)} · ${esc(arch.layers[n.layer].label)}</span>
+        <span class="chip" style="--c:${esc(n.css)}">${esc(roleChip(role.name, arch.layers[n.layer].label))}</span>
         <h3>${esc(n.name)}</h3>
         <div class="path">${esc(n.path)}</div>
         <p class="desc">${esc(role.description)}</p>
@@ -555,7 +556,8 @@ export const mountCity: MountViewer = (root, arch, env) => {
     $('code-path').textContent = `${n.path} · ${fmt(n.lines)}줄`;
     $('code-vscode').innerHTML = vscodeAction(n.path);
     const code = $('code-src');
-    code.className = `hljs language-${LANGS[arch.lang]?.hljs ?? 'plaintext'}`;
+    const lang = nodeLang(arch, i);
+    code.className = `hljs language-${LANGS[lang]?.hljs ?? 'plaintext'}`;
     code.textContent = '불러오는 중…';
     $('code-gutter').textContent = '';
     let source: string | null;
@@ -570,7 +572,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
       code.textContent = '폴더 접근 권한이 없어요. 상단의 "폴더 다시 연결"을 눌러 주세요.';
       return;
     }
-    renderCode(code, source, arch.lang);
+    renderCode(code, source, lang);
     $('code-gutter').textContent = source.split('\n').map((_, k) => k + 1).join('\n');
     linkReferences(code, n);
     $('code-body').scrollTop = 0;

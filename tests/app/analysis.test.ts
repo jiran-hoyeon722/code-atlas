@@ -88,6 +88,32 @@ describe('worker handle', () => {
     }
   });
 
+  test('several langs are analyzed as one city', async () => {
+    const py = loadRepo('py-mini');
+    const go = loadRepo('go-mini');
+    const input: RepoInput = {
+      name: 'mixed',
+      files: [...py.files.map((f) => ({ ...f, path: 'api/' + f.path })), ...go.files.map((f) => ({ ...f, path: 'svc/' + f.path }))],
+      configs: Object.fromEntries(Object.entries(go.configs).map(([k, v]) => ['svc/' + k, v])),
+    };
+    const msgs: FromWorker[] = [];
+    await handle({ type: 'analyze', input, langs: ['py', 'go'], wasmBase: '' }, (m) => msgs.push(m), locate);
+    const last = msgs.at(-1)!;
+    expect(last.type).toBe('done');
+    if (last.type !== 'done') return;
+    expect(last.architecture.langs).toEqual(['py', 'go']);
+    expect(last.architecture.nodes.some((n) => n.lang === 'go')).toBe(true);
+    const parse = msgs.flatMap((m) => (m.type === 'progress' && m.progress.phase === 'parse' ? [m.progress] : []));
+    expect(parse.map((p) => p.done)).toEqual(parse.map((_, i) => i + 1));
+  });
+
+  test('several langs with nothing to analyze map to unsupported', async () => {
+    const msgs: FromWorker[] = [];
+    const input: RepoInput = { name: 'x', files: [{ path: 'build.gradle.kts', text: '' }], configs: {} };
+    await handle({ type: 'analyze', input, langs: ['kotlin', 'go'], wasmBase: '' }, (m) => msgs.push(m), locate);
+    expect(msgs.at(-1)).toMatchObject({ type: 'error', code: 'unsupported' });
+  });
+
   test('maps UnsupportedRepoError', async () => {
     const msgs: FromWorker[] = [];
     await handle({ type: 'analyze', input: { name: 'x', files: [], configs: {} }, wasmBase: '' }, (m) => msgs.push(m), locate);
@@ -139,6 +165,15 @@ describe('client', () => {
     expect(r).not.toHaveProperty('qualityIssue');
     expect(onProgress).toHaveBeenCalledWith({ phase: 'link' });
     expect(w.terminate).toHaveBeenCalledTimes(1);
+  });
+
+  test('langs ride along in the message, and stay out of it when not given', () => {
+    const w = new FakeWorker();
+    startAnalysis(input, { langs: ['py', 'go'], onProgress: vi.fn(), createWorker: () => w as unknown as Worker });
+    expect(w.posted[0]).toMatchObject({ type: 'analyze', langs: ['py', 'go'] });
+    const single = new FakeWorker();
+    start(single);
+    expect(single.posted[0]).not.toHaveProperty('langs');
   });
 
   test('unsupported error rejects with UnsupportedRepo', async () => {

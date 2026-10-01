@@ -1,4 +1,5 @@
 import type { ArchNode, Architecture } from '../../engine/architecture';
+import { baseRoleName } from '../../engine/merge';
 import { esc } from '../escape';
 import type { MountViewer, ViewerEnv } from '../viewer-env';
 import './explorer.css';
@@ -392,8 +393,8 @@ export const mountExplorer: MountViewer = (root, arch, env) => {
   };
 
   // ---------- ranking ----------
-  const eventRole = arch.roles.findIndex((r) => r.name === 'Event');
-  const dataRole = arch.roles.findIndex((r) => r.name === 'Data');
+  const eventRole = arch.roles.findIndex((r) => baseRoleName(r.name) === 'Event');
+  const dataRole = arch.roles.findIndex((r) => baseRoleName(r.name) === 'Data');
   const rankValue = (n: XNode, tab: TabKey): number => {
     switch (tab) {
       case 'upward': return n.upStrong * 1000 + n.upWeak;

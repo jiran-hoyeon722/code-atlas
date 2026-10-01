@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import type { Architecture, ArchNode } from '../../src/engine/architecture';
 import type { Role } from '../../src/engine/presets';
-import { FLOOR, LANE, buildingKind, layoutWalk, type WalkBuilding } from '../../src/features/walk/walkLayout';
+import { FLOOR, LANE, boardFontSize, buildingKind, layoutWalk, type WalkBuilding } from '../../src/features/walk/walkLayout';
 import { routeBetween } from '../../src/features/walk/walkTraffic';
 
 const node = (path: string, role: number, lines: number, fanIn: number): ArchNode => ({
@@ -83,4 +83,11 @@ test('traffic routes run on axis-aligned roads from one door lane to the other w
       }
     }
   }
+});
+
+test('district board text shrinks to fit only when it is too wide', () => {
+  expect(boardFontSize(600)).toBe(84);
+  expect(boardFontSize(944)).toBe(84);
+  expect(boardFontSize(1888)).toBe(42);
+  expect(boardFontSize(1200) * 1200 / 84).toBeLessThanOrEqual(944);
 });

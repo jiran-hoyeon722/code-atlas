@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { forLang, listRepo, loadRepo, isTooMany } from '../../src/app/files/walk';
+import { forLang, forLangs, listRepo, loadRepo, isTooMany } from '../../src/app/files/walk';
 import { fromDirectoryHandle, fromEntry, fromFileList } from '../../src/app/files/sources';
 import type { FsDir, FsFile, Listing, Entry } from '../../src/app/files/types';
 
@@ -71,6 +71,18 @@ describe('forLang', () => {
     expect(paths('kotlin')).toEqual(['app/B.kt']);
     expect(paths('ts')).toEqual(['x.php', 'y.ts']);
     expect(paths('php')).toEqual(['x.php', 'y.ts']);
+  });
+});
+
+describe('forLangs', () => {
+  test('keeps every listed language, drops gradle scripts, and keeps the php/ts pair', async () => {
+    const listing = await listRepo(tree({
+      'build.gradle.kts': '', 'app/B.kt': '', 'a.py': '', 'b.go': '', 'x.php': '', 'y.ts': '', 'run.sh': '',
+    }));
+    const paths = (langs: Parameters<typeof forLangs>[1]) => forLangs(listing, langs).sources.map((e) => e.path).sort();
+    expect(paths(['py', 'go'])).toEqual(['a.py', 'b.go']);
+    expect(paths(['php'])).toEqual(['x.php', 'y.ts']);
+    expect(paths(['kotlin'])).toEqual(['app/B.kt']);
   });
 });
 

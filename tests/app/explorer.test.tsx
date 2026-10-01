@@ -167,6 +167,19 @@ describe('explorer', () => {
     expect(env.onSelect).toHaveBeenCalledWith({ file: 'a/Home.ts' });
   });
 
+  test('orphan ranking skips events in a merged city', () => {
+    const arch = handMade();
+    arch.roles = arch.roles.map((r) => ({ ...r, name: `PHP · ${r.name}` }));
+    arch.roles.push({ name: 'PHP · Event', layer: 2, patterns: ['e'], description: '이벤트' });
+    arch.nodes.push(node('e/Shipped.ts', 4));
+    arch.langs = ['php', 'ts'];
+    const { root } = mount(arch, makeEnv());
+    fireEvent.click(root.querySelector('[data-tab="orphan"]')!);
+    const text = root.querySelector('tbody[data-r="rank-body"]')!.textContent;
+    expect(text).toContain('c/Orphan');
+    expect(text).not.toContain('e/Shipped');
+  });
+
   test('dispose removes listeners and DOM', () => {
     const { root, dispose } = mount(handMade(), makeEnv());
     dispose();

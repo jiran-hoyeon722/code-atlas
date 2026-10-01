@@ -5,11 +5,13 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import 'highlight.js/styles/github-dark.css';
 import './walk.css';
+import { nodeLang } from '../../engine/architecture';
+import { LANGS } from '../../engine/langs';
 import type { MountViewer } from '../viewer-env';
 import { esc } from '../escape';
 import { roleColors } from '../palette';
 import { renderCode } from '../code-viewer/highlight';
-import { FLOOR, LANE, STREET, layoutWalk, type WalkBuilding } from './walkLayout';
+import { FLOOR, LANE, STREET, boardFontSize, layoutWalk, type WalkBuilding } from './walkLayout';
 import { BEAM_FRAG, BEAM_VERT, BUILDING_FRAG, BUILDING_VERT, SKY_FRAG, SKY_VERT } from './walkShaders';
 import { createModelHero, type Emote } from './walkHero';
 import { createTraffic, routeBetween } from './walkTraffic';
@@ -433,6 +435,8 @@ const mount: MountViewer = (root, arch, env) => {
     ctx.fillRect(0, 0, 1024, 12);
     ctx.fillStyle = '#f2f3f7';
     ctx.font = '700 84px system-ui, sans-serif';
+    const size = boardFontSize(ctx.measureText(role.name).width);
+    if (size !== 84) ctx.font = `700 ${size}px system-ui, sans-serif`;
     ctx.fillText(role.name, 40, 118);
     ctx.fillStyle = '#9aa0ad';
     ctx.font = '500 34px system-ui, sans-serif';
@@ -1153,8 +1157,9 @@ const mount: MountViewer = (root, arch, env) => {
     const source = await env.readSource(n.path).catch(() => null);
     if (disposed || request !== codeRequest) return;
     if (source === null) { src.textContent = '소스를 읽지 못했어요. 폴더를 다시 연결해 주세요.'; return; }
-    src.className = `hljs language-${arch.lang === 'ts' ? 'typescript' : 'php'}`;
-    renderCode(src, source, arch.lang);
+    const lang = nodeLang(arch, b.i);
+    src.className = `hljs language-${LANGS[lang]?.hljs ?? 'plaintext'}`;
+    renderCode(src, source, lang);
     $('d-gutter').textContent = source.split('\n').map((_, k) => k + 1).join('\n');
   }
   function leave() {

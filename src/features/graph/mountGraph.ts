@@ -1,6 +1,7 @@
 import ForceGraph3D from '3d-force-graph';
 import type { Architecture } from '../../engine/architecture';
 import { esc } from '../escape';
+import { roleChip } from '../lang-label';
 import type { MountViewer } from '../viewer-env';
 import { graphData, nodeRelSize, type GraphLink, type GraphNode } from './data';
 import './graph.css';
@@ -234,7 +235,7 @@ export const mountGraph: MountViewer = (root, arch, env) => {
     const outgoing = n.links.filter((l) => endId(l.source) === n.id);
     const href = env.vscodeHref(n.path);
     $('panel-body').innerHTML = `
-      <span class="chip" style="--c:${esc(n.color)}">${esc(role.name)} · ${esc(arch.layers[n.layer].label)}</span>
+      <span class="chip" style="--c:${esc(n.color)}">${esc(roleChip(role.name, arch.layers[n.layer].label))}</span>
       <h3>${esc(n.name)}</h3>
       <div class="path">${esc(n.path)}</div>
       <p class="desc">${esc(role.description)}</p>

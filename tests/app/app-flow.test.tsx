@@ -110,6 +110,7 @@ const archFor = (input: RepoInput, lang: Lang = 'ts'): Architecture => ({
 interface Run {
   input: RepoInput;
   prefer?: Lang;
+  langs?: Lang[];
   onProgress(p: Progress): void;
   resolve(a: Architecture): void;
   cancel: ReturnType<typeof vi.fn>;
@@ -119,14 +120,14 @@ function fakes() {
   const store = new Map<string, CacheEntry>();
   const runs: Run[] = [];
   const saved: CacheEntry[] = [];
-  const summary = ({ key, name, framework, lang, files, analyzedAt }: CacheEntry): CacheSummary => ({ key, name, framework, lang, files, analyzedAt });
+  const summary = ({ key, name, framework, lang, langs, frameworks, files, analyzedAt }: CacheEntry): CacheSummary => ({ key, name, framework, lang, ...(langs && { langs }), ...(frameworks && { frameworks }), files, analyzedAt });
   const deps: SessionDeps = {
-    startAnalysis: vi.fn((input: RepoInput, opts: { prefer?: Lang; onProgress(p: Progress): void }) => {
+    startAnalysis: vi.fn((input: RepoInput, opts: { prefer?: Lang; langs?: Lang[]; onProgress(p: Progress): void }) => {
       let resolve!: (a: Architecture) => void;
       let reject!: (e: Error) => void;
       const result = new Promise<AnalysisResult>((ok, err) => { resolve = (architecture) => ok({ architecture, quality: null }); reject = err; });
       const cancel = vi.fn(() => reject(new AnalysisCancelled()));
-      runs.push({ input, prefer: opts.prefer, onProgress: opts.onProgress, resolve, cancel });
+      runs.push({ input, prefer: opts.prefer, ...(opts.langs && { langs: opts.langs }), onProgress: opts.onProgress, resolve, cancel });
       return { result, cancel };
     }),
     cache: {
@@ -149,8 +150,6 @@ function fakes() {
   };
   return { deps, store, runs, saved };
 }
-
-const LANG_QUESTION = '이 폴더에는 여러 언어가 함께 있어요. 어느 쪽으로 볼까요?';
 
 const zone = () => screen.getByRole('region', { name: '레포 폴더를 여기에 끌어다 놓으세요' });
 const drop = (list: DataTransferItemList) => fireEvent.drop(zone(), { dataTransfer: { items: list, types: ['Files'] } });
@@ -202,6 +201,7 @@ test('fresh folder: listing → loading screen → viewer, result cached', async
   expect(screen.getByRole('heading', { name: 'demo-repo' })).toBeTruthy();
   expect(runs[0].input.files.map((f) => f.path).sort()).toEqual(['src/a.ts', 'src/b.ts']);
   expect(runs[0].prefer).toBeUndefined();
+  expect(runs[0]).not.toHaveProperty('langs');
   await act(async () => {
     runs[0].onProgress({ phase: 'parse', done: 1, total: 2, path: 'src/<b>a</b>.ts', role: 0 });
   });
@@ -255,22 +255,41 @@ test('changed folder re-analyses', async () => {
   expect([...store.values()][0].files).toBe(3);
 });
 
-test('mixed php+ts folder asks which language and passes prefer', async () => {
+const pyGoRepo: Tree = {
+  'go.mod': 'module example.com/mix',
+  app: { 'main.py': 'import util', 'util.py': 'x = 1', 'models.py': 'y = 2' },
+  cmd: { 'main.go': 'package main' },
+  pkg: { 'store.go': 'package pkg' },
+};
+
+test('mixed folder opens every language together without asking', async () => {
+  const { deps, runs, saved } = fakes();
+  render(<App deps={deps} />);
+  drop(items(dirHandle('mix', pyGoRepo)));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(runs[0].langs).toEqual(['py', 'go']);
+  expect(runs[0].prefer).toBe('py');
+  expect(runs[0].input.files.map((f) => f.path).sort()).toEqual(['app/main.py', 'app/models.py', 'app/util.py', 'cmd/main.go', 'pkg/store.go']);
+  expect(screen.getByText(/Python \+ Go/)).toBeTruthy();
+  await act(async () => {
+    runs[0].resolve({ ...archFor(runs[0].input, 'py'), langs: ['py', 'go'] });
+  });
+  expect(await screen.findByText('viewer:mix:py')).toBeTruthy();
+  expect(saved[0]).toMatchObject({ lang: 'py', langs: ['py', 'go'] });
+  await act(async () => h.shell!.onOpenOther());
+  expect(await screen.findByText(/^Python \+ Go · 5 파일/)).toBeTruthy();
+});
+
+test('mixed php+ts folder without a framework opens both, bigger language first', async () => {
   const { deps, runs } = fakes();
   render(<App deps={deps} />);
   drop(items(dirHandle('mixed', { app: { 'A.php': '<?php', 'B.php': '<?php' }, 'vite.config.js': 'export default {}' })));
-  const dialog = await screen.findByRole('dialog', { name: LANG_QUESTION });
-  expect(runs).toHaveLength(0);
-  const php = within(dialog).getByRole('button', { name: /PHP/ });
-  const ts = within(dialog).getByRole('button', { name: /TypeScript/ });
-  expect(php.textContent).toContain('2');
-  expect(ts.textContent).toContain('1');
-  expect(document.activeElement).toBe(php);
-  fireEvent.click(ts);
   await waitFor(() => expect(runs).toHaveLength(1));
-  expect(runs[0].prefer).toBe('ts');
-  await finish(runs[0]);
-  expect(await screen.findByText('viewer:mixed:ts')).toBeTruthy();
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(runs[0].langs).toEqual(['php', 'ts']);
+  await finish(runs[0], 'php');
+  expect(await screen.findByText('viewer:mixed:php')).toBeTruthy();
 });
 
 test('cancel during analysis returns to landing', async () => {
@@ -435,7 +454,7 @@ test('folder input picks a folder when showDirectoryPicker is missing', async ()
   expect(await screen.findByText('viewer:web:ts')).toBeTruthy();
 });
 
-test('laravel folder with front-end js opens as php without asking', async () => {
+test('laravel repo with ts opens both with php first', async () => {
   const { deps, runs } = fakes();
   render(<App deps={deps} />);
   drop(items(dirHandle('shop', {
@@ -447,6 +466,40 @@ test('laravel folder with front-end js opens as php without asking', async () =>
   await waitFor(() => expect(runs).toHaveLength(1));
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(runs[0].prefer).toBe('php');
+  expect(runs[0].langs).toEqual(['php', 'ts']);
+  expect(screen.getByText('Laravel + TypeScript')).toBeTruthy();
+});
+
+test('when only one language has files to analyze, loading shows it like a single-language repo', async () => {
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  drop(items(dirHandle('shop', {
+    'composer.json': '{"require":{"laravel/framework":"^11.0"}}',
+    app: { 'User.php': '<?php' },
+    resources: { js: { 'api.gen.ts': '' } },
+  })));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(runs[0].langs).toEqual(['php', 'ts']);
+  expect(screen.getByText('Laravel · app')).toBeTruthy();
+});
+
+test('merged laravel city keeps the framework name in the saved record and recent list', async () => {
+  const { deps, runs, saved } = fakes();
+  render(<App deps={deps} />);
+  drop(items(dirHandle('shop', {
+    'composer.json': '{"require":{"laravel/framework":"^11.0"}}',
+    'vite.config.js': 'export default {}',
+    app: { 'User.php': '<?php' },
+    resources: { js: { 'app.ts': '', 'b.ts': '' } },
+  })));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  await act(async () => {
+    runs[0].resolve({ ...archFor(runs[0].input, 'php'), langs: ['php', 'ts'], frameworks: ['laravel', null] });
+  });
+  expect(await screen.findByText('viewer:shop:php')).toBeTruthy();
+  expect(saved[0]).toMatchObject({ langs: ['php', 'ts'], frameworks: ['laravel', null] });
+  await act(async () => h.shell!.onOpenOther());
+  expect(await screen.findByText(/^Laravel \+ TypeScript · 4 파일/)).toBeTruthy();
 });
 
 test('react folder with stray php files opens as ts without asking', async () => {
@@ -460,9 +513,10 @@ test('react folder with stray php files opens as ts without asking', async () =>
   await waitFor(() => expect(runs).toHaveLength(1));
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(runs[0].prefer).toBe('ts');
+  expect(runs[0].langs).toEqual(['ts', 'php']);
 });
 
-test('java+kotlin folder asks with the bigger language first and focused', async () => {
+test('java+kotlin folder opens both with the bigger language first', async () => {
   const { deps, runs } = fakes();
   render(<App deps={deps} />);
   drop(items(dirHandle('mobile', {
@@ -470,14 +524,10 @@ test('java+kotlin folder asks with the bigger language first and focused', async
     'settings.gradle.kts': '',
     src: { 'A.java': 'class A {}', 'B.kt': 'class B', 'C.kt': 'class C', 'D.kt': 'class D' },
   })));
-  const dialog = await screen.findByRole('dialog', { name: LANG_QUESTION });
-  expect(runs).toHaveLength(0);
-  const labels = within(dialog).getAllByRole('button').map((b) => b.textContent).filter((t) => t?.includes('개'));
-  expect(labels).toEqual(['Kotlin · 3개', 'Java · 1개']);
-  expect(document.activeElement?.textContent).toBe('Kotlin · 3개');
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Java · 1개' }));
   await waitFor(() => expect(runs).toHaveLength(1));
-  expect(runs[0].prefer).toBe('java');
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(runs[0].langs).toEqual(['kotlin', 'java']);
+  expect(runs[0].input.files.map((f) => f.path).sort()).toEqual(['src/A.java', 'src/B.kt', 'src/C.kt', 'src/D.kt']);
 });
 
 test('go folder with helper shell scripts opens as go without asking', async () => {
@@ -492,11 +542,12 @@ test('go folder with helper shell scripts opens as go without asking', async () 
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(runs[0].input.configs['go.mod']).toBe('module example.com/svc');
   expect(runs[0].input.files.map((f) => f.path)).toEqual(['main.go']);
+  expect(runs[0]).not.toHaveProperty('langs');
   await finish(runs[0], 'go');
   expect(await screen.findByText('viewer:svc:go')).toBeTruthy();
 });
 
-test('folder with both laravel and react still asks', async () => {
+test('folder with both laravel and react opens both without asking', async () => {
   const { deps, runs } = fakes();
   render(<App deps={deps} />);
   drop(items(dirHandle('full', {
@@ -505,32 +556,19 @@ test('folder with both laravel and react still asks', async () => {
     app: { 'User.php': '<?php' },
     resources: { js: { 'App.tsx': '' } },
   })));
-  const dialog = await screen.findByRole('dialog', { name: LANG_QUESTION });
-  expect(runs).toHaveLength(0);
-  fireEvent.click(within(dialog).getByRole('button', { name: /PHP/ }));
   await waitFor(() => expect(runs).toHaveLength(1));
-  expect(runs[0].prefer).toBe('php');
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(runs[0].langs).toEqual(['php', 'ts']);
   expect(runs[0].input.files.map((f) => f.path).sort()).toEqual(['app/User.php', 'resources/js/App.tsx']);
 });
 
-test('a ts folder with python files reads only the chosen language', async () => {
+test('while the too-many dialog is open the landing is inert and ignores drops', async () => {
   const { deps, runs } = fakes();
+  const src: Tree = {};
+  for (let i = 0; i <= 20000; i++) src[`f${i}.ts`] = '';
   render(<App deps={deps} />);
-  drop(items(dirHandle('web', {
-    ...tsRepo,
-    tools: { 'gen.py': 'print(1)', 'sync.py': 'print(2)', 'lint.py': 'print(3)' },
-  })));
-  const dialog = await screen.findByRole('dialog', { name: LANG_QUESTION });
-  fireEvent.click(within(dialog).getByRole('button', { name: /TypeScript/ }));
-  await waitFor(() => expect(runs).toHaveLength(1));
-  expect(runs[0].input.files.map((f) => f.path).sort()).toEqual(['src/a.ts', 'src/b.ts']);
-});
-
-test('while the language dialog is open the landing is inert and ignores drops', async () => {
-  const { deps, runs } = fakes();
-  render(<App deps={deps} />);
-  drop(items(dirHandle('mixed', { app: { 'A.php': '<?php' }, 'x.ts': '' })));
-  const dialog = await screen.findByRole('dialog');
+  drop(items(dirHandle('big', { src })));
+  const dialog = await screen.findByRole('dialog', {}, { timeout: 5000 });
   expect(dialog.contains(document.activeElement)).toBe(true);
   expect(zone().closest('[inert]')).not.toBeNull();
   expect(dialog.closest('[inert]')).toBeNull();
@@ -538,10 +576,9 @@ test('while the language dialog is open the landing is inert and ignores drops',
   expect(dropping).toBe(false);
   await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
   expect(screen.getByRole('dialog')).toBe(dialog);
-  fireEvent.click(within(dialog).getByRole('button', { name: /TypeScript/ }));
-  await waitFor(() => expect(runs).toHaveLength(1));
-  expect(runs[0].input.name).toBe('mixed');
-  expect(runs[0].prefer).toBe('ts');
+  fireEvent.click(within(dialog).getByRole('button', { name: '그대로 진행' }));
+  await waitFor(() => expect(runs).toHaveLength(1), { timeout: 5000 });
+  expect(runs[0].input.name).toBe('big');
 });
 
 test('unmounting during analysis cancels the worker', async () => {
@@ -652,6 +689,20 @@ test('a github repo opens when its language is under the cap even if other files
   await waitFor(() => expect(runs).toHaveLength(1), { timeout: 5000 });
   expect(runs[0].input.files.map((f) => f.path).sort()).toEqual(['src/a.ts', 'src/b.ts']);
   expect(github.calls.filter((u) => u.startsWith('https://raw.githubusercontent.com') && u.endsWith('.sh'))).toEqual([]);
+});
+
+test('github cap counts every merged language', async () => {
+  const half = Math.floor(GITHUB_MAX_FILES / 2) + 1;
+  for (let i = 0; i < half; i++) {
+    github.files[`web/f${i}.ts`] = '';
+    github.files[`tools/t${i}.py`] = '';
+  }
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  openGithub('acme/shop');
+  const alert = await screen.findByRole('alert', {}, { timeout: 5000 });
+  expect(alert.textContent).toContain(`소스 파일이 ${(half * 2).toLocaleString('ko-KR')}개라`);
+  expect(runs).toHaveLength(0);
 });
 
 test('cancelling while GitHub resolves drops the result', async () => {

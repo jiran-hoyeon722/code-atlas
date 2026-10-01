@@ -86,12 +86,18 @@ export function isTooMany(listing: Listing): boolean {
 // PHP and TS repos keep both languages, as before multi-language support: detect() still looks at the other's folders.
 const OLD_PAIR: ReadonlySet<Lang> = new Set(['php', 'ts']);
 
+const keeps = (path: string, lang: Lang) => {
+  const l = isSourcePath(path);
+  if (!l || isBuildScript(path)) return false;
+  return l === lang || (OLD_PAIR.has(lang) && OLD_PAIR.has(l));
+};
+
 /** The listing narrowed to the files the analysis of `lang` reads. */
 export function forLang(listing: Listing, lang: Lang): Listing {
-  const keep = (path: string) => {
-    const l = isSourcePath(path);
-    if (!l || isBuildScript(path)) return false;
-    return l === lang || (OLD_PAIR.has(lang) && OLD_PAIR.has(l));
-  };
-  return { ...listing, sources: listing.sources.filter((e) => keep(e.path)) };
+  return forLangs(listing, [lang]);
+}
+
+/** The listing narrowed to the files the analyses of every one of `langs` read. */
+export function forLangs(listing: Listing, langs: Lang[]): Listing {
+  return { ...listing, sources: listing.sources.filter((e) => langs.some((l) => keeps(e.path, l))) };
 }

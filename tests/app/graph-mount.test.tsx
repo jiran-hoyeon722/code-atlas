@@ -108,3 +108,16 @@ test('dispose releases the WebGL context before destroying the graph', () => {
   expect(h.order).toEqual(['forceContextLoss', '_destructor']);
   expect(root.children).toHaveLength(0);
 });
+
+test('a merged role named like its layer shows the layer once in the chip', () => {
+  const a = arch();
+  a.layers[3] = { ...a.layers[3], label: '기반' };
+  a.roles = [{ ...a.roles[0], name: 'Go · 진입점' }, { ...a.roles[1], name: 'Go · 기반' }];
+  a.langs = ['go', 'py'];
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  mountGraph(root, a, env());
+  const nodes = (h.opts.graphData as { nodes: { name: string }[] }).nodes;
+  (h.opts.onNodeClick as (n: unknown) => void)(nodes.find((n) => n.name === HOSTILE_NAME)!);
+  expect(root.querySelector('[data-el="panel-body"] .chip')!.textContent).toBe('Go · 기반');
+});

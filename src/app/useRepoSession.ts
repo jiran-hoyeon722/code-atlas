@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
+import { mergePlan } from '../engine/analyzeLangs';
 import type { Architecture } from '../engine/architecture';
 import type { PackedQuality } from '../engine/battle/pack';
 import type { QualityIssue } from '../engine/battle/quality';
 import type { Quality } from '../engine/battle/types';
 import { isSourcePath } from '../engine/collect';
-import { detect } from '../engine/detect';
+import { detect, type Detection } from '../engine/detect';
+import { mergeRoles } from '../engine/merge';
 import { countLangs, pickLang } from '../engine/pick';
 import { presetFor, type Role } from '../engine/presets';
 import { sourcesFor } from '../engine/sources';
 import type { Lang, RepoInput } from '../engine/types';
 import { startQuality } from '../features/battle/worker/client';
+import { repoLabel } from '../features/lang-label';
 import type { LoadStep } from '../features/loading/LoadingScreen';
 import type { BattleAccess } from '../features/viewer-env';
 import * as cache from '../storage/cache';
@@ -20,7 +23,7 @@ import { GithubError, fetchGithubText, githubLabel, openGithub, openGithubCommit
 import { loadSample, loadSampleManifest, type SampleRepo } from './files/samples';
 import { fromDirectoryHandle, fromEntry, fromFileList } from './files/sources';
 import type { Entry, FsDir, Listing } from './files/types';
-import { forLang, isTooMany, listRepo, loadRepo } from './files/walk';
+import { forLangs, isTooMany, listRepo, loadRepo } from './files/walk';
 
 export interface SessionDeps {
   startAnalysis: typeof startAnalysis;
@@ -31,7 +34,7 @@ export interface SessionDeps {
   measureQuality?: (input: RepoInput, prefer: Lang) => Promise<Quality>;
 }
 
-export type Phase = 'landing' | 'listing' | 'confirmTooMany' | 'chooseLang' | 'reading' | 'analyzing' | 'viewer';
+export type Phase = 'landing' | 'listing' | 'confirmTooMany' | 'reading' | 'analyzing' | 'viewer';
 
 export interface LoadingInfo {
   name: string;
@@ -49,9 +52,6 @@ export interface SessionState {
   notice?: string;
   loading?: LoadingInfo;
   tooMany?: number;
-  langCounts?: Partial<Record<Lang, number>>;
-  /** languages to offer, most files first; the first is the default */
-  langChoices?: Lang[];
   viewer?: { arch: Architecture; skipped: number; canReconnect: boolean; id: number; origin?: GithubOrigin; battle: BattleAccess };
   samples: SampleRepo[];
   /** the GitHub spec behind the current notice, so the landing can offer a ZIP download instead */
@@ -333,7 +333,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
 
     setStep({ phase: 'list', found: listing.sources.length });
 
-    // GitHub is held to its own, smaller cap on the chosen language below.
+    // GitHub is held to its own, smaller cap on the languages to analyse below.
     if (!src.origin && isTooMany(listing)) {
       const ok = await ask<boolean>({ phase: 'confirmTooMany', tooMany: listing.sources.length });
       if (!alive()) return;
@@ -341,35 +341,45 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     }
 
     const counts = countLangs(listing.sources.map((e) => e.path));
-    const { lang: picked, ask: choices } = pickLang(counts);
+    const { lang: picked, ask: others } = pickLang(counts);
     const phpTs = (counts.php ?? 0) > 0 && (counts.ts ?? 0) > 0;
-    let prefer: Lang | undefined;
-    if (phpTs) prefer = await frameworkLang(listing);
+    const fw = phpTs ? await frameworkLang(listing) : undefined;
     if (!alive()) return;
-    if (choices.length >= 2 && !prefer) {
-      const choice = await ask<Lang | null>({ phase: 'chooseLang', langCounts: counts, langChoices: choices });
-      if (!alive()) return;
-      if (!choice) return toLanding();
-      prefer = choice;
-    }
+    const primary = fw ?? picked;
+    const langs = primary ? [primary, ...others.filter((l) => l !== primary)] : [];
+    const merged = langs.length >= 2;
+    const prefer = merged ? primary! : fw;
 
-    const lang = prefer ?? picked;
-    const chosen = lang ? forLang(listing, lang) : listing;
+    const chosen = primary ? forLangs(listing, langs) : listing;
     if (src.origin && chosen.sources.length > GITHUB_MAX_FILES) return toLanding(githubTooMany(chosen.sources.length), src.origin);
 
-    setState((s) => ({ ...s, phase: 'reading', tooMany: undefined, langCounts: undefined, langChoices: undefined }));
+    setState((s) => ({ ...s, phase: 'reading', tooMany: undefined }));
     const onRead = throttled((v: { done: number; total: number }) => setStep({ phase: 'read', ...v }));
     const input = await loadRepo(chosen, (done, total) => onRead({ done, total }));
     if (!alive()) return;
 
-    const detection = detect(input, prefer);
-    if (!detection) return toLanding(NOTICE.noFiles);
-    const roles = presetFor(detection, sourcesFor(detection, input.files).map((f) => f.path)).roles;
-    const framework = detection.framework ? FRAMEWORK[detection.framework] : null;
+    const rolesOf = (detection: Detection) => presetFor(detection, sourcesFor(detection, input.files).map((f) => f.path)).roles;
+    const single = (detection: Detection): Partial<LoadingInfo> =>
+      ({ framework: detection.framework ? FRAMEWORK[detection.framework] : null, sourceDir: detection.sourceDir, roles: rolesOf(detection) });
+    let loadingInfo: Partial<LoadingInfo>;
+    if (merged) {
+      // the plan analyzeLangs follows, so progress role indexes point at these roles
+      const plan = mergePlan(input, langs);
+      if (plan.length === 0) return toLanding(NOTICE.noFiles);
+      loadingInfo = plan.length === 1 ? single(plan[0].detection) : {
+        framework: repoLabel({ lang: plan[0].lang, langs: plan.map((p) => p.lang), frameworks: plan.map((p) => p.detection.framework), framework: null }),
+        sourceDir: '',
+        roles: mergeRoles(plan.map((p) => ({ lang: p.lang, roles: rolesOf(p.detection) }))),
+      };
+    } else {
+      const detection = detect(input, prefer);
+      if (!detection) return toLanding(NOTICE.noFiles);
+      loadingInfo = single(detection);
+    }
     setState((s) => ({ ...s, phase: 'analyzing' }));
-    setStep({ phase: 'read', done: input.files.length, total: input.files.length }, { framework, sourceDir: detection.sourceDir, roles });
+    setStep({ phase: 'read', done: input.files.length, total: input.files.length }, loadingInfo);
 
-    const job = deps.startAnalysis(input, { prefer, onProgress: (p) => setStep(p) });
+    const job = deps.startAnalysis(input, { prefer, ...(merged && { langs }), onProgress: (p) => setStep(p) });
     cancelAnalysis.current = job.cancel;
     let result: AnalysisResult;
     try {
@@ -383,7 +393,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     const { architecture: arch, quality, qualityIssue } = result;
 
     await save({
-      key, name: listing.name, framework: arch.framework, lang: arch.lang, files: arch.nodes.length,
+      key, name: listing.name, framework: arch.framework, lang: arch.lang, ...(arch.langs && { langs: arch.langs }), ...(arch.frameworks && { frameworks: arch.frameworks }), files: arch.nodes.length,
       analyzedAt: arch.generatedAt, architecture: arch, handle: src.handle, ...(src.origin && { origin: src.origin }),
       ...(quality && { quality }), ...(qualityIssue && { qualityIssue }),
     });
@@ -595,7 +605,6 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     onClearAll,
     onCancel,
     onConfirmTooMany: (ok: boolean) => answerWith(ok),
-    onChooseLang: (lang: Lang | null) => answerWith(lang),
     readSource,
     onReconnect,
     onReanalyze,

@@ -1,5 +1,6 @@
-import { analyze, UnsupportedRepoError, type AnalyzeOptions } from '../../engine/analyze';
+import { analyze, UnsupportedRepoError, type AnalyzeOptions, type Progress } from '../../engine/analyze';
 import { packQuality, type PackedQuality } from '../../engine/battle/pack';
+import { analyzeLangs } from '../../engine/analyzeLangs';
 import { analyzeWithQuality, type AnalysisWithQuality, type QualityIssue } from '../../engine/battle/quality';
 import { detect } from '../../engine/detect';
 import { loadParsers, type Parsers, type WasmFile } from '../../engine/parsers';
@@ -23,13 +24,17 @@ export async function handle(
   locate: (base: string) => (f: WasmFile) => string = wasmLocate,
 ): Promise<void> {
   try {
-    const detection = detect(msg.input, msg.prefer);
-    if (!detection) throw new UnsupportedRepoError();
-    const parsers = await loadParsers(locate(msg.wasmBase), [detection.lang]);
-    const r = analyzeBoth(msg.input, parsers, {
-      prefer: msg.prefer,
-      onProgress: (progress) => post({ type: 'progress', progress }),
-    });
+    const onProgress = (progress: Progress) => post({ type: 'progress', progress });
+    let r: AnalysisWithQuality;
+    if (msg.langs && msg.langs.length >= 2) {
+      const parsers = await loadParsers(locate(msg.wasmBase), msg.langs);
+      r = analyzeLangs(msg.input, parsers, msg.langs, { onProgress });
+    } else {
+      const detection = detect(msg.input, msg.prefer);
+      if (!detection) throw new UnsupportedRepoError();
+      const parsers = await loadParsers(locate(msg.wasmBase), [detection.lang]);
+      r = analyzeBoth(msg.input, parsers, { prefer: msg.prefer, onProgress });
+    }
     let quality: PackedQuality | null = null;
     let qualityIssue: QualityIssue | undefined = r.qualityIssue;
     if (r.quality) {

@@ -42,7 +42,7 @@ export interface AnalysisResult {
 
 export function startAnalysis(
   input: RepoInput,
-  opts: { prefer?: Lang; onProgress: (p: Progress) => void; createWorker?: () => Worker },
+  opts: { prefer?: Lang; langs?: Lang[]; onProgress: (p: Progress) => void; createWorker?: () => Worker },
 ): { result: Promise<AnalysisResult>; cancel(): void } {
   const worker = (opts.createWorker ?? defaultWorker)();
   let settled = false;
@@ -74,6 +74,7 @@ export function startAnalysis(
     type: 'analyze',
     input,
     prefer: opts.prefer,
+    ...(opts.langs && { langs: opts.langs }),
     wasmBase: new URL('./', document.baseURI).href,
   };
   worker.postMessage(msg);

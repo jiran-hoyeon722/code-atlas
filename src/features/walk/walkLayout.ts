@@ -8,6 +8,9 @@ export const STREET = 14;
 export const AVENUE = 24;
 export const FLOOR = 3.5;
 
+/** Font size for a district board name that measured `width` at `size`px, so it fits in `max`px. */
+export const boardFontSize = (width: number, size = 84, max = 944): number => (width > max ? Math.floor((size * max) / width) : size);
+
 export type BuildingKind = 'house' | 'apartment' | 'tower';
 export interface WalkBuilding { i: number; x: number; z: number; w: number; d: number; h: number; face: 1 | -1; lane: number; district: number; kind: BuildingKind }
 export interface WalkStrip { role: number; x: number; z: number; w: number; d: number }
