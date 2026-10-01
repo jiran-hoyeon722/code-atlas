@@ -194,7 +194,21 @@ export const mountGraph: MountViewer = (root, arch, env) => {
     else if (!state.selected) Graph.zoomToFit(600, 60);
   });
 
+  // Big graphs cost >100ms per frame, which starves scrolling in the panels on top, so the render loop sleeps while the pointer is over them.
+  let overUi = false;
+  let awakeUntil = 0;
+  const syncAnimation = () => {
+    if (overUi && performance.now() >= awakeUntil) Graph.pauseAnimation();
+    else Graph.resumeAnimation();
+  };
+  const wake = (ms: number) => {
+    awakeUntil = Math.max(awakeUntil, performance.now() + ms);
+    syncAnimation();
+    timers.push(setTimeout(syncAnimation, ms + 20));
+  };
+
   function refresh() {
+    wake(150);
     Graph.nodeColor(Graph.nodeColor()).linkColor(Graph.linkColor()).linkWidth(Graph.linkWidth())
       .linkDirectionalParticles(Graph.linkDirectionalParticles()).nodeVisibility(Graph.nodeVisibility()).linkVisibility(Graph.linkVisibility());
   }
@@ -216,6 +230,7 @@ export const mountGraph: MountViewer = (root, arch, env) => {
     if (fly) {
       const distance = 280;
       const ratio = 1 + distance / Math.max(1, Math.hypot(n.x, n.y, n.z));
+      wake(1000);
       Graph.cameraPosition({ x: n.x * ratio, y: n.y * ratio, z: n.z * ratio }, n, 900);
     }
   }
@@ -271,6 +286,10 @@ export const mountGraph: MountViewer = (root, arch, env) => {
   on($('go-explorer'), 'click', () => env.goto('explorer', state.selected ? { file: state.selected.path } : undefined));
   on($('go-city'), 'click', () => env.goto('city', state.selected ? { file: state.selected.path } : undefined));
   on($('close'), 'click', () => select(null));
+  wrap.querySelectorAll('.glass').forEach((el) => {
+    on(el, 'pointerenter', () => { overUi = true; syncAnimation(); });
+    on(el, 'pointerleave', () => { overUi = false; syncAnimation(); });
+  });
 
   // legend
   const counts = arch.roles.map(() => 0);

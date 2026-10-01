@@ -16,7 +16,6 @@
     --edge: #6c6b66;
     --shadow: 0 12px 40px rgba(20, 20, 18, .14);
     color-scheme: light;
-    position: relative;
     background: var(--bg);
     color: var(--text);
     font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Segoe UI", sans-serif;
