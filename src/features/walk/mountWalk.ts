@@ -1766,10 +1766,12 @@ const mount: MountViewer = (root, arch, env) => {
   const doorPoint = new THREE.Vector3();
   renderer.setAnimationLoop((now) => {
     const frame = Math.min(0.05, Math.max(0, (now - last) / 1000));
+    // The pilot's cards and reading time run on the wall clock, so a slow machine does not stretch them.
+    const wall = Math.min(0.25, Math.max(0, (now - last) / 1000));
     last = now;
     // A pack going down plays in slow motion for a moment.
     const dt = auto && pilot.slowmo > 0 && !reduceMotion ? frame * 0.35 : frame;
-    runPilot(frame);
+    runPilot(wall);
     const time = now / 1000;
     uniforms.uTime.value = time;
     const input = (a: string[], b: string[]) => (a.some((k) => keys.has(k)) ? 1 : 0) - (b.some((k) => keys.has(k)) ? 1 : 0);
