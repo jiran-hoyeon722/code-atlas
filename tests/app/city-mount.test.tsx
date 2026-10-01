@@ -292,3 +292,65 @@ test('a merged role named like its layer shows the layer once in the chip', () =
   expect(root.querySelector('[data-el="panel-body"] .chip')!.textContent).toBe('Go · 기반');
   dispose();
 });
+
+test('legend hides empty roles and reports each toggle as pressed or not', () => {
+  const a = arch();
+  a.roles.push({ name: 'Empty', layer: 2, patterns: ['e'], description: '' });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  mountCity(root, a, env());
+  expect(root.querySelector('[data-role="2"]')).toBeNull();
+  expect(root.querySelector('[data-el="roles"]')!.textContent).not.toContain('도메인');
+  const role = root.querySelector<HTMLElement>('[data-role="0"]')!;
+  expect(role.getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(role);
+  expect(role.getAttribute('aria-pressed')).toBe('false');
+});
+
+test('panel explains each metric and selection is announced', () => {
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  mountCity(root, arch(), env({ selection: { file: 'a/Home.ts' } }));
+  const metrics = Array.from(root.querySelectorAll('.metric small')).map((el) => el.textContent);
+  expect(metrics).toHaveLength(8);
+  expect(metrics[0]).toBe('나를 쓰는 파일 수');
+  expect(root.querySelector('[data-el="live"]')!.textContent).toBe('a/Home.ts 선택 — 나를 쓰는 곳 0개, 내가 쓰는 것 1개');
+  fireEvent.click(root.querySelector('[data-el="close"]')!);
+  expect(root.querySelector('[data-el="live"]')!.textContent).toBe('선택을 해제했어요');
+});
+
+test('picks list each standout file once and fly to it', () => {
+  const a = arch();
+  a.nodes[1] = { ...a.nodes[1], maxComplexity: 30 };
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  mountCity(root, a, env());
+  const picks = Array.from(root.querySelectorAll<HTMLElement>('[data-pick]'));
+  expect(picks.map((b) => b.dataset.pick)).toEqual(['1', '0']);
+  expect(picks[0].textContent).toContain('가장 많이 쓰이는 파일');
+  fireEvent.click(picks[1]);
+  expect(root.querySelector('[data-el="panel-body"] h3')!.textContent).toBe('a/Home.ts');
+});
+
+test('legend folds and remembers it', () => {
+  localStorage.removeItem('code-atlas:city-legend-folded');
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  const dispose = mountCity(root, arch(), env());
+  const fold = root.querySelector<HTMLElement>('[data-el="fold"]')!;
+  fireEvent.click(fold);
+  expect(fold.getAttribute('aria-expanded')).toBe('false');
+  expect(root.querySelector<HTMLElement>('[data-el="legend-body"]')!.hidden).toBe(true);
+  dispose();
+  mountCity(root, arch(), env());
+  expect(root.querySelector<HTMLElement>('[data-el="legend-body"]')!.hidden).toBe(true);
+  localStorage.removeItem('code-atlas:city-legend-folded');
+});
+
+test('a frame after hiding a role re-lays the labels without failing', () => {
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  mountCity(root, arch(), env());
+  fireEvent.click(root.querySelector('[data-role="0"]')!);
+  expect(() => h.loop!(performance.now())).not.toThrow();
+});

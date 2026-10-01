@@ -77,16 +77,21 @@ const MARKUP = `
         </select>
     </label>
     <div class="cc-scale" data-el="scale"></div>
+    <div class="picks" data-el="picks"></div>
     <div class="links">
-        <a data-goto="explorer">아키텍처 탐색기 ↗</a>
-        <a data-goto="graph">3D 그래프 ↗</a>
+        <a href="#" data-goto="explorer">아키텍처 탐색기 ↗</a>
+        <a href="#" data-goto="graph">3D 그래프 ↗</a>
+        <button data-el="home">처음 시점 (Home)</button>
     </div>
+    <p class="controls">드래그 회전 · 휠 확대 · 우클릭 드래그 이동</p>
 </div>
 
 <div class="cc-legend glass">
-    <h2>구역 = 역할 (클릭해서 켜고 끄기) <button data-el="all">전체 켜기</button></h2>
+    <h2>구역 = 역할 (클릭해서 켜고 끄기) <span><button data-el="all">전체 켜기</button><button data-el="fold" aria-expanded="true" aria-controls="cc-legend-body">접기</button></span></h2>
+    <div id="cc-legend-body" data-el="legend-body">
     <div data-el="roles"></div>
     <div class="hint">앞줄부터 <b>진입점 → 애플리케이션 → 도메인·인프라 → 기반</b> 순서로 도로가 나뉘어요. 건물을 클릭하면 참조선이 떠요 — <b style="color:var(--in)">파랑</b> 나를 쓰는 곳, <b style="color:var(--out)">주황</b> 내가 쓰는 것, <b style="color:var(--danger)">빨강</b> 역방향. 점선이 흐르는 방향이 참조 방향이에요.</div>
+    </div>
 </div>
 
 <section class="cc-code glass" data-el="code" aria-label="소스 코드">
@@ -100,7 +105,8 @@ const MARKUP = `
 </section>
 
 <aside class="cc-panel glass" data-el="panel"><button class="close" data-el="close">닫기</button><div data-el="panel-body"></div></aside>
-<div class="cc-tip" data-el="tip"></div>`;
+<div class="cc-tip" data-el="tip"></div>
+<div class="sr-only" aria-live="polite" data-el="live"></div>`;
 
 export const mountCity: MountViewer = (root, arch, env) => {
   root.classList.add('cc-city');
@@ -168,6 +174,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
   const camera = new THREE.PerspectiveCamera(45, size().w / size().h, 1, citySize * 8);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
+  controls.addEventListener('change', () => { labelsDirty = true; });
   controls.maxPolarAngle = Math.PI * 0.47;
 
   scene.add(new THREE.HemisphereLight('#c9d4ff', '#1a1c22', 1.1));
@@ -237,17 +244,19 @@ export const mountCity: MountViewer = (root, arch, env) => {
     return sprite;
   }
   let labelRight = layout.bounds.w / 2;
-  layout.blocks.forEach((d) => {
-    const role = arch.roles[d.role];
-    const s = label(role.name, `${counts[d.role]}개`, palette[d.role], Math.max(4, Math.min(7, d.w / 5)), small ? d.w + ROAD : Infinity);
+  const rowLabels: THREE.Sprite[] = [];
+  const blockLabels = layout.blocks.map((d) => {
+    const s = label(arch.roles[d.role].name, '', palette[d.role], Math.max(4, Math.min(7, d.w / 5)), small ? d.w + ROAD : Infinity);
     s.position.set(d.x - d.w / 2, 0.6, d.z + d.d / 2 + 3);
     scene.add(s);
-  });
+    return { sprite: s, role: d.role };
+  }).sort((a, b) => counts[b.role] - counts[a.role]);
   rows.forEach((r) => {
     const s = label(arch.layers[r.li].label, arch.layers[r.li].hint, LAYER_TINT[r.li], small ? Math.max(3, citySize / 12) : 11, small ? Math.max(r.width, citySize * 0.6) : Infinity);
     s.position.set(r.width / 2 + 10, 0.6, r.front - r.depth / 2);
     labelRight = Math.max(labelRight, s.position.x + s.scale.x);
     scene.add(s);
+    rowLabels.push(s);
   });
 
   const view = homeView(layout.bounds, labelRight, size().w / size().h);
@@ -257,6 +266,42 @@ export const mountCity: MountViewer = (root, arch, env) => {
   camera.updateProjectionMatrix();
   controls.target.copy(view.target);
   scene.fog = new THREE.Fog(bg, view.fogNear, view.fogFar);
+
+  // row labels always stay; role labels give way, biggest district first, when they collide or get too small to read
+  const MIN_LABEL_PX = 11;
+  const camRight = new THREE.Vector3();
+  const camUp = new THREE.Vector3();
+  const corner = new THREE.Vector3();
+  const anchor = new THREE.Vector3();
+  type Rect = { l: number; r: number; t: number; b: number };
+  function screenRect(s: THREE.Sprite): Rect | null {
+    anchor.copy(s.position).project(camera);
+    corner.copy(s.position).addScaledVector(camRight, s.scale.x).addScaledVector(camUp, s.scale.y).project(camera);
+    if (anchor.z > 1 || corner.z > 1) return null;
+    const { w, h } = size();
+    const xs = [(anchor.x + 1) * w / 2, (corner.x + 1) * w / 2];
+    const ys = [(1 - anchor.y) * h / 2, (1 - corner.y) * h / 2];
+    return { l: Math.min(...xs), r: Math.max(...xs), t: Math.min(...ys), b: Math.max(...ys) };
+  }
+  const overlaps = (a: Rect, b: Rect) => a.l < b.r + 4 && b.l < a.r + 4 && a.t < b.b + 2 && b.t < a.b + 2;
+  let labelsDirty = true;
+  function declutter() {
+    labelsDirty = false;
+    camera.updateMatrixWorld();
+    camRight.setFromMatrixColumn(camera.matrixWorld, 0);
+    camUp.setFromMatrixColumn(camera.matrixWorld, 1);
+    const box = root.getBoundingClientRect();
+    const panels = Array.from(root.querySelectorAll<HTMLElement>('.cc-top, .cc-legend, .cc-panel.open, .cc-code.open')).map((el) => {
+      const r = el.getBoundingClientRect();
+      return { l: r.left - box.left, r: r.right - box.left, t: r.top - box.top, b: r.bottom - box.top };
+    });
+    const taken = [...panels, ...rowLabels.map(screenRect).filter((r): r is Rect => !!r)];
+    blockLabels.forEach(({ sprite, role }) => {
+      const rect = state.hidden.has(role) ? null : screenRect(sprite);
+      sprite.visible = !!rect && rect.b - rect.t >= MIN_LABEL_PX && !taken.some((t) => overlaps(t, rect));
+      if (sprite.visible) taken.push(rect!);
+    });
+  }
 
   // ---- buildings (one instanced mesh) ----
   const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -420,6 +465,14 @@ export const mountCity: MountViewer = (root, arch, env) => {
     };
   }
 
+  function flyHome() {
+    flight = {
+      start: performance.now(), duration: 900,
+      fromPos: camera.position.clone(), toPos: view.position.clone(),
+      fromTarget: controls.target.clone(), toTarget: view.target.clone(),
+    };
+  }
+
   const reporter = createSelectionReporter((sel) => env.onSelect(sel));
   let codePath: string | null = null;
   const codeOpen = () => $('code').classList.contains('open');
@@ -443,9 +496,12 @@ export const mountCity: MountViewer = (root, arch, env) => {
     if (!n) {
       if (prev && hadBlast) renderPanel(prev);
       $('panel').classList.remove('open');
+      labelsDirty = true;
+      if (prev) $('live').textContent = '선택을 해제했어요';
       return;
     }
     renderPanel(n);
+    if (n !== prev) $('live').textContent = `${n.name} 선택 — 나를 쓰는 곳 ${fmt(n.incoming.length)}개, 내가 쓰는 것 ${fmt(n.outgoing.length)}개`;
     if (fly) flyTo(n);
   }
   function setBlast(on: boolean) {
@@ -475,6 +531,17 @@ export const mountCity: MountViewer = (root, arch, env) => {
     const href = env.vscodeHref(path);
     return href ? `<a href="${esc(href)}">VS Code 에서 열기</a>` : '<button data-vscode-setup>VS Code 에서 열기</button>';
   };
+
+  const metrics = (n: CityNode) => ([
+    [fmt(n.fanIn), 'fan-in', '나를 쓰는 파일 수'],
+    [fmt(n.fanOut), 'fan-out', '내가 쓰는 파일 수'],
+    [`${n.centrality.toFixed(1)}×`, '중심도', '평균 파일 대비 중요도'],
+    [n.instability.toFixed(2), '불안정도', '0 기반 ↔ 1 말단'],
+    [fmt(n.routeRefs), '라우트 참조', '라우트 파일이 직접 참조한 수'],
+    [fmt(n.functions), '함수 수', '파일 안의 함수·메서드'],
+    [fmt(n.maxComplexity), '함수 최대 복잡도', '가장 꼬인 함수의 분기 수'],
+    [fmt(n.lines), '줄 수', '파일 길이'],
+  ] as const).map(([value, label, hint]) => `<div class="metric"><b>${value}</b><span>${label}</span><small>${hint}</small></div>`).join('');
 
   function renderPanel(n: CityNode) {
     const role = arch.roles[n.role];
@@ -506,33 +573,25 @@ export const mountCity: MountViewer = (root, arch, env) => {
         <h3>${esc(n.name)}</h3>
         <div class="path">${esc(n.path)}</div>
         <p class="desc">${esc(role.description)}</p>
-        <div class="metrics">
-            <div class="metric"><b>${fmt(n.fanIn)}</b><span>fan-in</span></div>
-            <div class="metric"><b>${fmt(n.fanOut)}</b><span>fan-out</span></div>
-            <div class="metric"><b>${n.centrality.toFixed(1)}×</b><span>중심도</span></div>
-            <div class="metric"><b>${n.instability.toFixed(2)}</b><span>불안정도</span></div>
-            <div class="metric"><b>${fmt(n.routeRefs)}</b><span>라우트 참조</span></div>
-            <div class="metric"><b>${fmt(n.functions)}</b><span>함수 수</span></div>
-            <div class="metric"><b>${fmt(n.maxComplexity)}</b><span>함수 최대 복잡도</span></div>
-            <div class="metric"><b>${fmt(n.lines)}</b><span>줄 수</span></div>
-        </div>
+        <div class="metrics">${metrics(n)}</div>
         ${blastSection()}
         <div class="actions">
             <button data-open-code="${n.i}">코드 보기</button>
             <button data-blast aria-pressed="${!!state.blast}">💥 폭발 반경</button>
             ${vscodeAction(n.path)}
-            <a data-explorer="${n.i}">탐색기에서 보기 ↗</a>
+            <a href="#" data-explorer="${n.i}">탐색기에서 보기 ↗</a>
         </div>
         ${list(n.incoming, 'f', '나를 쓰는 곳', 'var(--in)')}
         ${list(n.outgoing, 't', '내가 쓰는 것', 'var(--out)')}`;
     $('panel').classList.add('open');
+    labelsDirty = true;
   }
   listen($('panel-body'), 'click', (ev) => {
     const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-select],[data-open-code],[data-explorer],[data-vscode-setup],[data-blast]');
     if (!el) return;
     if (el.dataset.select) select(nodes[+el.dataset.select], true);
     else if (el.dataset.openCode) void openCode(+el.dataset.openCode);
-    else if (el.dataset.explorer) env.goto('explorer', { file: nodes[+el.dataset.explorer].path });
+    else if (el.dataset.explorer) { ev.preventDefault(); env.goto('explorer', { file: nodes[+el.dataset.explorer].path }); }
     else if (el.dataset.blast !== undefined) setBlast(!state.blast);
     else env.requestVscodeSetup();
   });
@@ -550,6 +609,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     const n = nodes[i];
     const request = ++codeRequest;
     $('code').classList.add('open');
+    labelsDirty = true;
     codePath = n.path;
     reporter.report(currentSelection());
     $('code-name').textContent = n.name;
@@ -579,6 +639,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
   }
   function closeCode() {
     $('code').classList.remove('open');
+    labelsDirty = true;
     codePath = null;
     codeRequest++;
     reporter.report(currentSelection());
@@ -667,25 +728,68 @@ export const mountCity: MountViewer = (root, arch, env) => {
   listen($<HTMLSelectElement>('height'), 'change', (ev) => { state.height = (ev.target as HTMLSelectElement).value as HeightKey; applyHeights(); });
   listen($<HTMLSelectElement>('color'), 'change', (ev) => { state.color = (ev.target as HTMLSelectElement).value as ColorKey; applyColors(); });
   listen($('close'), 'click', () => select(null));
+  listen($('panel'), 'transitionend', () => { labelsDirty = true; });
   listen(root.querySelector<HTMLElement>('.links')!, 'click', (ev) => {
     const a = (ev.target as HTMLElement).closest<HTMLElement>('[data-goto]');
-    if (a) env.goto(a.dataset.goto as 'explorer' | 'graph');
+    if (!a) return;
+    ev.preventDefault();
+    env.goto(a.dataset.goto as 'explorer' | 'graph');
   });
+  listen($('home'), 'click', flyHome);
 
-  $('roles').innerHTML = arch.layers.map((layer, li) => `
+  $('roles').innerHTML = arch.layers.map((layer, li) => {
+    const roles = arch.roles.map((r, i) => ({ r, i })).filter(({ r, i }) => r.layer === li && counts[i] > 0);
+    return roles.length ? `
     <div class="layer-name">${esc(layer.label)}</div><div class="roles">
-    ${arch.roles.map((r, i) => ({ r, i })).filter(({ r }) => r.layer === li).map(({ r, i }) =>
-      `<button class="role" data-role="${i}" title="${esc(r.description)}"><i style="background:${esc(palette[i])}"></i>${esc(r.name)} <small>${counts[i]}</small></button>`).join('')}
-    </div>`).join('');
-  const syncRoles = () => root.querySelectorAll<HTMLElement>('.role').forEach((b) => b.classList.toggle('off', state.hidden.has(+b.dataset.role!)));
+    ${roles.map(({ r, i }) =>
+      `<button class="role" data-role="${i}" aria-pressed="true" title="${esc(r.description)}"><i style="background:${esc(palette[i])}"></i>${esc(r.name)} <small>${counts[i]}</small></button>`).join('')}
+    </div>` : '';
+  }).join('');
+  const syncRoles = () => root.querySelectorAll<HTMLElement>('.role').forEach((b) => {
+    const off = state.hidden.has(+b.dataset.role!);
+    b.classList.toggle('off', off);
+    b.setAttribute('aria-pressed', String(!off));
+  });
   listen($('roles'), 'click', (ev) => {
     const b = (ev.target as HTMLElement).closest<HTMLElement>('.role');
     if (!b) return;
     const role = +b.dataset.role!;
     if (state.hidden.has(role)) state.hidden.delete(role); else state.hidden.add(role);
-    syncRoles(); applyHeights();
+    syncRoles(); applyHeights(); labelsDirty = true;
   });
-  listen($('all'), 'click', () => { state.hidden.clear(); syncRoles(); applyHeights(); });
+  listen($('all'), 'click', () => { state.hidden.clear(); syncRoles(); applyHeights(); labelsDirty = true; });
+
+  const FOLD_KEY = 'code-atlas:city-legend-folded';
+  const fold = (folded: boolean) => {
+    $('legend-body').hidden = folded;
+    $('fold').textContent = folded ? '펼치기' : '접기';
+    $('fold').setAttribute('aria-expanded', String(!folded));
+    root.querySelector('.cc-legend')!.classList.toggle('folded', folded);
+    labelsDirty = true;
+  };
+  try { fold(localStorage.getItem(FOLD_KEY) === '1'); } catch { /* storage blocked: start unfolded */ }
+  listen($('fold'), 'click', () => {
+    const folded = !$('legend-body').hidden;
+    fold(folded);
+    try { localStorage.setItem(FOLD_KEY, folded ? '1' : '0'); } catch { /* not remembered */ }
+  });
+
+  const top = <K extends keyof CityNode>(key: K) => nodes.reduce<CityNode | null>((best, n) => ((n[key] as number) > 0 && (!best || (n[key] as number) > (best[key] as number)) ? n : best), null);
+  const picks: [string, CityNode | null][] = [
+    ['가장 많이 쓰이는 파일', top('fanIn')],
+    ['가장 많이 가져다 쓰는 파일', top('fanOut')],
+    ['역방향 의존이 가장 많은 파일', top('upStrong')],
+    ['가장 복잡한 함수가 있는 파일', top('maxComplexity')],
+  ];
+  const seen = new Set<number>();
+  const pickItems = picks.filter(([, n]) => n && !seen.has(n.i) && seen.add(n.i)) as [string, CityNode][];
+  $('picks').innerHTML = pickItems.length
+    ? `<h2>먼저 볼 만한 파일</h2>${pickItems.map(([why, n]) => `<button data-pick="${n.i}"><i style="background:${esc(n.css)}"></i><b>${esc(n.name)}</b><small>${why}</small></button>`).join('')}`
+    : '';
+  listen($('picks'), 'click', (ev) => {
+    const b = (ev.target as HTMLElement).closest<HTMLElement>('[data-pick]');
+    if (b) select(nodes[+b.dataset.pick!], true);
+  });
 
   const input = $<HTMLInputElement>('q');
   const box = $('results');
@@ -721,6 +825,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     const focused = document.activeElement;
     if (typingElsewhere(focused)) return;
     if (e.key === '/' && focused !== input) { e.preventDefault(); input.focus(); }
+    if (e.key === 'Home' && focused !== input) { e.preventDefault(); flyHome(); }
     if (e.key === 'Escape' && focused !== input) {
       if (codeOpen()) closeCode(); else select(null);
     }
@@ -731,6 +836,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
+    labelsDirty = true;
   });
   resizeObserver.observe(root);
 
@@ -776,6 +882,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
       }
     }
     controls.update();
+    if (labelsDirty) declutter();
     renderer.render(scene, camera);
   });
 

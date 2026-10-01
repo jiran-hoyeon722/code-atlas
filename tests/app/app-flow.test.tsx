@@ -205,7 +205,7 @@ test('fresh folder: listing → loading screen → viewer, result cached', async
   await act(async () => {
     runs[0].onProgress({ phase: 'parse', done: 1, total: 2, path: 'src/<b>a</b>.ts', role: 0 });
   });
-  expect(screen.getByText('src/<b>a</b>.ts')).toBeTruthy();
+  expect(screen.getByTitle('src/<b>a</b>.ts').textContent).toBe('src/<b>a</b>.ts');
   expect(screen.getByText('1 / 2')).toBeTruthy();
   await act(async () => {
     runs[0].resolve(archFor(runs[0].input));
