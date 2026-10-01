@@ -7,7 +7,7 @@ import { downloadCodeCharta } from './codecharta';
 import { formatHash, parseHash } from './hash';
 import { getRepoRoot, setRepoRoot, vscodeHref } from './vscode';
 import { hasWebGL } from './webgl';
-import { LANGS } from '../../engine/langs';
+import { repoLabel } from '../lang-label';
 
 export interface ViewerShellProps {
   arch: Architecture;
@@ -42,7 +42,6 @@ const TABS: { id: TabId; label: string }[] = [
 const NEEDS_3D: ReadonlySet<TabId> = new Set(['city', 'graph', 'walk']);
 const NO_WEBGL = '이 브라우저에서는 3D 화면을 쓸 수 없어요. 탐색기에서 같은 정보를 볼 수 있어요.';
 const FAIL_REASON = { syntax: '구문 오류', read: '읽기 실패' } as const;
-const FRAMEWORK_LABEL = { laravel: 'Laravel', react: 'React' } as const;
 
 const isAbsolute = (p: string) => p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p);
 
@@ -181,7 +180,7 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
           ) : (
             <strong>{arch.name}</strong>
           )}
-          <span>{`${arch.framework ? FRAMEWORK_LABEL[arch.framework] : (LANGS[arch.lang]?.label ?? arch.lang)} · 파일 ${arch.nodes.length.toLocaleString('ko-KR')}개 · ${formatTime(arch.generatedAt)} 분석`}</span>
+          <span>{`${repoLabel(arch)} · 파일 ${arch.nodes.length.toLocaleString('ko-KR')}개 · ${formatTime(arch.generatedAt)} 분석`}</span>
         </div>
         <nav className="ca-shell-tabs" role="tablist" aria-label="화면">
           {TABS.map((t) => (

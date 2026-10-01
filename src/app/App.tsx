@@ -2,11 +2,7 @@ import { useState } from 'react';
 import { ChoiceDialog, FolderInput, Landing } from '../features/landing/Landing';
 import { LoadingScreen } from '../features/loading/LoadingScreen';
 import { ViewerShell } from '../features/shell/ViewerShell';
-import { LANGS } from '../engine/langs';
-import type { Lang } from '../engine/types';
 import { useRepoSession, type SessionDeps } from './useRepoSession';
-
-const LANG_QUESTION = '이 폴더에는 여러 언어가 함께 있어요. 어느 쪽으로 볼까요?';
 
 export function App({ deps }: { deps?: Partial<SessionDeps> }) {
   const s = useRepoSession(deps);
@@ -45,8 +41,6 @@ export function App({ deps }: { deps?: Partial<SessionDeps> }) {
     return <LoadingScreen name={l.name} framework={l.framework} sourceDir={l.sourceDir} roles={l.roles} step={l.step} remote={l.remote} onCancel={s.onCancel} />;
   }
 
-  const counts = state.langCounts;
-  const choices = state.langChoices;
   return (
     <Landing
       recent={state.recent}
@@ -56,7 +50,7 @@ export function App({ deps }: { deps?: Partial<SessionDeps> }) {
       onOpenGithub={s.onOpenGithub}
       onOpenSample={s.onOpenSample}
       hasPicker={s.hasPicker}
-      blocked={state.phase === 'confirmTooMany' || state.phase === 'chooseLang'}
+      blocked={state.phase === 'confirmTooMany'}
       onPickFolder={s.onPickFolder}
       onDrop={s.onDrop}
       onFiles={s.onFiles}
@@ -70,14 +64,6 @@ export function App({ deps }: { deps?: Partial<SessionDeps> }) {
           choices={[{ label: '그대로 진행', value: 'yes' }]}
           initial="yes"
           onChoose={(v) => s.onConfirmTooMany(v === 'yes')}
-        />
-      )}
-      {state.phase === 'chooseLang' && counts && choices && (
-        <ChoiceDialog
-          title={LANG_QUESTION}
-          choices={choices.map((l) => ({ label: `${LANGS[l].label} · ${(counts[l] ?? 0).toLocaleString('ko-KR')}개`, value: l }))}
-          initial={choices[0]}
-          onChoose={(v) => s.onChooseLang(v as Lang | null)}
         />
       )}
     </Landing>

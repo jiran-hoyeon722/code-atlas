@@ -11,6 +11,7 @@ const REACT = resolve(ROOT, 'tests/fixtures/react-mini');
 const LARAVEL = resolve(ROOT, 'tests/fixtures/laravel-mini');
 const PY = resolve(ROOT, 'tests/fixtures/py-mini');
 const GO = resolve(ROOT, 'tests/fixtures/go-mini');
+const MIXED = resolve(ROOT, 'tests/fixtures/mixed-mini');
 
 let preview = null;
 const results = [];
@@ -363,6 +364,37 @@ async function main() {
     await step('py-mini: city', () => newLangCity(PY, 'py-mini', 'Python', 'order', 'class Order', 'python', 'py'));
 
     await step('go-mini: city', () => newLangCity(GO, 'go-mini', 'Go', 'item', 'func (i Item) Label', 'go', 'go'));
+
+    const openCodeFor = async (query, codeText, hljs) => {
+      await page.locator('.ca-shell-mount canvas').first().click({ position: { x: 5, y: 5 } }).catch(() => {});
+      await page.keyboard.press('/');
+      await page.fill('[data-el=q]', query);
+      await page.waitForSelector('[data-el=results].open button');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('[data-el=panel-body] [data-open-code]');
+      await page.click('[data-el=panel-body] [data-open-code]');
+      await page.waitForFunction((t) => document.querySelector('[data-el=code-src]')?.textContent?.includes(t), codeText, { timeout: 10_000 });
+      const cls = await page.locator('[data-el=code-src]').getAttribute('class');
+      assert(cls.includes(`language-${hljs}`), `code view class "${cls}" lacks language-${hljs}`);
+      assert(await page.locator('[data-el=code-src] .hljs-keyword').count() > 0, `${hljs} code is not highlighted`);
+      await page.waitForTimeout(500);
+      await shot(page, `mixed-code-${hljs}.png`);
+      await page.keyboard.press('Escape');
+    };
+
+    await step('mixed-mini: one city with both languages', async () => {
+      await page.click('.ca-shell-actions button:has-text("다른 레포 열기")');
+      await page.waitForSelector('[data-testid=folder-input]');
+      const r = await openFolder(page, MIXED, null);
+      assert(r.seen, 'loading screen never appeared for mixed-mini');
+      assert(await page.locator('[role=dialog]').count() === 0, 'a dialog is open over the mixed city');
+      const meta = await page.locator('.ca-shell-brand span').textContent();
+      assert(meta.startsWith('Python + Go · '), `expected "Python + Go" in the top bar, got "${meta}"`);
+      await page.waitForTimeout(1500);
+      await shot(page, 'mixed-city.png');
+      await openCodeFor('menu', 'class Menu', 'python');
+      await openCodeFor('tray', 'func (t Tray) Fits', 'go');
+    });
 
     await step('landing: GitHub form and sample gallery', async () => {
       await page.click('.ca-shell-actions button:has-text("다른 레포 열기")');

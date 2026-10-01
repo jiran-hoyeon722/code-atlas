@@ -2,7 +2,8 @@
 
 로컬 레포 폴더를 브라우저에서 분석해 의존성 도시·그래프·아키텍처 탐색기로 보여주는 정적 앱. 서버 없이 브라우저 안에서만 동작한다.
 
-지원 언어: PHP · TypeScript/JavaScript · Python · Go · Java · Kotlin · Swift · Shell (여러 언어가 섞이면 파일 수로 고르고, 둘 이상이면 사용자에게 묻는다. Shell 은 다른 언어가 없을 때만).
+지원 언어: PHP · TypeScript/JavaScript · Python · Go · Java · Kotlin · Swift · Shell (주 언어는 파일 수로 고르고, Laravel/React 판정이 있으면 그쪽. Shell 은 다른 언어가 없을 때만).
+여러 언어가 섞이면 묻지 않고 언어별로 분석해 한 도시에 합친다(언어 간 의존선 없음, 배틀은 주 언어만).
 
 ## 원칙 (반드시)
 

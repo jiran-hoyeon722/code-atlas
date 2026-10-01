@@ -255,3 +255,28 @@ test('re-selecting the same building keeps blast on', () => {
   expect(last()).toEqual({ file: 'lib/core.ts', blast: true });
   dispose();
 });
+
+const codeClass = async (a: Architecture, file: string) => {
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  const dispose = mountCity(root, a, env({ selection: { file, code: true }, readSource: async () => 'x = 1' }));
+  const code = root.querySelector('[data-el="code-src"]')!;
+  await waitFor(() => expect(code.textContent).toBe('x = 1'));
+  const cls = code.className;
+  dispose();
+  return cls;
+};
+
+test('merged city highlights each file in its own language', async () => {
+  const merged: Architecture = {
+    ...arch(), lang: 'py', framework: null, langs: ['py', 'go'],
+    nodes: [node('app/main.py', 0, { lang: 'py' }), node('cmd/main.go', 1, { lang: 'go' })],
+  };
+  expect(await codeClass(merged, 'app/main.py')).toContain('language-python');
+  expect(await codeClass(merged, 'cmd/main.go')).toContain('language-go');
+});
+
+test('old single-language architecture still highlights by arch.lang', async () => {
+  const old: Architecture = { ...arch(), lang: 'go', nodes: [node('cmd/main.go', 0), node('pkg/a.go', 1)] };
+  expect(await codeClass(old, 'pkg/a.go')).toContain('language-go');
+});

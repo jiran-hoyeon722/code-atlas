@@ -123,6 +123,14 @@ describe('cache', () => {
     expect(await listAnalyses()).toEqual([]);
   });
 
+  test('merged languages survive the round trip; single-language entries carry none', async () => {
+    await saveAnalysis({ ...summary('m1', '2026-01-01T00:00:00Z', arch), name: 'mixed', langs: ['py', 'go'] });
+    await saveAnalysis({ ...summary('s1', '2026-01-02T00:00:00Z', arch), name: 'single' });
+    const list = await listAnalyses();
+    expect(list.find((s) => s.key === 'm1')!.langs).toEqual(['py', 'go']);
+    expect(list.find((s) => s.key === 's1')).not.toHaveProperty('langs');
+  });
+
   test('saving a changed folder replaces its old entry; other folders untouched', async () => {
     const at = '2026-01-01T00:00:00Z';
     await saveAnalysis({ ...summary('x1', at, arch), name: 'x' });

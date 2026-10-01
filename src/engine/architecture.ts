@@ -36,6 +36,8 @@ export interface Architecture {
   langs?: Lang[];
 }
 
+export const nodeLang = (arch: Architecture, i: number): Lang => arch.nodes[i].lang ?? arch.lang;
+
 const CONCEPTUAL_KINDS = new Set(['binds', 'triggers']);
 const round2 = (v: number) => Math.round(v * 100) / 100;
 

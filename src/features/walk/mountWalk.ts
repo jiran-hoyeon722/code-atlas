@@ -5,6 +5,8 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import 'highlight.js/styles/github-dark.css';
 import './walk.css';
+import { nodeLang } from '../../engine/architecture';
+import { LANGS } from '../../engine/langs';
 import type { MountViewer } from '../viewer-env';
 import { esc } from '../escape';
 import { roleColors } from '../palette';
@@ -1154,8 +1156,9 @@ const mount: MountViewer = (root, arch, env) => {
     const source = await env.readSource(n.path).catch(() => null);
     if (disposed || request !== codeRequest) return;
     if (source === null) { src.textContent = '소스를 읽지 못했어요. 폴더를 다시 연결해 주세요.'; return; }
-    src.className = `hljs language-${arch.lang === 'ts' ? 'typescript' : 'php'}`;
-    renderCode(src, source, arch.lang);
+    const lang = nodeLang(arch, b.i);
+    src.className = `hljs language-${LANGS[lang]?.hljs ?? 'plaintext'}`;
+    renderCode(src, source, lang);
     $('d-gutter').textContent = source.split('\n').map((_, k) => k + 1).join('\n');
   }
   function leave() {

@@ -89,6 +89,12 @@ describe('ViewerShell', () => {
     await screen.findByText('view:city');
   });
 
+  test('a merged city names every language in the top bar', async () => {
+    render(<ViewerShell {...props({ arch: arch({ lang: 'py', framework: null, langs: ['py', 'go'] }) })} />);
+    expect(screen.getByText(/^Python \+ Go · 파일 2개/)).toBeTruthy();
+    await screen.findByText('view:city');
+  });
+
   test('default tab is city and hash is written', async () => {
     render(<ViewerShell {...props()} />);
     await screen.findByText('view:city');
