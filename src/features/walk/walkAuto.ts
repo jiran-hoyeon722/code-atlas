@@ -268,6 +268,8 @@ export const ARRIVE = 2.2;
 export const FAST_TRAVEL = 160;
 const ENGAGE = 26;
 const STUCK_TIME = 2.5;
+/** Less than this per update counts as not moving; absolute, since the pilot's clock can run ahead of the hero's on a slow frame. */
+const STUCK_STEP = 0.02;
 const SLOWMO = 0.7;
 
 export interface PilotWorld {
@@ -433,7 +435,7 @@ export function createPilot(atlas: Atlas, doors: Map<number, Point>, hooks: Pilo
           return cmd;
         }
         // No headway for a while: skip to the next corner so a lamp post or a parked car never ends the walk.
-        stuckFor = Math.hypot(w.x - last[0], w.z - last[1]) < 4 * dt ? stuckFor + dt : 0;
+        stuckFor = Math.hypot(w.x - last[0], w.z - last[1]) < STUCK_STEP ? stuckFor + dt : 0;
         last = [w.x, w.z];
         if (stuckFor > STUCK_TIME) {
           stuckFor = 0;
