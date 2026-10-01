@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { spawnRobot, type Robot } from './walkRobot';
 import { nextGait, type Gait } from './walkMotion';
+import type { Character } from './walkCharacters';
 
 export interface HeroPose {
   speed: number;
@@ -133,12 +134,14 @@ export interface ModelHero extends Hero {
   die(): void;
   revive(): void;
   sit(on: boolean): void;
+  /** Loads the model in this character's colours and gear. */
+  dress(look: Character): void;
   readonly ready: boolean;
   /** The loaded model, for attaching things to its bones; null while the fallback rig shows. */
   readonly rig: THREE.Object3D | null;
 }
 
-// Shows the procedural rig until the glTF arrives, then cross-fades between the model's own clips by speed.
+// Shows the procedural rig until the dressed glTF arrives, then cross-fades between the model's own clips by speed.
 export function createModelHero(url: string, onError: () => void): ModelHero {
   const fallback = createHero();
   const root = new THREE.Group();
@@ -149,18 +152,22 @@ export function createModelHero(url: string, onError: () => void): ModelHero {
   let seated = false;
   let disposed = false;
   let gait: Gait = 'Idle';
-
-  void spawnRobot(url, 1.75).then((r) => {
-    if (disposed) { r.dispose(); return; }
-    robot = r;
-    r.mixer.addEventListener('finished', (e) => { if (e.action === emoting) emoting = null; });
-    root.remove(fallback.root);
-    root.add(r.root);
-    r.play('Idle', 0);
-  }).catch(() => { if (!disposed) onError(); });
+  let dressing = 0;
 
   return {
     root,
+    dress(look) {
+      const ticket = ++dressing;
+      void spawnRobot(url, 1.75, look).then((r) => {
+        if (disposed || ticket !== dressing) { r.dispose(); return; }
+        if (robot) { root.remove(robot.root); robot.dispose(); } else root.remove(fallback.root);
+        robot = r;
+        emoting = null;
+        r.mixer.addEventListener('finished', (e) => { if (e.action === emoting) emoting = null; });
+        root.add(r.root);
+        r.play(dead ? 'Death' : seated ? 'Sitting' : 'Idle', 0);
+      }).catch(() => { if (!disposed && ticket === dressing) onError(); });
+    },
     get ready() { return !!robot; },
     get rig() { return robot?.root ?? null; },
     emote(name) {

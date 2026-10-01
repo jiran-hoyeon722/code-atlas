@@ -253,6 +253,13 @@ async function main() {
     await step('codecity GTA tab: search, walk up to a door, E opens the code', async () => {
       await page.click('.ca-shell [role=tab]:has-text("코드시티GTA")');
       await page.waitForSelector('.wk-walk canvas', { timeout: 30_000 });
+      await page.waitForSelector('.wk-pick [data-id=astro]', { timeout: 10_000 });
+      await page.waitForTimeout(2500);
+      await page.keyboard.press('3');
+      await page.waitForSelector('.wk-pick [data-id=astro].on', { timeout: 5_000 });
+      await shot(page, 'walk-pick.png');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('.wk-pick', { state: 'detached', timeout: 5_000 });
       await page.waitForSelector('.wk-guide:not([hidden])', { timeout: 10_000 });
       await page.waitForTimeout(1500);
       await shot(page, 'walk-guide.png');

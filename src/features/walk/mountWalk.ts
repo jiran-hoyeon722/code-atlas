@@ -26,6 +26,8 @@ import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type 
 import { DIFFICULTIES, DIFFICULTY, FORM_TIME, createSiege, createVirus, isDifficulty, isInfected, pickOrigin, pickSpawnSite, type Difficulty } from './walkVirus';
 import { HELI_BOSS_BONUS, createHorde } from './walkHorde';
 import { turnToward } from './walkMotion';
+import { characterById, dealCharacters, type Character } from './walkCharacters';
+import { openPicker } from './walkPicker';
 import type { RideCar } from './walkTraffic';
 import { GUIDE, GUIDE_KEY, guideHtml } from './walkGuide';
 import robotUrl from './assets/RobotExpressive.glb?url';
@@ -631,8 +633,7 @@ const mount: MountViewer = (root, arch, env) => {
   };
   const renderBattle = () => {
     $('hp').style.width = `${Math.max(0, hp)}%`;
-      const armed = new Map(battle.roster().map((r) => [r.name, r.weapon.name]));
-    $('rivals').innerHTML = RIVALS.map((r) => `<span class="${caughtNames.has(r.name) ? 'got' : ''}" style="--c:${esc(r.tint)}">${esc(r.name)}${armed.has(r.name) ? ` <small>${esc(armed.get(r.name)!)}</small>` : ''}</span>`).join('') + `<b>${caughtNames.size}/${RIVALS.length}</b>`;
+    $('rivals').innerHTML = battle.roster().map((r) => `<span class="${caughtNames.has(r.name) ? 'got' : ''}" style="--c:${esc(r.tint)}" title="${esc(r.look ?? '')}">${esc(r.name)} <small>${esc(r.weapon.name)}</small></span>`).join('') + `<b>${caughtNames.size}/${RIVALS.length}</b>`;
   };
   function freeSpotNear(x: number, z: number, min: number, max: number) {
     for (let r = min; r <= max; r += 1.5)
@@ -687,13 +688,32 @@ const mount: MountViewer = (root, arch, env) => {
   });
   renderBattle();
 
+  // ---- character pick: the hero wears the chosen design, the four rivals wear the rest ----
+  const characterKey = 'code-atlas.walk.character';
+  let lastLook: string | null = null;
+  try { lastLook = localStorage.getItem(characterKey); } catch { /* storage may be blocked */ }
+  let picking = true;
+  root.classList.add('picking');
+  const closePicker = openPicker(root, robotUrl, characterById(lastLook), (c: Character) => {
+    picking = false;
+    root.classList.remove('picking');
+    try { localStorage.setItem(characterKey, c.id); } catch { /* storage may be blocked */ }
+    hero.dress(c);
+    battle.dress(dealCharacters(c.id, RIVALS.length, Math.random));
+    renderBattle();
+    toast(`${c.name} 캐릭터로 출발! 라이벌 ${RIVALS.length}명이 도시 어딘가에 있어요`);
+    (document.activeElement as HTMLElement | null)?.blur();
+    if (!guideSeen) showGuide(0);
+  });
+  cleanups.push(closePicker);
+
   // ---- weapons: the hero may pick any of them, rivals were dealt one each ----
   const heroHeld = kit.hold(scene, 'fist');
   let weapon: Weapon = weaponById('fist');
   let triggerHeld = false;
   let aimHold = 0;
   let pendingShot = false;
-  const rivalAt = (k: number) => (k >= 0 ? battle.positions().find((r) => r.name === RIVALS[k].name) : undefined);
+  const rivalAt = (k: number) => (k >= 0 ? battle.positions().find((r) => r.name === RIVALS[k]) : undefined);
   const shotEnd = new THREE.Vector3();
   const muzzle = new THREE.Vector3();
   const aimVec = new THREE.Vector3();
@@ -1217,14 +1237,13 @@ const mount: MountViewer = (root, arch, env) => {
   listen($('guide-open'), 'click', () => { setHelp(false); showGuide(0); });
   let guideSeen = false;
   try { guideSeen = !!localStorage.getItem(GUIDE_KEY); } catch { guideSeen = false; }
-  if (!guideSeen) showGuide(0);
 
   // ---- input ----
   const typing = () => document.activeElement instanceof HTMLInputElement;
   const EMOTES: Emote[] = ['Wave', 'ThumbsUp', 'Dance'];
   let emoteIndex = 0;
   listen(window, 'keydown', (e) => {
-    if (e.metaKey || e.altKey || (e.ctrlKey && e.key !== 'Control')) return;
+    if (e.metaKey || e.altKey || (e.ctrlKey && e.key !== 'Control') || picking) return;
     if (guideOpen()) {
       if (e.key === 'Escape') showGuide(-1);
       else if (e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); guideNext(); }
@@ -1274,7 +1293,7 @@ const mount: MountViewer = (root, arch, env) => {
   listen(window, 'blur', () => { keys.clear(); triggerHeld = false; });
   listen(renderer.domElement, 'click', () => {
     if (document.pointerLockElement === renderer.domElement) return;
-    if (!detailOpen && !entering) Promise.resolve(renderer.domElement.requestPointerLock?.()).catch(() => {});
+    if (!detailOpen && !entering && !picking) Promise.resolve(renderer.domElement.requestPointerLock?.()).catch(() => {});
   });
   listen(renderer.domElement, 'pointerdown', (e) => {
     if (document.pointerLockElement !== renderer.domElement) return;
@@ -1852,6 +1871,6 @@ const mount: MountViewer = (root, arch, env) => {
     renderer.dispose();
     renderer.forceContextLoss();
     root.innerHTML = '';
-    root.classList.remove('wk-walk', 'entering', 'flying');
+    root.classList.remove('wk-walk', 'entering', 'flying', 'picking');
   };
 };

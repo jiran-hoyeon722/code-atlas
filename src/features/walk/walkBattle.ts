@@ -1,14 +1,11 @@
 import * as THREE from 'three';
 import { spawnRobot, type Robot } from './walkRobot';
+import type { Character } from './walkCharacters';
 import { decay, separation, turnToward, within } from './walkMotion';
 import { RIVAL_HP, damageAt, dealWeapons, splash, type HeldWeapon, type Weapon, type WeaponKit } from './walkWeapons';
 
-export const RIVALS: { name: string; tint: string }[] = [
-  { name: '김준석', tint: '#e8554e' },
-  { name: '유남균', tint: '#3ec48a' },
-  { name: '김명제', tint: '#f2a93b' },
-  { name: '박호연', tint: '#e36bd0' },
-];
+export const RIVALS = ['김준석', '유남균', '김명제', '박호연'];
+const UNDRESSED = '#9aa0ad';
 const SIGHT = 14;
 const GUN_SIGHT = 22;
 const WANDER_SPEED = 2.2;
@@ -37,15 +34,17 @@ export interface Battle {
   ram(x: number, z: number, r: number, dx: number, dz: number, speed: number): number;
   /** Hurts every rival within `radius` of (x, z), fading towards the edge, and knocks them away from (fromX, fromZ); returns how many it hit. */
   damageArea(x: number, z: number, radius: number, damage: number, fromX: number, fromZ: number): number;
+  /** Rivals stay hidden until each is handed a character, in RIVALS order. */
+  dress(looks: Character[]): void;
   /** Who holds what, available before the models finish loading. */
-  roster(): { name: string; weapon: Weapon }[];
+  roster(): { name: string; weapon: Weapon; tint: string; look: string | null }[];
   positions(): { x: number; z: number; down: boolean; tint: string; hp: number; name: string; weapon: Weapon }[];
   readonly caught: number;
   dispose(): void;
 }
 
 type Rival = {
-  name: string; tint: string; weapon: Weapon; held: HeldWeapon; robot: Robot | null; root: THREE.Group; hp: number;
+  name: string; tint: string; look: Character | null; weapon: Weapon; held: HeldWeapon; robot: Robot | null; root: THREE.Group; hp: number;
   x: number; z: number; heading: number; vx: number; vz: number; aiming: boolean; burst: number;
   target: THREE.Vector2 | null; pause: number; cooldown: number; pendingHit: number; stun: number; down: boolean;
   alert: boolean; engaged: boolean;
@@ -98,7 +97,7 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
 
   // Weapons change every visit on purpose, so the tab plays differently each time.
   const dealt = dealWeapons(RIVALS.length, Math.random);
-  const rivals: Rival[] = RIVALS.map(({ name, tint }, k) => {
+  const rivals: Rival[] = RIVALS.map((name, k) => {
     const at = pickSpot(spawn.x, spawn.z, 22, 42);
     const canvas = document.createElement('canvas');
     canvas.width = 256;
@@ -118,18 +117,11 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
     scene.add(root);
     const weapon = dealt[k];
     const r: Rival = {
-      name, tint, weapon, held: kit.hold(scene, weapon.id), robot: null, root, hp: RIVAL_HP,
+      name, tint: UNDRESSED, look: null, weapon, held: kit.hold(scene, weapon.id), robot: null, root, hp: RIVAL_HP,
       x: at.x, z: at.y, heading: hooks.random() * Math.PI * 2, vx: 0, vz: 0, aiming: false, burst: 0,
       target: null, pause: 0, cooldown: 0, pendingHit: 0, stun: 0, down: false, alert: false, engaged: false, tag: { canvas, tex, sprite },
     };
     paintTag(r);
-    void spawnRobot(url, 1.75, tint).then((robot) => {
-      if (disposed) { robot.dispose(); return; }
-      r.robot = robot;
-      root.add(robot.root);
-      root.visible = true;
-      robot.play('Idle', 0);
-    }).catch(() => {});
     return r;
   });
 
@@ -203,7 +195,23 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
 
   return {
     get caught() { return caught; },
-    roster: () => rivals.map((r) => ({ name: r.name, weapon: r.weapon })),
+    roster: () => rivals.map((r) => ({ name: r.name, weapon: r.weapon, tint: r.tint, look: r.look?.name ?? null })),
+    dress(looks) {
+      rivals.forEach((r, k) => {
+        const look = looks[k];
+        if (!look || r.look) return;
+        r.look = look;
+        r.tint = look.color;
+        paintTag(r);
+        void spawnRobot(url, 1.75, look).then((robot) => {
+          if (disposed) { robot.dispose(); return; }
+          r.robot = robot;
+          r.root.add(robot.root);
+          r.root.visible = true;
+          robot.play('Idle', 0);
+        }).catch(() => {});
+      });
+    },
     positions: () => rivals.filter((r) => r.robot).map((r) => ({ x: r.x, z: r.z, down: r.down, tint: r.tint, hp: r.hp, name: r.name, weapon: r.weapon })),
     ram(x, z, radius, dx, dz, speed) {
       if (speed < 4) return 0;

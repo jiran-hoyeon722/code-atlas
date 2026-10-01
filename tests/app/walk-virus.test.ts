@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import { RAMP, createVirus, pickOrigin, spreadSchedule, type VirusSite } from '../../src/features/walk/walkVirus';
 import { dealWeapons, damageAt, weaponById, WEAPONS } from '../../src/features/walk/walkWeapons';
+import { CHARACTERS, characterById, dealCharacters } from '../../src/features/walk/walkCharacters';
 
 const line: VirusSite[] = Array.from({ length: 10 }, (_, k) => ({ x: k * 10, z: 0 }));
 const fixed = () => 0.5;
@@ -58,4 +59,15 @@ test('shotgun damage falls off with distance, other weapons do not', () => {
   expect(damageAt(shotgun, 1)).toBeGreaterThan(damageAt(shotgun, shotgun.range));
   const pistol = weaponById('pistol');
   expect(damageAt(pistol, 1)).toBe(damageAt(pistol, 30));
+});
+
+test('rivals wear every design the player did not pick, each a different one', () => {
+  for (const player of CHARACTERS) {
+    for (let k = 0; k < 10; k++) {
+      const dealt = dealCharacters(player.id, 4, () => k / 10);
+      expect(new Set(dealt.map((c) => c.id)).size).toBe(4);
+      expect(dealt.some((c) => c.id === player.id)).toBe(false);
+    }
+  }
+  expect(characterById('nope')).toBe(CHARACTERS[0]);
 });
