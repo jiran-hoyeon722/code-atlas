@@ -25,7 +25,7 @@ import { createBeacon, createGuide, createMarkers, createMotes, createSparks, ty
 import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type WeaponId } from './walkWeapons';
 import { DIFFICULTIES, DIFFICULTY, FORM_TIME, createSiege, createVirus, isDifficulty, isInfected, pickOrigin, pickSpawnSite, type Difficulty } from './walkVirus';
 import { HELI_BOSS_BONUS, createHorde } from './walkHorde';
-import { turnToward } from './walkMotion';
+import { follow, shakeOffset, turnToward } from './walkMotion';
 import { characterById, dealCharacters, type Character } from './walkCharacters';
 import { openPicker } from './walkPicker';
 import type { RideCar } from './walkTraffic';
@@ -1775,6 +1775,7 @@ const mount: MountViewer = (root, arch, env) => {
   const right = new THREE.Vector3();
   const wish = new THREE.Vector3();
   const doorPoint = new THREE.Vector3();
+  const shakeOff = new THREE.Vector3();
   renderer.setAnimationLoop((now) => {
     const frame = Math.min(0.05, Math.max(0, (now - last) / 1000));
     // The pilot's cards and reading time run on the wall clock, so a slow machine does not stretch them.
@@ -1969,6 +1970,9 @@ const mount: MountViewer = (root, arch, env) => {
     hurt = Math.max(0, hurt - dt * 1.6);
     $('hurt').style.opacity = String(hurt * 0.85);
 
+    // Last frame's shake must come off first, or the follow lerp would chase it and the jitter would pile up.
+    camera.position.sub(shakeOff);
+    shakeOff.set(0, 0, 0);
     if (entering) {
       const b = entering.b;
       doorPoint.set(b.x, 1.9, b.z + b.face * (b.d / 2));
@@ -1985,21 +1989,21 @@ const mount: MountViewer = (root, arch, env) => {
       const h = drivenNow && mode === 'drive' ? drivenNow.heading : Math.atan2(ridden!.dx, ridden!.dz);
       const spd = drivenNow && mode === 'drive' ? Math.abs(drivenNow.speed) : ridden!.speed;
       const want = h + Math.PI;
-      yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * Math.min(1, dt * 3);
+      yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * follow(3, dt);
       const back = (drivenNow?.kind === 'bike' && mode === 'drive' ? 6 : 9) + spd * 0.08;
       let reach = back;
       do {
         camPos.set(Math.sin(yaw) * Math.cos(0.24), Math.sin(0.24), Math.cos(yaw) * Math.cos(0.24)).multiplyScalar(reach).add(v.set(pos.x, 1.7, pos.z));
         reach -= 0.5;
       } while (reach > 2 && insideBuilding(camPos));
-      camera.position.lerp(camPos, Math.min(1, dt * 6));
-      lookAt.lerp(v.set(pos.x, 1.3, pos.z), Math.min(1, dt * 12));
+      camera.position.lerp(camPos, follow(6, dt));
+      lookAt.lerp(v.set(pos.x, 1.3, pos.z), follow(12, dt));
       camera.lookAt(lookAt);
     } else if (flying) {
       $('fade').style.opacity = '0';
       const hpos = heli.root.position;
       const want = heli.heading + Math.PI;
-      yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * Math.min(1, dt * 3);
+      yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * follow(3, dt);
       // Rising with the aim and looking down with altitude keeps the heli, its aim point and the bomb drop point in one frame.
       const elev = 0.3 + aimPitch * 0.35;
       let reach = 17 + heli.speed * 0.15;
@@ -2007,9 +2011,9 @@ const mount: MountViewer = (root, arch, env) => {
         camPos.set(Math.sin(yaw) * Math.cos(elev), Math.sin(elev), Math.cos(yaw) * Math.cos(elev)).multiplyScalar(reach).add(v.set(hpos.x, hpos.y + 2.5, hpos.z));
         reach -= 1;
       } while (reach > 6 && insideBuilding(camPos));
-      camera.position.lerp(camPos, Math.min(1, dt * 5));
+      camera.position.lerp(camPos, follow(5, dt));
       const ahead = Math.min(0.25, 15 / Math.max(1, heliArms.aim.distanceTo(hpos)));
-      lookAt.lerp(v.set(hpos.x, hpos.y + 2 - heli.altitude * 0.45, hpos.z).lerp(heliArms.aim, ahead), Math.min(1, dt * 8));
+      lookAt.lerp(v.set(hpos.x, hpos.y + 2 - heli.altitude * 0.45, hpos.z).lerp(heliArms.aim, ahead), follow(8, dt));
       camera.lookAt(lookAt);
     } else {
       $('fade').style.opacity = '0';
@@ -2017,30 +2021,32 @@ const mount: MountViewer = (root, arch, env) => {
         // Director: trail behind on the move, rise over long trips, swing round a falling pack.
         const far = pilot.remaining > 60;
         const want = (autoFace ?? heading) + Math.PI + (pilot.slowmo > 0 ? 0.9 : 0);
-        yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * Math.min(1, frame * (pilot.slowmo > 0 ? 2.5 : 1.6));
-        pitch += ((far ? 0.8 : pilot.phase === 'fight' ? 0.42 : 0.3) - pitch) * Math.min(1, frame * 1.2);
-        distance += ((far ? 19 : pilot.phase === 'fight' ? 11 : 8.5) - distance) * Math.min(1, frame * 1.2);
+        yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * follow(pilot.slowmo > 0 ? 2.5 : 1.6, frame);
+        pitch += ((far ? 0.8 : pilot.phase === 'fight' ? 0.42 : 0.3) - pitch) * follow(1.2, frame);
+        distance += ((far ? 19 : pilot.phase === 'fight' ? 11 : 8.5) - distance) * follow(1.2, frame);
       }
       const orbit = (r: number) => camPos.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(r).add(v.set(pos.x, 1.7 + footY * 0.5, pos.z));
       let reach = distance;
       while (reach > 1.5 && insideBuilding(orbit(reach))) reach -= 0.5;
       // Pull in at once so walls never cut the view, but ease back out so the camera does not pump along a wall.
-      camReach = reach < camReach ? reach : camReach + (reach - camReach) * Math.min(1, dt * 3);
+      camReach = reach < camReach ? reach : camReach + (reach - camReach) * follow(3, dt);
       orbit(camReach);
       bob += dt * speed * 2.6;
       camPos.y = Math.max(0.6, camPos.y) + (reduceMotion ? 0 : Math.sin(bob) * 0.035 * run);
-      camera.position.lerp(camPos, Math.min(1, dt * 9));
-      lookAt.lerp(v.set(pos.x, 1.6 + footY * 0.4, pos.z), Math.min(1, dt * 14));
+      camera.position.lerp(camPos, follow(9, dt));
+      lookAt.lerp(v.set(pos.x, 1.6 + footY * 0.4, pos.z), follow(14, dt));
       camera.lookAt(lookAt);
     }
     if (shake > 0.001 && !reduceMotion) {
-      camera.position.x += (Math.random() - 0.5) * shake * 0.6;
-      camera.position.y += (Math.random() - 0.5) * shake * 0.4;
-      shake = Math.max(0, shake - dt * 2.5);
+      const s = shakeOffset(time, shake);
+      shakeOff.set(s.x, s.y, 0).applyQuaternion(camera.quaternion);
+      camera.position.add(shakeOff);
+      camera.rotateZ(s.roll);
     }
+    shake = Math.max(0, shake - frame * 1.6);
     const targetFov = flying ? 62 + (heli.speed / 52) * 14 : mode === 'drive' && drivenNow ? 60 + (Math.abs(drivenNow.speed) / 40) * 14 : 58 + run * 10;
     if (Math.abs(targetFov - fov) > 0.01) {
-      fov += (targetFov - fov) * Math.min(1, dt * 4);
+      fov += (targetFov - fov) * follow(4, dt);
       camera.fov = fov;
       camera.updateProjectionMatrix();
     }
