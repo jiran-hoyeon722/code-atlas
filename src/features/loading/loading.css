@@ -6,7 +6,7 @@
 }
 .cc-load *, .cc-load *::before, .cc-load *::after { box-sizing: border-box; }
 .cc-load-panel {
-  position: relative; z-index: 1; flex: 0 0 340px; align-self: center; margin: 0 0 0 48px; padding: 24px;
+  position: relative; z-index: 1; flex: 0 0 340px; min-width: 0; max-width: calc(100% - 64px); align-self: center; margin: 0 0 0 48px; padding: 24px;
   background: rgba(22, 28, 40, .72); border: 1px solid rgba(255, 255, 255, .08); border-radius: 12px;
   backdrop-filter: blur(12px);
 }
@@ -22,9 +22,13 @@
 .cc-load-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
 .cc-load-bar > i { display: block; height: 100%; background: #4c6ef5; transition: width .2s ease; }
 .cc-load-path {
-  margin: 12px 0 0; min-height: 1.5em; color: #8b93a3; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; margin: 12px 0 0; min-height: 1.5em; color: #8b93a3; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
 }
+/* the folder part gives up its width first so the file name stays readable */
+.cc-load-dir { flex: 0 1000 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; }
+.cc-load-dir:empty { display: none; }
+.cc-load-file { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #c4c9d4; }
 .cc-load-eta { margin: 2px 0 16px; min-height: 1.5em; color: #8b93a3; }
 .cc-load-cancel {
   padding: 7px 16px; color: #e6e9ef; background: transparent; border: 1px solid rgba(255, 255, 255, .08);

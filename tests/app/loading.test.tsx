@@ -41,7 +41,11 @@ test('parse phase: still 코드 읽기, progress bar ratio and path', () => {
   expect(screen.getByText('5 / 20')).toBeTruthy();
   expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('38');
   expect((container.querySelector('.cc-load-bar > i') as HTMLElement).style.width).toBe('38%');
-  expect(screen.getByText('app/Http/<b>X</b>.php')).toBeTruthy();
+  const path = container.querySelector('.cc-load-path')!;
+  expect(path.textContent).toBe('app/Http/<b>X</b>.php');
+  expect(path.getAttribute('title')).toBe('app/Http/<b>X</b>.php');
+  expect(container.querySelector('.cc-load-dir')!.textContent).toBe('app/Http/<b>X</');
+  expect(container.querySelector('.cc-load-file')!.textContent).toBe('b>.php');
   expect(container.querySelector('.cc-load-path b')).toBeNull();
 });
 

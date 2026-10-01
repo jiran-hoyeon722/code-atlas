@@ -91,7 +91,14 @@ export function LoadingScreen({ name, framework, sourceDir, roles, step, remote 
         <div className="cc-load-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
           <i style={{ width: `${pct}%` }} />
         </div>
-        <p className="cc-load-path">{step.phase === 'parse' ? step.path : ' '}</p>
+        <p className="cc-load-path" title={step.phase === 'parse' ? step.path : undefined}>
+          {step.phase === 'parse' ? (
+            <>
+              <span className="cc-load-dir">{step.path.slice(0, step.path.lastIndexOf('/') + 1)}</span>
+              <span className="cc-load-file">{step.path.slice(step.path.lastIndexOf('/') + 1)}</span>
+            </>
+          ) : ' '}
+        </p>
         <p className="cc-load-eta">{eta !== null ? `약 ${eta}초 남음` : ' '}</p>
         <button type="button" className="cc-load-cancel" onClick={onCancel}>취소</button>
       </section>
