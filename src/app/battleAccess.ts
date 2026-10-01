@@ -9,7 +9,7 @@ import type { CacheEntry, CacheSummary } from '../storage/cache';
 import { GithubError, type GithubOrigin } from './files/github';
 import { fromDirectoryHandle } from './files/sources';
 import type { FsDir, Listing } from './files/types';
-import { listRepo, loadRepo } from './files/walk';
+import { forLang, listRepo, loadRepo } from './files/walk';
 
 /** What the open viewer knows about its own repo; read on every call because a reconnect swaps it. */
 export interface SelfSource {
@@ -162,7 +162,7 @@ export function createBattleAccess(getSelf: () => SelfSource, deps: BattleAccess
       if (ready) return ready;
       const unfit = unfitError(s.qualityIssue);
       if (unfit) throw unfit;
-      if (s.listing) return measure(s.key, await loadRepo(s.listing), s.lang);
+      if (s.listing) return measure(s.key, await loadRepo(forLang(s.listing, s.lang)), s.lang);
       if (s.origin) return fromGithub(s.key, s.origin, s.lang);
       // no click behind this call, so only a permission that is already granted can be used
       if (s.handle && (await readPermission(s.handle, false))) return fromHandle(s.key, s.handle, s.lang);
