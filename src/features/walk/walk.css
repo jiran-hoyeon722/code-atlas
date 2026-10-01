@@ -33,6 +33,50 @@
 .wk-walk .virus-btn svg { width: 18px; height: 18px; flex: none; }
 .wk-walk .virus-btn span { flex: 1; }
 .wk-walk .virus-btn.on { background: rgba(57, 255, 122, .2); color: #d4ffe2; }
+.wk-walk .auto-btn { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255, 169, 77, .35); background: rgba(255, 169, 77, .08); color: #ffc078; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; }
+.wk-walk .auto-btn svg { width: 18px; height: 18px; flex: none; }
+.wk-walk .auto-btn span { flex: 1; }
+.wk-walk .auto-btn.on { background: rgba(255, 169, 77, .22); color: #ffe8cc; }
+.wk-walk .virus-btn:disabled { opacity: .4; cursor: not-allowed; }
+.wk-walk .wk-auto { position: absolute; top: 14px; right: 14px; width: 270px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; border-color: rgba(255, 169, 77, .3); }
+.wk-walk .wk-auto[hidden] { display: none; }
+.wk-walk .wk-auto .a-head { display: flex; align-items: center; gap: 8px; color: #ffc078; }
+.wk-walk .wk-auto .a-head svg { width: 18px; height: 18px; }
+.wk-walk .wk-auto .a-head b { flex: 1; }
+.wk-walk .wk-auto .a-head span { font-size: 12px; font-weight: 700; color: var(--text); }
+.wk-walk .wk-auto .a-phase { color: var(--muted); font-size: 11px; }
+.wk-walk .wk-auto .a-target { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.wk-walk .wk-auto .a-target b { font-size: 14px; word-break: break-all; }
+.wk-walk .wk-auto .chip { border: 1px solid var(--c); color: var(--c); border-radius: 999px; padding: 0 8px; font-size: 11px; font-weight: 600; }
+.wk-walk .wk-auto p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.wk-walk .wk-auto .a-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.wk-walk .wk-auto .a-row b { color: var(--text); font-variant-numeric: tabular-nums; }
+.wk-walk .wk-auto .a-route { list-style: none; margin: 0; padding: 6px 0 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 1px; max-height: 210px; overflow-y: auto; }
+.wk-walk .wk-auto .a-route li { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 6px; font-size: 12px; color: var(--muted); }
+.wk-walk .wk-auto .a-route li i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+.wk-walk .wk-auto .a-route li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-walk .wk-auto .a-route li small { font-size: 11px; white-space: nowrap; }
+.wk-walk .wk-auto .a-route li.now { background: rgba(255, 169, 77, .12); color: var(--text); font-weight: 600; }
+.wk-walk .wk-auto .a-route li.done { opacity: .55; }
+.wk-walk .wk-auto .a-route li.done span::before { content: "✓ "; }
+.wk-walk .wk-auto-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100% - 32px)); padding: 20px 22px 16px; display: flex; flex-direction: column; gap: 10px; border-color: rgba(255, 169, 77, .35); z-index: 5; pointer-events: none; }
+.wk-walk .wk-auto-card[hidden] { display: none; }
+.wk-walk .wk-auto-card .c-kicker { color: #ffc078; font-size: 12px; font-weight: 700; }
+.wk-walk .wk-auto-card h2 { margin: 0; font-size: 22px; letter-spacing: -.01em; word-break: break-all; }
+.wk-walk .wk-auto-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.wk-walk .wk-auto-card ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow: hidden; }
+.wk-walk .wk-auto-card ul:empty { display: none; }
+.wk-walk .wk-auto-card li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.wk-walk .wk-auto-card li i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+.wk-walk .wk-auto-card li b { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-walk .wk-auto-card li span { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; }
+.wk-walk .wk-auto-card > i { display: block; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.wk-walk .wk-auto-card > i b { display: block; height: 100%; width: 0; background: #ffa94d; }
+.wk-walk .wk-detail .auto-why { padding: 10px 16px; border-bottom: 1px solid var(--border); background: rgba(255, 169, 77, .07); }
+.wk-walk .wk-detail .auto-why[hidden] { display: none; }
+.wk-walk .wk-detail .auto-why p { margin: 0 0 8px; font-size: 13px; line-height: 1.5; color: #ffe8cc; }
+.wk-walk .wk-detail .auto-why i { display: block; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.wk-walk .wk-detail .auto-why b { display: block; height: 100%; width: 0; background: #ffa94d; }
 .wk-walk kbd { display: inline-block; min-width: 16px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--border); background: rgba(255, 255, 255, .06); color: var(--muted); font: 600 10px/16px ui-monospace, Menlo, monospace; text-align: center; }
 .wk-walk .wk-hud .tips { color: var(--muted); font-size: 11px; line-height: 1.6; }
 .wk-walk .wk-hud .tips b { color: var(--text); font-weight: 600; }
@@ -101,7 +145,7 @@
 .wk-walk .wk-help h2 { margin: 0 0 6px; font-size: 12px; color: var(--accent); }
 .wk-walk .wk-help section div { display: flex; align-items: baseline; gap: 10px; padding: 3px 0; font-size: 12px; }
 .wk-walk .wk-help section kbd { flex: none; min-width: 64px; color: var(--text); }
-.wk-walk.inside .wk-virus, .wk-walk.inside .wk-boss, .wk-walk.inside .wk-weapons, .wk-walk.inside .wk-battle { opacity: 0; pointer-events: none; }
+.wk-walk.inside .wk-auto, .wk-walk.inside .wk-auto-card, .wk-walk.inside .wk-virus, .wk-walk.inside .wk-boss, .wk-walk.inside .wk-weapons, .wk-walk.inside .wk-battle { opacity: 0; pointer-events: none; }
 .wk-walk .wk-map { position: absolute; left: 14px; bottom: 14px; width: 200px; height: 200px; padding: 0; cursor: crosshair; }
 .wk-walk .wk-prompt { position: absolute; left: 50%; bottom: 100px; transform: translate(-50%, 8px); padding: 8px 16px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
 .wk-walk .wk-prompt.open { opacity: 1; transform: translate(-50%, 0); }

@@ -30,6 +30,7 @@ import { characterById, dealCharacters, type Character } from './walkCharacters'
 import { openPicker } from './walkPicker';
 import type { RideCar } from './walkTraffic';
 import { GUIDE, GUIDE_KEY, guideHtml } from './walkGuide';
+import { SIGNS as WARNINGS, createAtlas, createPilot, packOf, readRepo, tagOf, type PilotCommand, type Point, type Stop } from './walkAuto';
 import robotUrl from './assets/RobotExpressive.glb?url';
 
 const WALK = 4.2;
@@ -59,6 +60,8 @@ const WEATHER_ICONS: Record<string, string> = {
 };
 const GUN_ICON = icon('<path d="M2 10h14l2-2h3v3h-2l-1 1H9l-1 4H5l1-4H2z" fill="currentColor"/><path d="M18 13h4M18 15.5h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>');
 const BOMB_ICON = icon('<circle cx="10.5" cy="14" r="6.5" fill="currentColor"/><path d="M15 9.5l2.5-2.5M18 4.5v2M20.5 7h-2M19.8 4.2l-1.4 1.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>');
+const AUTO_ICON = icon('<circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 8.5v7l6-3.5z" fill="currentColor"/>');
+const TAKEOVER = /^(Key[WASDEFGH]|Arrow\w+|Space|Digit[1-9])$/;
 const VIRUS_ICON = icon('<circle cx="12" cy="12" r="5" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.8 2.8M16.2 16.2L19 19M5 19l2.8-2.8M16.2 7.8L19 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>');
 const HELP = [
   ['이동', [['W A S D', '걷기'], ['Shift', '달리기'], ['Space', '점프'], ['클릭', '마우스로 시점 돌리기 (Esc 로 풀기)'], ['휠', '카메라 거리']]],
@@ -66,7 +69,8 @@ const HELP = [
   ['행동', [['E', '건물 들어가기 · 차 타기 · 바이러스 치료'], ['H', '헬기 타기 (라이벌 4명을 다 잡으면)']]],
   ['바이러스', [['V', '바이러스 모드 시작 · 그만두기 (괴물이 나타나면 못 그만둬요)'], ['하 · 중 · 상', '난이도 — 하는 바닥 화살표 안내, 상은 빠른 확산과 좀비 떼'], ['E (근원지 앞)', '백신 주입 — 도시가 다 감염되기 전에'], ['괴물', '다 감염되면 나타나요. 시간 안에 못 잡으면 레포가 무너지고 분석 기록이 지워져요']]],
   ['헬기', [['W S', '앞으로 · 뒤로'], ['A D · 마우스', '방향 돌리기'], ['Q E', '옆으로 이동'], ['Space · C (Ctrl · X)', '올라가기 · 내려가기'], ['Shift', '가속'], ['F · 클릭', '기관총 (누르고 있기)'], ['G · 우클릭', '폭탄 떨어뜨리기'], ['마우스 위아래', '조준점 가깝게 · 멀리'], ['H', '천천히 내려가 착륙 (Space 로 취소)']]],
-  ['화면', [['/', '파일 이름으로 순간 이동'], ['T', '날씨 바꾸기'], ['V', '바이러스 모드'], ['?', '이 도움말 · 게임 가이드']]],
+  ['자동 사냥', [['O', '자동 사냥 켜기 · 끄기 — 많이 쓰이는 뿌리 파일에서 출발해, 그 파일을 쓰는 코드를 따라가며 배워요'], ['몬스터', '그 파일에 위험 신호(순환 참조 · 역방향 의존 · 복잡한 함수 등)가 있을 때만 나타나요'], ['이동 · 행동 키', '누르면 바로 직접 조종으로 돌아와요'], ['드래그 · 휠', '잠깐 시점 돌리기 (자동 사냥은 계속돼요)']]],
+  ['화면', [['/', '파일 이름으로 순간 이동'], ['T', '날씨 바꾸기'], ['V', '바이러스 모드'], ['O', '자동 사냥'], ['?', '이 도움말 · 게임 가이드']]],
 ] as const;
 
 const DIFF_HINT: Record<Difficulty, string> = {
@@ -82,6 +86,7 @@ const MARKUP = `
     <div class="hud-head"><div><h1>코드시티GTA</h1><div class="repo" data-el="repo"></div></div><button class="help-btn" data-el="help-btn" aria-label="조작법 보기" title="조작법 (?)">?</button></div>
     <input data-el="q" type="search" placeholder="파일 이름으로 순간 이동 ( / )" autocomplete="off">
     <div class="field"><span class="lbl">날씨</span><div class="weather" data-el="themes" role="radiogroup" aria-label="날씨"></div></div>
+    <button class="auto-btn" data-el="auto-btn">${AUTO_ICON}<span data-el="auto-label">자동 사냥 시작</span><kbd>O</kbd></button>
     <button class="virus-btn" data-el="virus-btn">${VIRUS_ICON}<span data-el="virus-label">바이러스 모드 시작</span><kbd>V</kbd></button>
     <div class="field"><span class="lbl">바이러스 난이도</span><div class="v-diff" data-el="v-diff" role="radiogroup" aria-label="바이러스 난이도">${DIFFICULTIES.map((d) => `<button role="radio" aria-checked="false" data-diff="${d}" title="${DIFF_HINT[d]}">${DIFFICULTY[d].label}</button>`).join('')}</div></div>
     <div class="tips"><b>WASD</b> 이동 · <b>클릭</b> 시점 · <b>F</b> 공격 · <b>E</b> 행동 · <b>1~6</b> 무기 · <b>?</b> 전체 조작법</div>
@@ -94,6 +99,22 @@ const MARKUP = `
     <div class="v-row"><span>난이도</span><b data-el="v-diff-label"></b></div>
     <div class="v-row"><span>처치한 바이러스</span><b data-el="v-kills">0</b></div>
     <p data-el="v-note"></p>
+</div>
+<div class="wk-auto glass" data-el="auto" hidden>
+    <div class="a-head">${AUTO_ICON}<b data-el="a-title">자동 사냥</b><span data-el="a-count"></span></div>
+    <div class="a-phase" data-el="a-phase"></div>
+    <div class="a-target"><span class="chip" data-el="a-sign"></span><b data-el="a-name"></b></div>
+    <p data-el="a-line"></p>
+    <ol class="a-route" data-el="a-route"></ol>
+    <div class="a-row"><span>배운 파일</span><b data-el="a-learned">0</b></div>
+    <div class="a-row"><span>도감</span><b data-el="a-dex"></b></div>
+</div>
+<div class="wk-auto-card glass" data-el="a-card" hidden>
+    <div class="c-kicker" data-el="c-kicker"></div>
+    <h2 data-el="c-title"></h2>
+    <p data-el="c-body"></p>
+    <ul data-el="c-list"></ul>
+    <i><b data-el="c-bar"></b></i>
 </div>
 <div class="wk-boss glass" data-el="boss" hidden>
     <div class="b-head"><b data-el="b-title">초대형 바이러스</b><span data-el="b-time"></span></div>
@@ -131,6 +152,7 @@ const MARKUP = `
 <section class="wk-detail glass" data-el="detail" aria-label="건물 상세">
     <div class="head"><div class="title"><b data-el="d-name"></b><div class="path" data-el="d-path"></div></div><button data-el="d-close">나가기 (Esc)</button></div>
     <div class="metrics" data-el="d-metrics"></div>
+    <div class="auto-why" data-el="d-why" hidden><p data-el="d-why-text"></p><i><b data-el="d-why-bar"></b></i></div>
     <div class="code-body"><pre class="gutter" data-el="d-gutter"></pre><pre class="source"><code class="hljs" data-el="d-src"></code></pre></div>
 </section>`;
 
@@ -620,6 +642,7 @@ const mount: MountViewer = (root, arch, env) => {
   let punchCooldown = 0;
   let hurt = 0;
   let mode: 'walk' | 'fly' | 'drive' | 'ride' = 'walk';
+  let auto = false;
   let nearVehicle: Vehicle | null = null;
   let nearCar: RideCar | null = null;
   let toastTimer = 0;
@@ -650,7 +673,7 @@ const mount: MountViewer = (root, arch, env) => {
   const blockedWalker = (x: number, z: number, r = RADIUS) => blocked(x, z, r) || vehicles.occupied(x, z, r);
   let shake = 0;
   function hurtPlayer(damage: number, fx: number, fz: number, push = 7) {
-    if (!alive) return;
+    if (!alive || auto) return;
     hp -= damage;
     hurt = 1;
     shake = Math.max(shake, Math.min(1, damage / 30));
@@ -795,7 +818,7 @@ const mount: MountViewer = (root, arch, env) => {
     clear: clearLine,
     spot: (x, z, min, max) => openSpot(x, z, min, max, 0.6),
     onPlayerHit: (damage, fx, fz, push) => hurtPlayer(damage, fx, fz, push),
-    onKill: () => { kills++; },
+    onKill: (_kind, tag) => { if (tag) pilot.onKill(tag); else kills++; },
     onBossDown: () => { bossDown = true; },
     onQuake: (x, z) => { shake = Math.max(shake, Math.max(0.25, 1 - Math.hypot(x - pos.x, z - pos.z) / 60)); },
   });
@@ -850,6 +873,7 @@ const mount: MountViewer = (root, arch, env) => {
     renderVirus();
   }
   const toggleVirus = () => {
+    if (auto) { toast('자동 사냥 중에는 바이러스 모드를 쓸 수 없어요 — O 로 자동 사냥을 끄세요'); return; }
     if (virus.state === 'spreading' && !siege.cancellable) { toast('괴물을 처치해야 끝나요'); return; }
     if (virus.state === 'spreading') endVirus(false);
     else if (virus.state === 'off') startVirus();
@@ -883,6 +907,7 @@ const mount: MountViewer = (root, arch, env) => {
     const on = virus.state === 'spreading';
     $('virus').hidden = !on;
     $('virus-btn').classList.toggle('on', on);
+    $<HTMLButtonElement>('virus-btn').disabled = auto;
     $('virus-label').textContent = on ? (siege.cancellable ? '바이러스 모드 그만두기' : '괴물을 처치해야 끝나요') : '바이러스 모드 시작';
     renderDifficulty();
     if (!on) return;
@@ -1073,7 +1098,8 @@ const mount: MountViewer = (root, arch, env) => {
     const prompt = $('prompt');
     let html = '';
     const name = (i: number) => esc(arch.nodes[i].name);
-    if (mode === 'drive') html = '<b>E</b> 내리기';
+    if (auto) html = '';
+    else if (mode === 'drive') html = '<b>E</b> 내리기';
     else if (mode === 'ride' && traffic.riding) html = `<b>E</b> 먼저 내리기 — ${name(traffic.riding.t)}(으)로 가는 중`;
     else if (mode === 'walk' && alive && !detailOpen && !entering) {
       const hpos = heli.root.position;
@@ -1172,6 +1198,11 @@ const mount: MountViewer = (root, arch, env) => {
     src.textContent = '불러오는 중…';
     $('d-gutter').textContent = '';
     $('detail').classList.add('open');
+    const here = auto && pilot.stop?.i === b.i ? pilot.stop : null;
+    $('d-why').hidden = !here;
+    $('d-why-text').textContent = !here ? '' : here.sign
+      ? `${WARNINGS[here.sign.kind].label} — ${here.sign.lesson}`
+      : `${here.line} 역할: ${arch.roles[n.role]?.description ?? arch.roles[n.role]?.name ?? ''}. 위험 신호는 없어요.`;
     env.onSelect({ file: n.path });
     const request = ++codeRequest;
     const source = await env.readSource(n.path).catch(() => null);
@@ -1238,6 +1269,177 @@ const mount: MountViewer = (root, arch, env) => {
   let guideSeen = false;
   try { guideSeen = !!localStorage.getItem(GUIDE_KEY); } catch { guideSeen = false; }
 
+  // ---- auto hunt: expeditions out from a root file along the files that use it; virus mode stays off meanwhile ----
+  const repo = readRepo(arch);
+  const atlas = createAtlas(repo);
+  const doors = new Map<number, Point>(layout.buildings.map((b) => { const d = frontOf(b); return [b.i, [d.x, d.z]]; }));
+  const pilot = createPilot(atlas, doors, {
+    route(x, z, i) {
+      const to = byNode.get(i);
+      if (!to) return null;
+      const near = layout.buildings.reduce((best, b) => (gap(b, x, z) < gap(best, x, z) ? b : best), to);
+      return near === to ? [] : routeBetween(layout, near, to);
+    },
+    range: (id) => weaponById(id).range,
+  });
+  const dexKey = `code-atlas.walk.learned:${arch.name}`;
+  const dex = new Set<string>();
+  try { (JSON.parse(localStorage.getItem(dexKey) ?? '[]') as unknown[]).forEach((p) => { if (typeof p === 'string') dex.add(p); }); } catch { /* storage may be blocked */ }
+  const paths = new Set(arch.nodes.map((n) => n.path));
+  let autoCmd: PilotCommand | null = null;
+  let manualAt = -Infinity;
+  let learnedSeen = 0;
+  const savedCam = { distance, pitch };
+  const nameCount = new Map<string, number>();
+  arch.nodes.forEach((n) => nameCount.set(n.name, (nameCount.get(n.name) ?? 0) + 1));
+  // Two files called `user` read the same on a route list, so a shared name gets its folder.
+  const nameOf = (i: number) => {
+    const n = arch.nodes[i];
+    if ((nameCount.get(n.name) ?? 0) < 2) return n.name;
+    const dirs = n.path.split('/');
+    return dirs.length > 1 ? `${dirs[dirs.length - 2]}/${n.name}` : n.name;
+  };
+  function spawnPack(st: Stop) {
+    const b = byNode.get(st.i);
+    const e = pilot.expedition;
+    if (!b || !st.sign || !e) { pilot.spawned(0); return; }
+    const door = frontOf(b);
+    const tag = tagOf(e, pilot.at);
+    let count = 0;
+    packOf(st.sign, nameOf(st.i), pilot.lap).forEach((m) => {
+      const at = openSpot(door.x, door.z, 2, 10, m.kind === 'elite' ? 1.2 : 0.6);
+      if (at && horde.spawn(m.kind, at.x, at.z, { hp: m.hp, speed: m.speed, color: m.color, ghost: m.ghost, label: m.label, tag })) count++;
+    });
+    pilot.spawned(count);
+    toast(`위험 신호 — ${WARNINGS[st.sign.kind].label}: ${nameOf(st.i)}`, 2600);
+  }
+  function startAuto() {
+    if (auto || picking || guideOpen()) return;
+    if (virus.state === 'spreading') {
+      if (!siege.cancellable) { toast('괴물을 처치해야 자동 사냥을 켤 수 있어요'); return; }
+      endVirus(false);
+    }
+    if (mode === 'fly') { toast('헬기에서 내린 뒤 자동 사냥을 켤 수 있어요'); return; }
+    if (mode === 'drive') leaveVehicle(); else if (mode === 'ride') hopOff();
+    if (detailOpen || entering) leave();
+    if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+    keys.clear();
+    triggerHeld = false;
+    Object.assign(savedCam, { distance, pitch });
+    auto = true;
+    pilot.reset();
+    horde.warm(16);
+    root.classList.add('auto');
+    toast('자동 사냥 시작 — 이동 키를 누르면 바로 직접 조종으로 돌아와요', 3000);
+    renderAuto();
+    renderVirus();
+  }
+  function stopAuto(note = '자동 사냥을 멈췄어요') {
+    if (!auto) return;
+    auto = false;
+    autoCmd = null;
+    triggerHeld = false;
+    distance = savedCam.distance;
+    pitch = savedCam.pitch;
+    horde.clear('poof');
+    if (detailOpen || entering) leave();
+    pilot.reset();
+    root.classList.remove('auto');
+    toast(note);
+    renderAuto();
+    renderVirus();
+  }
+  const toggleAuto = () => (auto ? stopAuto() : startAuto());
+  listen($('auto-btn'), 'click', (e) => { toggleAuto(); (e.currentTarget as HTMLElement).blur(); });
+  const PHASE_TEXT = { brief: '원정 준비', travel: '다음 파일로 가는 중', fight: '위험 신호와 싸우는 중', enter: '건물로 들어가는 중', read: '코드를 읽는 중', leave: '밖으로 나가는 중', debrief: '원정 결과' } as const;
+  const chip = (el: HTMLElement, st: Stop | null) => {
+    el.textContent = st?.sign ? WARNINGS[st.sign.kind].label : st ? '위험 신호 없음' : '';
+    el.style.setProperty('--c', st?.sign ? WARNINGS[st.sign.kind].tint : '#9aa0ad');
+  };
+  const autoView = { key: '', card: '' };
+  function renderCard() {
+    const e = pilot.expedition;
+    const phase = auto && e ? pilot.phase : null;
+    const show = phase === 'brief' || phase === 'debrief';
+    const card = $('a-card');
+    card.hidden = !show;
+    if (!show || !e) return;
+    $('c-bar').style.width = `${pilot.progress * 100}%`;
+    const key = `${phase}|${e.n}`;
+    if (autoView.card === key) return;
+    autoView.card = key;
+    const rootNode = arch.nodes[e.root];
+    const role = arch.roles[rootNode.role]?.name ?? '';
+    const item = (st: Stop, note: string) => `<li><i style="--c:${esc(st.sign ? WARNINGS[st.sign.kind].tint : '#5c6270')}"></i><b>${esc(nameOf(st.i))}</b><span>${esc(note)}</span></li>`;
+    if (phase === 'brief') {
+      $('c-kicker').textContent = `원정 ${fmt(e.n)}${pilot.lap > 1 ? ` · ${fmt(pilot.lap)}바퀴째` : ''}`;
+      $('c-title').textContent = `${rootNode.name} 원정`;
+      $('c-body').textContent = `${rootNode.name}은(는) 파일 ${fmt(rootNode.fanIn)}곳이 기대는 ${role} 코드예요. 여기서 출발해 이 파일을 쓰는 코드를 따라 ${fmt(e.stops.length)}곳을 둘러봐요.`;
+      $('c-list').innerHTML = e.stops.map((st, k) => item(st, k === 0 ? '출발' : st.via ? `${nameOf(st.via.from)} 을(를) 써요` : '보너스')).join('');
+    } else {
+      const found = e.stops.filter((st) => st.sign);
+      $('c-kicker').textContent = `원정 ${fmt(e.n)} 완료`;
+      $('c-title').textContent = `${rootNode.name} 원정 결과`;
+      $('c-body').textContent = found.length
+        ? `배운 파일 ${fmt(e.stops.length)}개 · 발견한 위험 신호 ${fmt(found.length)}개. 이 파일들은 고칠 때 특히 조심하세요.`
+        : `배운 파일 ${fmt(e.stops.length)}개 · 위험 신호가 없는 깨끗한 구역이었어요.`;
+      $('c-list').innerHTML = found.map((st) => item(st, WARNINGS[st.sign!.kind].label)).join('');
+    }
+  }
+  function renderAuto() {
+    $('auto').hidden = !auto;
+    $('auto-btn').classList.toggle('on', auto);
+    $('auto-label').textContent = auto ? '자동 사냥 멈추기' : '자동 사냥 시작';
+    renderCard();
+    const e = pilot.expedition;
+    if (!auto || !e) return;
+    const st = pilot.stop;
+    const key = `${pilot.phase}|${e.n}|${pilot.at}|${pilot.beaten.size}|${dex.size}`;
+    if (key === autoView.key) return;
+    autoView.key = key;
+    $('a-title').textContent = `${nameOf(e.root)} 원정`;
+    $('a-count').textContent = `원정 ${fmt(e.n)}`;
+    $('a-phase').textContent = `${PHASE_TEXT[pilot.phase]}${st ? ` · ${fmt(Math.min(pilot.at + 1, e.stops.length))} / ${fmt(e.stops.length)}` : ''}`;
+    chip($('a-sign'), pilot.phase === 'debrief' ? null : st);
+    $('a-name').textContent = st && pilot.phase !== 'debrief' ? nameOf(st.i) : '';
+    $('a-line').textContent = !st || pilot.phase === 'debrief' ? '' : pilot.phase === 'fight' && st.sign ? st.sign.lesson : st.line;
+    $('a-route').innerHTML = e.stops.map((x, k) => {
+      const state = k < pilot.at || pilot.phase === 'debrief' ? 'done' : k === pilot.at ? 'now' : '';
+      return `<li class="${state}"><i style="--c:${esc(x.sign ? WARNINGS[x.sign.kind].tint : '#5c6270')}"></i><span>${esc(nameOf(x.i))}</span>${x.sign ? `<small>${esc(WARNINGS[x.sign.kind].label)}${pilot.beaten.has(k) ? ' ✓' : ''}</small>` : ''}</li>`;
+    }).join('');
+    $('a-learned').textContent = fmt(pilot.learned);
+    $('a-dex').textContent = `${fmt([...dex].filter((p) => paths.has(p)).length)} / ${fmt(paths.size)}`;
+  }
+  function runPilot(dt: number) {
+    autoCmd = null;
+    if (!auto) return;
+    autoCmd = pilot.update(dt, {
+      x: pos.x,
+      z: pos.z,
+      ready: alive && mode === 'walk' && !detailOpen && !entering,
+      inside: detailOpen || !!entering,
+      foes: horde.positions().filter((f): f is typeof f & { tag: string } => !!f.tag),
+    });
+    const cmd = autoCmd;
+    if (cmd.weapon && cmd.weapon !== weapon.id) selectWeapon(weaponById(cmd.weapon));
+    if (cmd.spawn) spawnPack(cmd.spawn);
+    if (cmd.teleport) {
+      teleport(new THREE.Vector3(cmd.teleport[0], 0, cmd.teleport[1]));
+      camera.position.set(pos.x, 40, pos.z + 30);
+    }
+    if (cmd.enter !== null) { const b = byNode.get(cmd.enter); if (b) { setFocus(b); enter(b); } }
+    if (cmd.leave) leave();
+    if (pilot.learned !== learnedSeen) {
+      learnedSeen = pilot.learned;
+      const st = pilot.stop;
+      if (st) {
+        dex.add(arch.nodes[st.i].path);
+        try { localStorage.setItem(dexKey, JSON.stringify([...dex].slice(-4000))); } catch { /* storage may be blocked */ }
+      }
+    }
+    if (pilot.phase === 'brief' || pilot.phase === 'debrief') renderCard();
+  }
+
   // ---- input ----
   const typing = () => document.activeElement instanceof HTMLInputElement;
   const EMOTES: Emote[] = ['Wave', 'ThumbsUp', 'Dance'];
@@ -1252,6 +1454,9 @@ const mount: MountViewer = (root, arch, env) => {
     }
     if (typing()) { if (e.key === 'Escape') (document.activeElement as HTMLElement).blur(); return; }
     if (helpOpen()) { if (e.key === 'Escape' || e.key === '?') setHelp(false); return; }
+    if (e.code === 'KeyO') { if (!e.repeat) toggleAuto(); return; }
+    if (auto && e.key === 'Escape') { stopAuto('직접 조종으로 돌아왔어요'); return; }
+    if (auto && TAKEOVER.test(e.code)) stopAuto('직접 조종으로 돌아왔어요');
     if (e.key === 'Escape' && (detailOpen || entering)) { leave(); return; }
     if (detailOpen || entering) return;
     if (e.key === '?') { setHelp(true); return; }
@@ -1310,6 +1515,7 @@ const mount: MountViewer = (root, arch, env) => {
   listen(document, 'mousemove', (e) => {
     if (detailOpen || entering) return;
     if (document.pointerLockElement !== renderer.domElement && !dragging) return;
+    manualAt = performance.now();
     if (mode === 'fly') {
       flyYaw -= e.movementX * 0.0026;
       aimPitch = Math.min(1.35, Math.max(0.15, aimPitch + e.movementY * 0.002));
@@ -1320,6 +1526,7 @@ const mount: MountViewer = (root, arch, env) => {
   });
   listen(renderer.domElement, 'wheel', (e) => {
     e.preventDefault();
+    manualAt = performance.now();
     distance = Math.min(22, Math.max(2.5, distance + e.deltaY * 0.01));
   });
 
@@ -1410,6 +1617,39 @@ const mount: MountViewer = (root, arch, env) => {
       mapCtx.lineWidth = 1.2;
       mapCtx.stroke();
     });
+    const trip = auto ? pilot.expedition : null;
+    if (trip) {
+      // The expedition drawn as its reference links: each stop joined to the stop it was reached from.
+      mapCtx.lineWidth = 1.5;
+      mapCtx.strokeStyle = 'rgba(255, 192, 120, .7)';
+      trip.stops.forEach((st) => {
+        const a = st.via ? doors.get(st.via.from) : undefined, b = doors.get(st.i);
+        if (!a || !b) return;
+        const [ax, ay] = toMap(a[0], a[1]), [bx, by] = toMap(b[0], b[1]);
+        mapCtx.beginPath();
+        mapCtx.moveTo(ax, ay);
+        mapCtx.lineTo(bx, by);
+        mapCtx.stroke();
+      });
+      trip.stops.forEach((st, k) => {
+        const d = doors.get(st.i);
+        if (!d) return;
+        const [x, y] = toMap(d[0], d[1]);
+        mapCtx.fillStyle = k < pilot.at ? '#8b93a3' : st.sign ? WARNINGS[st.sign.kind].tint : '#ffc078';
+        mapCtx.beginPath();
+        mapCtx.arc(x, y, k === pilot.at ? 3.6 : 2.4, 0, Math.PI * 2);
+        mapCtx.fill();
+      });
+      const cur = pilot.stop ? doors.get(pilot.stop.i) : undefined;
+      if (cur && pilot.phase !== 'debrief') {
+        const [hx, hy] = toMap(cur[0], cur[1]);
+        mapCtx.lineWidth = 2;
+        mapCtx.strokeStyle = '#ffc078';
+        mapCtx.beginPath();
+        mapCtx.arc(hx, hy, 5 + ((performance.now() / 1000) % 1) * 5, 0, Math.PI * 2);
+        mapCtx.stroke();
+      }
+    }
     battle.positions().forEach((r) => {
       const [x, y] = toMap(r.x, r.z);
       mapCtx.fillStyle = r.down ? '#5c6270' : r.tint;
@@ -1525,20 +1765,24 @@ const mount: MountViewer = (root, arch, env) => {
   const wish = new THREE.Vector3();
   const doorPoint = new THREE.Vector3();
   renderer.setAnimationLoop((now) => {
-    const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+    const frame = Math.min(0.05, Math.max(0, (now - last) / 1000));
     last = now;
+    // A pack going down plays in slow motion for a moment.
+    const dt = auto && pilot.slowmo > 0 && !reduceMotion ? frame * 0.35 : frame;
+    runPilot(frame);
     const time = now / 1000;
     uniforms.uTime.value = time;
     const input = (a: string[], b: string[]) => (a.some((k) => keys.has(k)) ? 1 : 0) - (b.some((k) => keys.has(k)) ? 1 : 0);
     const fz = input(['KeyW', 'ArrowUp'], ['KeyS', 'ArrowDown']);
     const fx = input(['KeyD', 'ArrowRight'], ['KeyA', 'ArrowLeft']);
-    const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
+    const running = keys.has('ShiftLeft') || keys.has('ShiftRight') || !!autoCmd?.run;
     forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
     right.set(-forward.z, 0, forward.x);
     const flying = mode === 'fly';
     const onFoot = mode === 'walk';
     wish.set(0, 0, 0);
-    if (alive && onFoot) wish.addScaledVector(forward, fz).addScaledVector(right, fx);
+    if (alive && onFoot && autoCmd?.move) wish.set(autoCmd.move[0], 0, autoCmd.move[1]);
+    else if (alive && onFoot) wish.addScaledVector(forward, fz).addScaledVector(right, fx);
     if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(running ? RUN : WALK);
     const airborne = footY > 0.001 || vy > 0;
     vel.lerp(wish, Math.min(1, dt * (airborne ? ACCEL * 0.15 : ACCEL) / Math.max(1, vel.distanceTo(wish))));
@@ -1553,9 +1797,15 @@ const mount: MountViewer = (root, arch, env) => {
     const speed = Math.hypot(vel.x, vel.z);
     const prev = heading;
     aimHold = Math.max(0, aimHold - dt);
+    if (auto) {
+      triggerHeld = !!autoCmd?.attack && !!weapon.auto;
+      if (autoCmd?.attack) attack();
+    }
     if (triggerHeld && weapon.auto) attack();
-    const aimHeading = yaw + Math.PI;
+    const autoFace = autoCmd?.face ?? null;
+    const aimHeading = auto && autoFace !== null ? autoFace : yaw + Math.PI;
     if (aimHold > 0 && onFoot) heading = turnToward(heading, aimHeading, dt, 22, 26);
+    else if (auto && autoFace !== null && (autoCmd?.attack || speed < 0.3) && onFoot) heading = turnToward(heading, autoFace, dt, 22, 26);
     else if (speed > 0.3) heading = turnToward(heading, Math.atan2(vel.x, vel.z), dt, 10, 12);
     turnRate += ((Math.atan2(Math.sin(heading - prev), Math.cos(heading - prev)) / Math.max(dt, 1e-3)) - turnRate) * Math.min(1, dt * 8);
     const run = Math.max(0, Math.min(1, (speed - WALK) / (RUN - WALK)));
@@ -1644,7 +1894,7 @@ const mount: MountViewer = (root, arch, env) => {
       punchAt -= dt;
       if (punchAt <= 0) { battle.strike(pos, heading, weapon); horde.strike(pos, heading, weapon); }
     }
-    battle.update(dt, pos, alive && onFoot && !detailOpen && !entering);
+    battle.update(dt, pos, alive && onFoot && !detailOpen && !entering && !auto);
     if (virus.update(dt)) {
       parts.forEach((p, j) => { aInfect[j] = virus.levels[p.k]; });
       infectAttr.needsUpdate = true;
@@ -1702,6 +1952,7 @@ const mount: MountViewer = (root, arch, env) => {
       }
       updatePrompt();
     }
+    if (detailOpen && auto) $('d-why-bar').style.width = `${pilot.phase === 'read' ? pilot.progress * 100 : 0}%`;
     hurt = Math.max(0, hurt - dt * 1.6);
     $('hurt').style.opacity = String(hurt * 0.85);
 
@@ -1749,6 +2000,14 @@ const mount: MountViewer = (root, arch, env) => {
       camera.lookAt(lookAt);
     } else {
       $('fade').style.opacity = '0';
+      if (auto && now - manualAt > 3000) {
+        // Director: trail behind on the move, rise over long trips, swing round a falling pack.
+        const far = pilot.remaining > 60;
+        const want = (autoFace ?? heading) + Math.PI + (pilot.slowmo > 0 ? 0.9 : 0);
+        yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * Math.min(1, frame * (pilot.slowmo > 0 ? 2.5 : 1.6));
+        pitch += ((far ? 0.8 : pilot.phase === 'fight' ? 0.42 : 0.3) - pitch) * Math.min(1, frame * 1.2);
+        distance += ((far ? 19 : pilot.phase === 'fight' ? 11 : 8.5) - distance) * Math.min(1, frame * 1.2);
+      }
       const orbit = (r: number) => camPos.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(r).add(v.set(pos.x, 1.7 + footY * 0.5, pos.z));
       let reach = distance;
       while (reach > 1.5 && insideBuilding(orbit(reach))) reach -= 0.5;
@@ -1811,6 +2070,7 @@ const mount: MountViewer = (root, arch, env) => {
         }
       }
       renderVirus();
+      renderAuto();
       if (!entering && !detailOpen && onFoot) {
         let best: WalkBuilding | null = null;
         let bestGap = REACH;
