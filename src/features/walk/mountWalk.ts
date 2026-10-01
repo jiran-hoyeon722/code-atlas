@@ -25,7 +25,7 @@ import { DIFFICULTIES, DIFFICULTY, FORM_TIME, createSiege, createVirus, isDiffic
 import { HELI_BOSS_BONUS, createHorde } from './walkHorde';
 import { turnToward } from './walkMotion';
 import type { RideCar } from './walkTraffic';
-import { GUIDE, GUIDE_KEY } from './walkGuide';
+import { GUIDE, GUIDE_KEY, guideHtml } from './walkGuide';
 import robotUrl from './assets/RobotExpressive.glb?url';
 
 const WALK = 4.2;
@@ -111,8 +111,7 @@ const MARKUP = `
 </div>
 <div class="wk-guide" data-el="guide" hidden>
     <section class="g-card glass" role="dialog" aria-modal="true" aria-labelledby="wk-guide-title">
-        <div class="g-step" data-el="g-step"></div>
-        <h2 id="wk-guide-title" data-el="g-title"></h2>
+        <div class="g-top"><div class="g-art" data-el="g-art"></div><div><div class="g-step" data-el="g-step"></div><h2 id="wk-guide-title" data-el="g-title"></h2></div></div>
         <div class="g-repo" data-el="g-repo"></div>
         <p data-el="g-body"></p>
         <div class="g-keys" data-el="g-keys"></div>
@@ -1173,9 +1172,11 @@ const mount: MountViewer = (root, arch, env) => {
   listen($('help-close'), 'click', () => setHelp(false));
   let guideStep = -1;
   const guideOpen = () => guideStep >= 0;
+  const spotted: HTMLElement[] = [];
   function showGuide(step: number) {
     guideStep = step;
     $('guide').hidden = step < 0;
+    spotted.splice(0).forEach((el) => el.classList.remove('g-spot', 'g-lift'));
     if (step < 0) {
       try { localStorage.setItem(GUIDE_KEY, '1'); } catch { /* storage may be blocked */ }
       return;
@@ -1187,8 +1188,17 @@ const mount: MountViewer = (root, arch, env) => {
     const last = step === GUIDE.length - 1;
     $('g-step').textContent = `${step + 1} / ${GUIDE.length}`;
     $('g-title').textContent = g.title;
-    $('g-repo').textContent = step === 0 ? arch.name : '';
-    $('g-body').textContent = g.body;
+    $('g-art').innerHTML = g.art;
+    $('g-repo').innerHTML = step === 0 ? `<b>${esc(arch.name)}</b><span>파일 ${esc(fmt(arch.nodes.length))}개 · 역할 ${esc(fmt(arch.roles.length))}개 · 계층 ${esc(fmt(arch.layers.length))}개</span>` : '';
+    $('g-body').innerHTML = guideHtml(g.body, esc);
+    g.spot.forEach((name) => {
+      const el = root.querySelector<HTMLElement>(`[data-el="${name}"]`);
+      const top = el?.closest<HTMLElement>('.wk-walk > *');
+      if (!el || !top) return;
+      el.classList.add('g-spot');
+      top.classList.add('g-lift');
+      spotted.push(el, top);
+    });
     $('g-keys').innerHTML = g.keys.map(([k, what]) => `<span><kbd>${esc(k)}</kbd>${esc(what)}</span>`).join('');
     $('g-dots').innerHTML = GUIDE.map((_, k) => `<i class="${k === step ? 'on' : ''}"></i>`).join('');
     $<HTMLButtonElement>('g-prev').disabled = step === 0;

@@ -255,7 +255,11 @@ async function main() {
       await page.waitForSelector('.wk-guide:not([hidden])', { timeout: 10_000 });
       await page.waitForTimeout(1500);
       await shot(page, 'walk-guide.png');
-      for (let k = 0; k < 4; k++) await page.click('[data-el=g-next]');
+      for (let k = 0; k < 5; k++) {
+        assert(await page.locator('.wk-walk .g-spot').count() > 0, `guide step ${k + 1} lights up nothing`);
+        if (k > 0) await shot(page, `walk-guide-${k + 1}.png`);
+        if (k < 4) await page.click('[data-el=g-next]');
+      }
       assert((await page.locator('[data-el=g-next]').textContent()) === '시작하기', 'guide does not end on its fifth step');
       await page.click('[data-el=g-next]');
       await page.waitForSelector('.wk-guide[hidden]', { state: 'attached', timeout: 5_000 });
