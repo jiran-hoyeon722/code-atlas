@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { Architecture, ArchNode } from '../../src/engine/architecture';
-import { mergeArchitectures, mergeRoles } from '../../src/engine/merge';
+import { baseRoleName, mergeArchitectures, mergeRoles } from '../../src/engine/merge';
 import { layers, type Role } from '../../src/engine/presets';
 
 const role = (name: string, layer: Role['layer']): Role => ({ name, layer, patterns: [], description: '' });
@@ -81,5 +81,26 @@ describe('mergeArchitectures', () => {
 
   test('mergeRoles matches the merged roles', () => {
     expect(mergeRoles([py, go])).toEqual(mergeArchitectures([py, go]).roles);
+  });
+
+  test('no parts is an error', () => {
+    expect(() => mergeArchitectures([])).toThrow('mergeArchitectures needs at least one part');
+  });
+
+  test('edge kinds are copied, not shared', () => {
+    const m = mergeArchitectures([py, go]);
+    expect(m.edges[0][3]).toEqual(py.edges[0][3]);
+    expect(m.edges[0][3]).not.toBe(py.edges[0][3]);
+  });
+});
+
+describe('baseRoleName', () => {
+  test('strips the language prefix of a merged role', () => {
+    expect(baseRoleName('PHP · Event')).toBe('Event');
+    expect(baseRoleName('Python · 진입점')).toBe('진입점');
+  });
+
+  test('keeps an un-prefixed role name', () => {
+    expect(baseRoleName('Event')).toBe('Event');
   });
 });
