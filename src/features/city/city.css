@@ -44,7 +44,7 @@
 .cc-city .cc-scale .ramp { height: 6px; border-radius: 3px; margin: 3px 0 2px; }
 .cc-city .cc-scale .ends { display: flex; justify-content: space-between; }
 .cc-city .links { display: flex; gap: 10px; margin-top: 10px; font-size: 12px; }
-.cc-city .links { align-items: center; }
+.cc-city .links { align-items: center; flex-wrap: wrap; row-gap: 6px; }
 .cc-city .picks:empty { display: none; }
 .cc-city .picks { margin-top: 10px; display: flex; flex-direction: column; gap: 2px; }
 .cc-city .picks h2 { margin: 0 0 2px; font-size: 12px; font-weight: 600; color: var(--muted); }
@@ -53,9 +53,10 @@
 .cc-city .picks i { width: 8px; height: 8px; border-radius: 2px; }
 .cc-city .picks b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-city .picks small { color: var(--muted); font-size: 12px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cc-city .links a { color: var(--accent); text-decoration: none; cursor: pointer; }
-.cc-city .links button { margin-left: auto; border: 1px solid var(--border); background: rgba(255, 255, 255, .04); border-radius: 8px; padding: 2px 9px; font-size: 12px; cursor: pointer; }
-.cc-city .controls { margin: 6px 0 0; color: var(--faint); font-size: 12px; }
+.cc-city .links a { color: var(--accent); text-decoration: none; cursor: pointer; white-space: nowrap; }
+.cc-city .links button { margin-left: auto; white-space: nowrap; border: 1px solid var(--border); background: rgba(255, 255, 255, .04); border-radius: 8px; padding: 2px 9px; font-size: 12px; cursor: pointer; }
+.cc-city .controls { margin: 6px 0 0; color: var(--faint); font-size: 12px; display: flex; align-items: center; gap: 8px; }
+.cc-city .controls button { margin-left: auto; flex: none; border: 0; background: none; padding: 0; color: var(--accent); font-size: 12px; cursor: pointer; }
 .cc-city :is(button, a, select, input[type=checkbox]):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .cc-city .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
@@ -130,3 +131,21 @@
     .cc-city .cc-legend { max-height: 26cqh; }
     .cc-city .cc-panel { left: 14px; width: auto; top: auto; height: 60cqh; }
 }
+
+.cc-city .cc-tour { position: absolute; left: 50%; bottom: 18px; z-index: 12; width: min(440px, calc(100% - 32px)); transform: translateX(-50%); padding: 14px 18px 12px; display: flex; flex-direction: column; gap: 6px; background: var(--panel-solid); box-shadow: 0 12px 40px rgba(0, 0, 0, .45); animation: cc-tour-in .25s ease; }
+.cc-city .cc-tour[hidden] { display: none; }
+.cc-city .cc-tour .t-step { color: var(--accent); font: 700 11px ui-monospace, Menlo, monospace; }
+.cc-city .cc-tour h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.cc-city .cc-tour p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.cc-city .cc-tour p b { color: var(--text); }
+.cc-city .cc-tour .t-foot { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.cc-city .cc-tour .t-dots { flex: 1; display: flex; gap: 5px; }
+.cc-city .cc-tour .t-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 255, 255, .18); transition: width .2s ease; }
+.cc-city .cc-tour .t-dots i.on { width: 16px; border-radius: 3px; background: var(--accent); }
+.cc-city .cc-tour button { border: 1px solid var(--border); background: rgba(255, 255, 255, .04); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+.cc-city .cc-tour button:disabled { opacity: .35; cursor: default; }
+.cc-city .cc-tour button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d12; font-weight: 700; }
+.cc-city .cc-tour [data-el=t-skip] { border-color: transparent; background: none; color: var(--muted); }
+.cc-city .cc-spot { box-shadow: 0 0 0 2px var(--accent), 0 0 24px color-mix(in srgb, var(--accent) 45%, transparent); transition: box-shadow .25s ease; }
+@keyframes cc-tour-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+@media (prefers-reduced-motion: reduce) { .cc-city .cc-tour { animation: none; } }

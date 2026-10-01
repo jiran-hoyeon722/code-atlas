@@ -224,6 +224,23 @@ async function main() {
       await shot(page, 'city.png');
     });
 
+    await step('city: first-visit tour flies through the city, then stays closed', async () => {
+      await page.waitForSelector('[data-el=tour]:not([hidden])', { timeout: 10_000 });
+      await shot(page, 'city-tour-1.png');
+      await page.click('[data-el=t-next]');
+      await page.waitForSelector('[data-el=panel].open');
+      await page.waitForTimeout(1100);
+      await shot(page, 'city-tour-2.png');
+      const steps = Number((await page.locator('[data-el=t-step]').textContent()).split('/')[1]);
+      for (let k = 2; k < steps; k++) await page.click('[data-el=t-next]');
+      await page.waitForTimeout(1100);
+      await shot(page, 'city-tour-last.png');
+      assert((await page.locator('[data-el=t-next]').textContent()) === '시작하기', 'last tour step should offer 시작하기');
+      await page.click('[data-el=t-next]');
+      assert(await page.locator('[data-el=tour]').isHidden(), 'tour did not close');
+      assert(await page.evaluate(() => localStorage.getItem('code-atlas.city.tour-seen') === '1'), 'tour was not remembered');
+    });
+
     await step('city: search (/) → code view shows fixture source', async () => {
       await page.locator('.ca-shell-mount canvas').first().click({ position: { x: 5, y: 5 } }).catch(() => {});
       await page.keyboard.press('/');
@@ -417,7 +434,7 @@ async function main() {
       await page.waitForSelector('[data-testid=folder-input]');
       const r = await openFolder(page, MIXED, null);
       assert(r.seen, 'loading screen never appeared for mixed-mini');
-      assert(await page.locator('[role=dialog]').count() === 0, 'a dialog is open over the mixed city');
+      assert(await page.locator('[role=dialog]:visible').count() === 0, 'a dialog is open over the mixed city');
       const meta = await page.locator('.ca-shell-brand span').textContent();
       assert(meta.startsWith('Python + Go · '), `expected "Python + Go" in the top bar, got "${meta}"`);
       await page.waitForTimeout(1500);
