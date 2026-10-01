@@ -1,5 +1,5 @@
-import { LANGS } from '../../../engine/langs';
-import type { Lang } from '../../../engine/types';
+import { LANGS } from '../../engine/langs';
+import type { Lang } from '../../engine/types';
 
 export const langLabel = (lang: Lang): string => LANGS[lang]?.label ?? lang;
 

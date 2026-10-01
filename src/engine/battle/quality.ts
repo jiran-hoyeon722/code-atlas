@@ -1,6 +1,7 @@
-import { analyze, UnsupportedRepoError, type Progress } from '../analyze';
-import { detect } from '../detect';
-import type { Parsers } from '../parsers';
+import { analyze, UnsupportedRepoError, type AnalyzeOptions, type Progress } from '../analyze';
+import type { Architecture } from '../architecture';
+import { detect, type Detection } from '../detect';
+import type { OnTree, Parsers } from '../parsers';
 import type { Lang, RepoInput, SourceFile } from '../types';
 import { findClones, duplicationScores } from './clones';
 import { measureFunctions, readabilityScores, type FunctionProfile } from './functions';
@@ -8,7 +9,7 @@ import { findCycles, pickCommander, tangleScore, testsScore } from './graph';
 import { codeLines } from './lines';
 import { hashInts, hashString } from './rng';
 import { LIMITS, RULE_VERSION } from './rules';
-import { splitScope } from './scope';
+import { splitScope, type Scope } from './scope';
 import type { Quality, QualityFile } from './types';
 
 export type QualityProgress =
@@ -55,23 +56,86 @@ function fingerprintOf(files: readonly SourceFile[]): string {
   return h.toString(16).padStart(8, '0');
 }
 
-export function buildQuality(input: RepoInput, parsers: Parsers, opts: QualityOptions = {}): Quality {
-  const { prefer, onProgress } = opts;
-  const detection = detect(input, prefer);
+/** 'failed' = measuring threw after the analysis succeeded. */
+export type QualityIssue = 'too-small' | 'no-production' | 'failed';
+
+export interface AnalyzeWithQualityOptions extends Omit<AnalyzeOptions, 'onTree'> {
+  onQualityProgress?(p: Exclude<QualityProgress, { phase: 'analyze' }>): void;
+}
+
+export interface AnalysisWithQuality {
+  architecture: Architecture;
+  quality: Quality | null;
+  qualityIssue?: QualityIssue;
+  /** Code lines of production files; set when `qualityIssue` is 'too-small'. */
+  prodLines?: number;
+}
+
+/** Runs the analysis once and measures battle data from the same parse trees. Battle data never fails the analysis. */
+export function analyzeWithQuality(input: RepoInput, parsers: Parsers, opts: AnalyzeWithQualityOptions = {}): AnalysisWithQuality {
+  return run(input, parsers, opts, false);
+}
+
+function run(input: RepoInput, parsers: Parsers, opts: AnalyzeWithQualityOptions, strict: boolean): AnalysisWithQuality {
+  const { onQualityProgress, ...analyzeOpts } = opts;
+  const detection = detect(input, opts.prefer);
   if (!detection) throw new UnsupportedRepoError();
   const scope = splitScope(detection, input);
-  if (scope.prod.length === 0) throw new UnsupportedRepoError();
-
   const prodLineCounts = scope.prod.map((f) => codeLines(f.text).length);
   const prodLines = prodLineCounts.reduce((a, b) => a + b, 0);
-  if (prodLines < LIMITS.minLines) throw new TooSmallRepoError(prodLines);
 
-  const arch = analyze(input, parsers, { prefer: detection.lang, onProgress: (step) => onProgress?.({ phase: 'analyze', step }) });
+  const plain = () => analyze(input, parsers, { ...analyzeOpts, prefer: detection.lang });
+  if (scope.prod.length === 0) return { architecture: plain(), quality: null, qualityIssue: 'no-production' };
+  if (prodLines < LIMITS.minLines) return { architecture: plain(), quality: null, qualityIssue: 'too-small', prodLines };
+
+  const prodText = new Map(scope.prod.map((f) => [f.path, f.text]));
+  const measured = new Map<string, FunctionProfile>();
+  const onTree: OnTree = (path, root) => {
+    const text = prodText.get(path);
+    if (text === undefined || measured.has(path)) return;
+    try {
+      measured.set(path, measureFunctions(root, detection.lang, text));
+    } catch {
+      // Left unmeasured: the separate parse below retries it, as buildQuality always did.
+    }
+  };
+  const architecture = analyze(input, parsers, { ...analyzeOpts, prefer: detection.lang, onTree });
+  try {
+    return { architecture, quality: assemble(input, parsers, detection, scope, prodLineCounts, prodLines, architecture, measured, onQualityProgress) };
+  } catch (e) {
+    if (strict) throw e;
+    return { architecture, quality: null, qualityIssue: 'failed' };
+  }
+}
+
+export function buildQuality(input: RepoInput, parsers: Parsers, opts: QualityOptions = {}): Quality {
+  const { prefer, onProgress } = opts;
+  const r = run(input, parsers, {
+    prefer,
+    onProgress: (step) => onProgress?.({ phase: 'analyze', step }),
+    onQualityProgress: onProgress,
+  }, true);
+  if (r.qualityIssue === 'no-production') throw new UnsupportedRepoError();
+  if (r.qualityIssue === 'too-small') throw new TooSmallRepoError(r.prodLines ?? 0);
+  return r.quality!;
+}
+
+function assemble(
+  input: RepoInput,
+  parsers: Parsers,
+  detection: Detection,
+  scope: Scope,
+  prodLineCounts: number[],
+  prodLines: number,
+  arch: Architecture,
+  measured: Map<string, FunctionProfile>,
+  onProgress?: (p: Exclude<QualityProgress, { phase: 'analyze' }>) => void,
+): Quality {
   const centrality = new Map(arch.nodes.map((n) => [n.path, n.centrality]));
 
   const total = scope.prod.length;
   const profiles = scope.prod.map((f, i) => {
-    const p = profileOf(parsers, detection.lang, f);
+    const p = measured.get(f.path) ?? profileOf(parsers, detection.lang, f);
     onProgress?.({ phase: 'functions', done: i + 1, total });
     return p;
   });

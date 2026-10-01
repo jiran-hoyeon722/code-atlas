@@ -1,4 +1,6 @@
 import type { Architecture } from '../engine/architecture';
+import type { PackedQuality } from '../engine/battle/pack';
+import type { QualityIssue } from '../engine/battle/quality';
 import type { Lang } from '../engine/types';
 import type { GithubOrigin } from '../app/files/github';
 import type { Listing } from '../app/files/types';
@@ -12,11 +14,27 @@ export interface CacheSummary {
   analyzedAt: string;
   /** set when the analysis came from a public GitHub repo; code is fetched again from that commit */
   origin?: GithubOrigin;
+  /** Set by `listAnalyses`. Entries saved before battle data existed read as 'missing'. */
+  battle?: BattleState;
+  /** Set by `listAnalyses`: a folder handle is stored, so the folder can be read again after a permission prompt. */
+  hasHandle?: boolean;
 }
 
-export interface CacheEntry extends CacheSummary {
+/** 'too-small' / 'no-production' can never battle, however often the repo is measured again. */
+export type BattleState = 'ready' | 'missing' | 'too-small' | 'no-production';
+
+export interface CacheEntry extends Omit<CacheSummary, 'battle' | 'hasHandle'> {
   architecture: Architecture;
   handle?: FileSystemDirectoryHandle;
+  /** battle data measured with the analysis (measurements only, no source text) */
+  quality?: PackedQuality;
+  qualityIssue?: QualityIssue;
+}
+
+export function battleState(e: Pick<CacheEntry, 'quality' | 'qualityIssue'>): BattleState {
+  if (e.quality) return 'ready';
+  if (e.qualityIssue === 'too-small' || e.qualityIssue === 'no-production') return e.qualityIssue;
+  return 'missing';
 }
 
 const DB_NAME = 'code-atlas';
@@ -85,7 +103,10 @@ export async function saveAnalysis(e: CacheEntry): Promise<void> {
 export async function listAnalyses(): Promise<CacheSummary[]> {
   const all = await run<CacheEntry[]>('readonly', (s) => s.getAll());
   return all
-    .map(({ key, name, framework, lang, files, analyzedAt, origin }) => ({ key, name, framework, lang, files, analyzedAt, ...(origin && { origin }) }))
+    .map((e): CacheSummary => {
+      const { key, name, framework, lang, files, analyzedAt, origin } = e;
+      return { key, name, framework, lang, files, analyzedAt, ...(origin && { origin }), battle: battleState(e), hasHandle: !!e.handle };
+    })
     .sort((a, b) => (a.analyzedAt < b.analyzedAt ? 1 : a.analyzedAt > b.analyzedAt ? -1 : 0));
 }
 

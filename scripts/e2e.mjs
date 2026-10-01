@@ -249,6 +249,42 @@ async function main() {
       await shot(page, 'city-blast.png');
     });
 
+    await step('codecity GTA tab: search, walk up to a door, E opens the code', async () => {
+      await page.click('.ca-shell [role=tab]:has-text("코드시티GTA")');
+      await page.waitForSelector('.wk-walk canvas', { timeout: 30_000 });
+      await page.waitForTimeout(2500);
+      await page.keyboard.press('/');
+      await page.keyboard.type('userService');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.querySelector('.wk-prompt.open')?.textContent?.includes('들어가기'), null, { timeout: 20_000 });
+      await shot(page, 'walk.png');
+      await page.keyboard.press('e');
+      await page.waitForFunction(() => document.querySelector('[data-el=d-src]')?.textContent?.includes('export const fetchUsers'), null, { timeout: 20_000 });
+      const name = await page.locator('[data-el=d-name]').textContent();
+      assert(name.startsWith('userService'), `walk detail shows another file: "${name}"`);
+      await page.waitForTimeout(600);
+      await shot(page, 'walk-code.png');
+      await page.keyboard.press('Escape');
+    });
+
+    await step('codecity GTA: weapons, virus outbreak, help', async () => {
+      await page.waitForTimeout(800);
+      await page.keyboard.press('4');
+      await page.waitForSelector('.wk-weapons [data-weapon=pistol].on', { timeout: 5_000 });
+      await page.keyboard.press('f');
+      await page.keyboard.press('v');
+      await page.waitForSelector('.wk-virus:not([hidden])', { timeout: 5_000 });
+      await page.waitForFunction(() => !/^0 \//.test(document.querySelector('[data-el=v-count]')?.textContent ?? '0 /'), null, { timeout: 15_000 });
+      await page.waitForTimeout(8000);
+      await shot(page, 'walk-virus.png');
+      await page.keyboard.press('?');
+      await page.waitForSelector('.wk-help:not([hidden])', { timeout: 5_000 });
+      await shot(page, 'walk-help.png');
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('v');
+      await page.waitForSelector('.wk-virus[hidden]', { state: 'attached', timeout: 5_000 });
+    });
+
     await step('graph tab renders', async () => {
       await page.click('.ca-shell [role=tab]:has-text("그래프")');
       await page.waitForSelector('.ca-shell-mount .cg-canvas canvas', { timeout: 30_000 });

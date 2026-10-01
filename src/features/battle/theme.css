@@ -6,11 +6,6 @@
   font-display: swap;
 }
 
-.rb-page {
-  margin: 0;
-  background: #111317;
-}
-
 .rb-root {
   --rb-bg: #111317;
   --rb-card: #1b1e24;
@@ -112,6 +107,29 @@
   background: var(--rb-inner);
   color: var(--rb-text-3);
   cursor: not-allowed;
+}
+
+.rb-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.rb-dot-a {
+  background: var(--rb-team-a);
+}
+
+.rb-dot-b {
+  background: var(--rb-team-b);
+}
+
+.rb-warn-dot {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--rb-warn);
 }
 
 .rb-screen {

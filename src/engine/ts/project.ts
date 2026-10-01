@@ -1,6 +1,6 @@
 import type { Detection } from '../detect';
 import { sourcesFor } from '../sources';
-import type { Parsers } from '../parsers';
+import type { OnTree, Parsers } from '../parsers';
 import type { Edge, Extraction, FileNode, RepoInput } from '../types';
 import { extractTsFile } from './extract';
 import { createTsResolver } from './resolve';
@@ -40,6 +40,7 @@ export function extractTsProject(
   parsers: Parsers,
   onFile?: (path: string) => void,
   onLink?: () => void,
+  onTree?: OnTree,
 ): Extraction {
   const sources = sourcesFor(detection, input.files);
   const known = new Set(sources.map((f) => f.path));
@@ -58,7 +59,7 @@ export function extractTsProject(
   for (const file of sources) {
     let r;
     try {
-      r = extractTsFile(parsers.get('ts'), file);
+      r = extractTsFile(parsers.get('ts'), file, onTree);
     } catch {
       failed.push({ path: file.path, reason: 'read' });
       nodes.push({ id: file.path, name: moduleName(file.path), kind: moduleKind(file.path), lines: file.text.split('\n').length, functions: 0, complexity: 0, maxComplexity: 0 });

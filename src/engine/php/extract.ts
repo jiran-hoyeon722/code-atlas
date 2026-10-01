@@ -1,4 +1,5 @@
 import type { Node, Parser } from 'web-tree-sitter';
+import type { OnTree } from '../parsers';
 import type { RefKind, SourceFile } from '../types';
 import { measure } from '../complexity';
 import { resolveClassName, scopeAt } from './names';
@@ -129,7 +130,7 @@ function declName(root: Node, decl: Node): string {
   return ns ? `${ns}\\${name}` : name;
 }
 
-export function extractPhpFile(parser: Parser, file: SourceFile, isProvider: boolean): PhpFacts {
+export function extractPhpFile(parser: Parser, file: SourceFile, isProvider: boolean, onTree?: OnTree): PhpFacts {
   const facts: PhpFacts = {
     declarations: [],
     refs: [],
@@ -202,6 +203,7 @@ export function extractPhpFile(parser: Parser, file: SourceFile, isProvider: boo
       }
     }
     facts.binds.push(...mapBinds);
+    onTree?.(file.path, root);
   } finally {
     tree.delete();
   }

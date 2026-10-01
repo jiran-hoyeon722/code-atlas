@@ -2,9 +2,7 @@ import { vi } from 'vitest';
 import type { FixCandidate } from '../../../src/engine/battle/fixes';
 import type { Prediction, Side } from '../../../src/engine/battle/sim/types';
 import type { Quality, QualityFile } from '../../../src/engine/battle/types';
-import type { RepoInput } from '../../../src/engine/types';
 import type { BattleDeps } from '../../../src/features/battle/deps';
-import type { FromWorker } from '../../../src/features/battle/worker/protocol';
 
 export function qfile(path: string, lines: number, over: Partial<QualityFile> = {}): QualityFile {
   return { path, lines, functions: [], ccnTier: [], lenTier: [], clone: [], removable: [], cycle: -1, centrality: 0, ...over };
@@ -36,11 +34,6 @@ interface Deferred<T> {
   cancel: ReturnType<typeof vi.fn>;
 }
 
-export interface MeasureRun extends Deferred<Quality> {
-  input: RepoInput;
-  progress(step: string): void;
-}
-
 export interface PredictRun extends Deferred<Prediction> {
   a: Quality;
   b: Quality;
@@ -63,17 +56,10 @@ export interface FixesRun extends Deferred<FixCandidate[]> {
   loserSide: Side;
 }
 
-export function fakes(pickDirectory: BattleDeps['pickDirectory'] = null) {
-  const runs: MeasureRun[] = [];
+export function fakes() {
   const predictions: PredictRun[] = [];
   const fixes: FixesRun[] = [];
   const deps: BattleDeps = {
-    pickDirectory,
-    measure(input, onProgress) {
-      const d = deferred<Quality>();
-      runs.push({ input, progress: onProgress, resolve: d.resolve, reject: d.reject, cancel: d.cancel });
-      return { result: d.result, cancel: d.cancel };
-    },
     predict(a, b, onProgress) {
       const d = deferred<Prediction>();
       predictions.push({ a, b, progress: onProgress, resolve: d.resolve, reject: d.reject, cancel: d.cancel });
@@ -85,21 +71,5 @@ export function fakes(pickDirectory: BattleDeps['pickDirectory'] = null) {
       return { result: d.result, cancel: d.cancel };
     },
   };
-  return { deps, runs, predictions, fixes };
-}
-
-export class FakeWorker {
-  onmessage: ((e: MessageEvent<FromWorker>) => void) | null = null;
-  onerror: ((e: ErrorEvent) => void) | null = null;
-  terminate = vi.fn();
-  posted: unknown[] = [];
-  constructor(private readonly reply?: (m: unknown, w: FakeWorker) => void) {}
-  postMessage(m: unknown) {
-    this.posted.push(m);
-    if (this.reply) queueMicrotask(() => this.reply!(m, this));
-  }
-  addEventListener() {}
-  emit(m: FromWorker) {
-    this.onmessage?.({ data: m } as MessageEvent<FromWorker>);
-  }
+  return { deps, predictions, fixes };
 }

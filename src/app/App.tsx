@@ -24,7 +24,9 @@ export function App({ deps }: { deps?: Partial<SessionDeps> }) {
           onReconnect={s.onReconnect}
           onReanalyze={() => void s.onReanalyze()}
           onOpenOther={s.onOpenOther}
+          onCollapse={() => void s.onCollapse()}
           origin={v.origin}
+          battle={v.battle}
         />
         {v.skipped > 0 && <SkippedNote key={v.id} count={v.skipped} />}
         {state.notice && (

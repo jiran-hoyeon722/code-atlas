@@ -54,7 +54,7 @@ const arch = (): Architecture => ({
 });
 
 const env = (over: Partial<ViewerEnv> = {}): ViewerEnv => ({
-  readSource: async () => null, vscodeHref: () => null, requestVscodeSetup: vi.fn(), selection: {}, onSelect: vi.fn(), goto: vi.fn(), ...over,
+  readSource: async () => null, vscodeHref: () => null, requestVscodeSetup: vi.fn(), selection: {}, onSelect: vi.fn(), goto: vi.fn(), collapse: vi.fn(), ...over,
 });
 
 beforeEach(() => {

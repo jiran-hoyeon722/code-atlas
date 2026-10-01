@@ -142,3 +142,12 @@ export async function openGithub(spec: GithubSpec, fetchFn: typeof fetch = fetch
   const origin: GithubOrigin = { kind: 'github', owner, repo, sha, ref: spec.ref ?? '', subdir: spec.subdir };
   return { origin, dir: treeDir(githubLabel(origin), tree.tree, origin, fetchFn) };
 }
+
+/** The file tree of a commit already analysed, so the same code is read again (one API call). */
+export async function openGithubCommit(origin: GithubOrigin, fetchFn: typeof fetch = fetch): Promise<FsDir> {
+  if (!OWNER.test(origin.owner) || !REPO.test(origin.repo) || !/^[0-9a-f]{40}$/.test(origin.sha)) throw new GithubError('notFound');
+  const url = `${API}/repos/${origin.owner}/${origin.repo}/git/trees/${origin.sha}?recursive=1`;
+  const tree = (await (await call(fetchFn, url)).json()) as { tree: TreeItem[]; truncated: boolean };
+  if (tree.truncated) throw new GithubError('truncated');
+  return treeDir(githubLabel(origin), tree.tree, origin, fetchFn);
+}

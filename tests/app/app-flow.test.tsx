@@ -5,7 +5,7 @@ import type { Progress } from '../../src/engine/analyze';
 import type { Lang, RepoInput } from '../../src/engine/types';
 import type { CacheEntry, CacheSummary } from '../../src/storage/cache';
 import { cacheKey } from '../../src/storage/cache';
-import { AnalysisCancelled } from '../../src/app/analysis/client';
+import { AnalysisCancelled, type AnalysisResult } from '../../src/app/analysis/client';
 import type { ViewerShellProps } from '../../src/features/shell/ViewerShell';
 
 const h = vi.hoisted(() => ({ shell: null as null | ViewerShellProps }));
@@ -124,7 +124,7 @@ function fakes() {
     startAnalysis: vi.fn((input: RepoInput, opts: { prefer?: Lang; onProgress(p: Progress): void }) => {
       let resolve!: (a: Architecture) => void;
       let reject!: (e: Error) => void;
-      const result = new Promise<Architecture>((ok, err) => { resolve = ok; reject = err; });
+      const result = new Promise<AnalysisResult>((ok, err) => { resolve = (architecture) => ok({ architecture, quality: null }); reject = err; });
       const cancel = vi.fn(() => reject(new AnalysisCancelled()));
       runs.push({ input, prefer: opts.prefer, onProgress: opts.onProgress, resolve, cancel });
       return { result, cancel };
@@ -681,4 +681,36 @@ test('sample card opens the bundled analysis instantly and reads code from GitHu
   expect(runs).toHaveLength(0);
   expect(saved).toHaveLength(0);
   expect(await h.shell!.readSource('src/a.ts')).toBe('export const a = 1;');
+});
+
+test('a repo destroyed by the virus loses its cached analysis and returns to the landing with a notice', async () => {
+  const { deps, store } = fakes();
+  const base = archFor({ name: 'x', files: [{ path: 'src/a.ts', text: '' }], configs: {} });
+  const seed = (key: string, name: string, at: string) =>
+    store.set(key, { key, name, framework: null, lang: 'ts', files: 1, analyzedAt: at, architecture: { ...base, name } });
+  seed('doomed', 'doomed-repo', '2026-09-28T10:00:00.000Z');
+  seed('safe', 'safe-repo', '2026-09-27T10:00:00.000Z');
+  render(<App deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: /^doomed-repo(?!.*삭제)/ }));
+  expect(await screen.findByText('viewer:doomed-repo:ts')).toBeTruthy();
+
+  await act(async () => h.shell!.onCollapse());
+  expect(await screen.findByText('바이러스로 레포가 붕괴됐어요. 폴더를 다시 등록해 분석해 주세요.')).toBeTruthy();
+  expect(screen.queryByTestId('viewer')).toBeNull();
+  expect(deps.cache.deleteAnalysis).toHaveBeenCalledWith('doomed');
+  expect(store.has('doomed')).toBe(false);
+  expect(store.has('safe')).toBe(true);
+  await waitFor(() => expect(screen.queryByText('doomed-repo')).toBeNull());
+  expect(screen.getByText('safe-repo')).toBeTruthy();
+});
+
+test('a collapsed sample just returns to the landing', async () => {
+  const { deps, store } = fakes();
+  render(<App deps={deps} />);
+  fireEvent.click(await screen.findByRole('button', { name: /acme \/\s*shop/ }));
+  expect(await screen.findByText('viewer:acme/shop:ts')).toBeTruthy();
+  await act(async () => h.shell!.onCollapse());
+  expect(await screen.findByText('바이러스로 레포가 붕괴됐어요. 폴더를 다시 등록해 분석해 주세요.')).toBeTruthy();
+  expect(await screen.findByRole('button', { name: /acme \/\s*shop/ })).toBeTruthy();
+  expect(store.size).toBe(0);
 });

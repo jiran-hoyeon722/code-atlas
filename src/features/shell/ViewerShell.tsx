@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import './shell.css';
 import type { Architecture } from '../../engine/architecture';
 import type { GithubOrigin } from '../../app/files/github';
-import type { MountViewer, Selection, TabId, ViewerEnv } from '../viewer-env';
+import type { BattleAccess, MountViewer, Selection, TabId, ViewerEnv } from '../viewer-env';
 import { downloadCodeCharta } from './codecharta';
 import { formatHash, parseHash } from './hash';
 import { getRepoRoot, setRepoRoot, vscodeHref } from './vscode';
@@ -16,20 +16,30 @@ export interface ViewerShellProps {
   onReconnect(): void;
   onReanalyze(): void;
   onOpenOther(): void;
+  /** the walk tab's virus destroyed the repo: drop its cached analysis and leave */
+  onCollapse(): void;
   /** the analysis is of a public GitHub repo at this commit */
   origin?: GithubOrigin;
+  /** battle data for the open repo and the registered ones; the battle tab explains its absence */
+  battle?: BattleAccess;
 }
 
 const LOADERS: Record<TabId, () => Promise<MountViewer>> = {
   city: () => import('../city/mountCity').then((m) => m.mountCity),
   graph: () => import('../graph/mountGraph').then((m) => m.mountGraph),
   explorer: () => import('../explorer/mountExplorer').then((m) => m.mountExplorer),
+  battle: () => import('../battle/tab/mountBattle').then((m) => m.mountBattle),
+  walk: () => import('../walk/mountWalk').then((m) => m.mountWalk),
 };
 const TABS: { id: TabId; label: string }[] = [
   { id: 'city', label: '도시' },
   { id: 'graph', label: '그래프' },
   { id: 'explorer', label: '탐색기' },
+  { id: 'battle', label: '대결' },
+  { id: 'walk', label: '코드시티GTA' },
 ];
+// the battle tab has its own fallback for the one 3D scene it shows
+const NEEDS_3D: ReadonlySet<TabId> = new Set(['city', 'graph', 'walk']);
 const NO_WEBGL = '이 브라우저에서는 3D 화면을 쓸 수 없어요. 탐색기에서 같은 정보를 볼 수 있어요.';
 const FAIL_REASON = { syntax: '구문 오류', read: '읽기 실패' } as const;
 const FRAMEWORK_LABEL = { laravel: 'Laravel', react: 'React' } as const;
@@ -44,13 +54,13 @@ function formatTime(iso: string): string {
 function initialState(webgl: boolean): { tab: TabId; sel: Selection } {
   const hash = location.hash;
   const parsed = parseHash(hash);
-  const explicit = /^#(city|graph|explorer)(&|$)/.test(hash);
+  const explicit = /^#(city|graph|explorer|battle|walk)(&|$)/.test(hash);
   return { tab: explicit ? parsed.tab : webgl ? 'city' : 'explorer', sel: parsed.sel };
 }
 
 const treeUrl = (o: GithubOrigin) => `https://github.com/${o.owner}/${o.repo}/tree/${o.sha}${o.subdir ? `/${o.subdir.split('/').map(encodeURIComponent).join('/')}` : ''}`;
 
-export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onReanalyze, onOpenOther, origin }: ViewerShellProps) {
+export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onReanalyze, onOpenOther, onCollapse, origin, battle }: ViewerShellProps) {
   const webgl = useMemo(() => hasWebGL(), []);
   const initial = useMemo(() => initialState(webgl), [webgl]);
   const [tab, setTab] = useState<TabId>(initial.tab);
@@ -63,6 +73,10 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
   const repoRootRef = useRef<string | null>(getRepoRoot(arch.name));
   const readSourceRef = useRef(readSource);
   readSourceRef.current = readSource;
+  const battleRef = useRef(battle);
+  battleRef.current = battle;
+  const collapseRef = useRef(onCollapse);
+  collapseRef.current = onCollapse;
   const viewRef = useRef<HTMLDivElement>(null);
 
   const go = (next: TabId, sel: Selection) => {
@@ -96,7 +110,7 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
 
   useEffect(() => {
     const host = viewRef.current!;
-    if (!webgl && tab !== 'explorer') {
+    if (!webgl && NEEDS_3D.has(tab)) {
       setStatus('idle');
       return;
     }
@@ -117,6 +131,10 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
       goto: (next, sel) => {
         if (live) go(next, sel ?? {});
       },
+      collapse: () => {
+        if (live) collapseRef.current();
+      },
+      ...(battleRef.current && { battle: battleRef.current }),
     };
     setStatus('loading');
     LOADERS[tab]().then(
@@ -149,7 +167,7 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
     setMountKey((k) => k + 1);
   };
 
-  const needs3d = !webgl && tab !== 'explorer';
+  const needs3d = !webgl && NEEDS_3D.has(tab);
 
   return (
     <div className="ca-shell">

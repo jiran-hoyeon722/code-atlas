@@ -1,5 +1,5 @@
 import type { Detection } from './detect';
-import type { Parsers } from './parsers';
+import type { OnTree, Parsers } from './parsers';
 import { extractPhpProject } from './php/project';
 import { extractTsProject } from './ts/project';
 import { extractProject, type LangModule } from './link';
@@ -17,6 +17,7 @@ export type Extractor = (
   parsers: Parsers,
   onFile?: (path: string) => void,
   onLink?: () => void,
+  onTree?: OnTree,
 ) => Extraction;
 
 const MODULES: Partial<Record<Lang, LangModule>> = { py: pyModule, go: goModule, java: javaModule, kotlin: kotlinModule, shell: shellModule, swift: swiftModule };
@@ -27,7 +28,8 @@ export function extractorFor(lang: Lang): Extractor | null {
   const direct = EXTRACTORS[lang];
   if (direct) return direct;
   const mod = MODULES[lang];
-  return mod ? (...args) => extractProject(lang, mod, ...args) : null;
+  // New-language trees are not shared with battle: it re-parses unmeasured files itself.
+  return mod ? (input, detection, parsers, onFile, onLink) => extractProject(lang, mod, input, detection, parsers, onFile, onLink) : null;
 }
 
 export const hasExtractor = (lang: Lang): boolean => extractorFor(lang) !== null;

@@ -299,6 +299,7 @@
 
 .rb-res-fix-file {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
@@ -308,6 +309,29 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+.rb-res-fix-open {
+  align-items: flex-start;
+  max-width: 100%;
+  margin: -4px -8px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--rb-fast) var(--rb-ease);
+}
+
+.rb-res-fix-open:hover {
+  background: var(--rb-raised);
+}
+
+.rb-res-fix-open .rb-res-fix-base {
+  max-width: 100%;
+  color: var(--rb-team-a);
 }
 
 .rb-res-fix-base {

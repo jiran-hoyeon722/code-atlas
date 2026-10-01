@@ -1,4 +1,4 @@
-import type { Parsers } from './parsers';
+import type { OnTree, Parsers } from './parsers';
 import type { Lang, RepoInput } from './types';
 import { detect } from './detect';
 import { sourcesFor } from './sources';
@@ -22,6 +22,8 @@ export interface AnalyzeOptions {
   onProgress?: (p: Progress) => void;
   now?: Date;
   prefer?: Lang;
+  /** Sees each parsed source file's tree (route-only PHP files excluded). */
+  onTree?: OnTree;
 }
 
 export function analyze(
@@ -29,7 +31,7 @@ export function analyze(
   parsers: Parsers,
   options: AnalyzeOptions = {},
 ): Architecture {
-  const { onProgress, now = new Date(), prefer } = options;
+  const { onProgress, now = new Date(), prefer, onTree } = options;
   const detection = detect(input, prefer);
   if (!detection) throw new UnsupportedRepoError();
   const extract = extractorFor(detection.lang);
@@ -49,7 +51,7 @@ export function analyze(
   };
 
   const onLink = () => onProgress?.({ phase: 'link' });
-  const extraction = extract(input, detection, parsers, onFile, onLink);
+  const extraction = extract(input, detection, parsers, onFile, onLink, onTree);
 
   onProgress?.({ phase: 'metrics' });
   return buildArchitecture(extraction, detection, preset, input.name, now);

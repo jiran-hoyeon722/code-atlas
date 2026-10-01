@@ -1,8 +1,21 @@
-import { analyze, UnsupportedRepoError } from '../../engine/analyze';
+import { analyze, UnsupportedRepoError, type AnalyzeOptions } from '../../engine/analyze';
+import { packQuality, type PackedQuality } from '../../engine/battle/pack';
+import { analyzeWithQuality, type AnalysisWithQuality, type QualityIssue } from '../../engine/battle/quality';
 import { detect } from '../../engine/detect';
-import { loadParsers, type WasmFile } from '../../engine/parsers';
+import { loadParsers, type Parsers, type WasmFile } from '../../engine/parsers';
+import type { RepoInput } from '../../engine/types';
 import type { FromWorker, ToWorker } from './protocol';
 import { wasmLocate } from './wasm';
+
+/** Battle data rides along with the analysis; any failure there falls back to the plain analysis. */
+function analyzeBoth(input: RepoInput, parsers: Parsers, opts: AnalyzeOptions): AnalysisWithQuality {
+  try {
+    return analyzeWithQuality(input, parsers, opts);
+  } catch (e) {
+    if (e instanceof UnsupportedRepoError) throw e;
+    return { architecture: analyze(input, parsers, opts), quality: null, qualityIssue: 'failed' };
+  }
+}
 
 export async function handle(
   msg: ToWorker,
@@ -13,11 +26,20 @@ export async function handle(
     const detection = detect(msg.input, msg.prefer);
     if (!detection) throw new UnsupportedRepoError();
     const parsers = await loadParsers(locate(msg.wasmBase), [detection.lang]);
-    const architecture = analyze(msg.input, parsers, {
+    const r = analyzeBoth(msg.input, parsers, {
       prefer: msg.prefer,
       onProgress: (progress) => post({ type: 'progress', progress }),
     });
-    post({ type: 'done', architecture });
+    let quality: PackedQuality | null = null;
+    let qualityIssue: QualityIssue | undefined = r.qualityIssue;
+    if (r.quality) {
+      try {
+        quality = packQuality(r.quality);
+      } catch {
+        qualityIssue = 'failed';
+      }
+    }
+    post({ type: 'done', architecture: r.architecture, quality, ...(qualityIssue && { qualityIssue }) });
   } catch (e) {
     post({
       type: 'error',

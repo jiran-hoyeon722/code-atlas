@@ -16,6 +16,8 @@ export interface ResultScreenProps {
   loadFixes(): Promise<FixCandidate[]>;
   onRematch(): void;
   onHome(): void;
+  /** Files of this side open in the city view; files of other sides stay plain text. */
+  openFile?(side: Side): ((path: string) => void) | null;
 }
 
 const SIDES: readonly Side[] = ['a', 'b'];
@@ -125,7 +127,7 @@ function splitPath(path: string): { dir: string; base: string } {
   return at < 0 ? { dir: '', base: path } : { dir: path.slice(0, at + 1), base: path.slice(at + 1) };
 }
 
-function FixList({ loserName, loadFixes }: { loserName: string; loadFixes(): Promise<FixCandidate[]> }) {
+function FixList({ loserName, loadFixes, open }: { loserName: string; loadFixes(): Promise<FixCandidate[]>; open: ((path: string) => void) | null }) {
   const [state, setState] = useState<FixState>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
   // A parent that re-renders with a fresh closure must not restart a long worker job.
@@ -173,13 +175,24 @@ function FixList({ loserName, loadFixes }: { loserName: string; loadFixes(): Pro
           {state.list.map((f) => {
             const { dir, base } = splitPath(f.path);
             const n = Math.round(f.delta * 100);
+            const path = (
+              <>
+                <span className="rb-res-fix-base">{base}</span>
+                {dir && <span className="rb-res-fix-dir">{dir}</span>}
+              </>
+            );
             return (
               <li key={f.path} className="rb-res-fix" data-path={f.path}>
                 <div className="rb-res-fix-file">
-                  <p className="rb-res-fix-path" title={f.path}>
-                    <span className="rb-res-fix-base">{base}</span>
-                    {dir && <span className="rb-res-fix-dir">{dir}</span>}
-                  </p>
+                  {open ? (
+                    <button type="button" className="rb-res-fix-path rb-res-fix-open" title={`${f.path} · 도시에서 코드 보기`} onClick={() => open(f.path)}>
+                      {path}
+                    </button>
+                  ) : (
+                    <p className="rb-res-fix-path" title={f.path}>
+                      {path}
+                    </p>
+                  )}
                   <p className="rb-res-fix-why">{f.reasons.map((r) => FIX_REASON_TEXT[r]).join(' · ')}</p>
                 </div>
                 <p className={`rb-res-fix-delta${n > 0 ? ' rb-res-fix-up' : ''}`}>{pointDelta(f.delta)}</p>
@@ -279,7 +292,7 @@ function Settings({ a, b, ruleVersion }: { a: Quality; b: Quality; ruleVersion: 
   );
 }
 
-export function ResultScreen({ a, b, match, prior, result, loadFixes, onRematch, onHome }: ResultScreenProps) {
+export function ResultScreen({ a, b, match, prior, result, loadFixes, onRematch, onHome, openFile }: ResultScreenProps) {
   const highlights = useMemo(() => {
     const armies = { a: buildArmy(a), b: buildArmy(b) };
     return buildCommentary({ result, armies, quality: { a, b }, prior }).highlights
@@ -300,7 +313,7 @@ export function ResultScreen({ a, b, match, prior, result, loadFixes, onRematch,
         <Verdict a={a} b={b} prior={prior} result={result} />
         <div className="rb-res-grid">
           <WhyTable a={a} b={b} draw={!w} />
-          {w ? <FixList loserName={q[other(w)].name} loadFixes={loadFixes} /> : <DrawFixes />}
+          {w ? <FixList loserName={q[other(w)].name} loadFixes={loadFixes} open={openFile?.(other(w)) ?? null} /> : <DrawFixes />}
           <Highlights entries={highlights} names={{ a: a.name, b: b.name }} />
           <Settings a={a} b={b} ruleVersion={result.ruleVersion} />
         </div>

@@ -1,4 +1,7 @@
-import { Parser, Language } from 'web-tree-sitter';
+import { Parser, Language, type Node } from 'web-tree-sitter';
+
+/** Receives a file's parse tree before it is freed; `root` is only valid during the call. */
+export type OnTree = (path: string, root: Node) => void;
 
 import { ALL_LANGS, LANGS, type Lang, type WasmFile } from './langs';
 
