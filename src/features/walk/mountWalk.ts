@@ -21,6 +21,8 @@ import { THEMES, type Theme } from './walkThemes';
 import { createMarkers, createSparks } from './walkFx';
 import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type WeaponId } from './walkWeapons';
 import { createVirus, pickOrigin } from './walkVirus';
+import { characterById, dealCharacters, type Character } from './walkCharacters';
+import { openPicker } from './walkPicker';
 import type { RideCar } from './walkTraffic';
 import robotUrl from './assets/RobotExpressive.glb?url';
 
@@ -538,8 +540,7 @@ const mount: MountViewer = (root, arch, env) => {
   };
   const renderBattle = () => {
     $('hp').style.width = `${Math.max(0, hp)}%`;
-      const armed = new Map(battle.roster().map((r) => [r.name, r.weapon.name]));
-    $('rivals').innerHTML = RIVALS.map((r) => `<span class="${caughtNames.has(r.name) ? 'got' : ''}" style="--c:${esc(r.tint)}">${esc(r.name)}${armed.has(r.name) ? ` <small>${esc(armed.get(r.name)!)}</small>` : ''}</span>`).join('') + `<b>${caughtNames.size}/${RIVALS.length}</b>`;
+    $('rivals').innerHTML = battle.roster().map((r) => `<span class="${caughtNames.has(r.name) ? 'got' : ''}" style="--c:${esc(r.tint)}" title="${esc(r.look ?? '')}">${esc(r.name)} <small>${esc(r.weapon.name)}</small></span>`).join('') + `<b>${caughtNames.size}/${RIVALS.length}</b>`;
   };
   function freeSpotNear(x: number, z: number, min: number, max: number) {
     for (let r = min; r <= max; r += 1.5)
@@ -593,6 +594,24 @@ const mount: MountViewer = (root, arch, env) => {
     },
   });
   renderBattle();
+
+  // ---- character pick: the hero wears the chosen design, the four rivals wear the rest ----
+  const characterKey = 'code-atlas.walk.character';
+  let lastLook: string | null = null;
+  try { lastLook = localStorage.getItem(characterKey); } catch { /* storage may be blocked */ }
+  let picking = true;
+  root.classList.add('picking');
+  const closePicker = openPicker(root, robotUrl, characterById(lastLook), (c: Character) => {
+    picking = false;
+    root.classList.remove('picking');
+    try { localStorage.setItem(characterKey, c.id); } catch { /* storage may be blocked */ }
+    hero.dress(c);
+    battle.dress(dealCharacters(c.id, RIVALS.length, Math.random));
+    renderBattle();
+    toast(`${c.name} 캐릭터로 출발! 라이벌 ${RIVALS.length}명이 도시 어딘가에 있어요`);
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
+  cleanups.push(closePicker);
 
   // ---- weapons: the hero may pick any of them, rivals were dealt one each ----
   const heroHeld = kit.hold(scene, 'fist');
@@ -873,7 +892,7 @@ const mount: MountViewer = (root, arch, env) => {
   const EMOTES: Emote[] = ['Wave', 'ThumbsUp', 'Dance'];
   let emoteIndex = 0;
   listen(window, 'keydown', (e) => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || picking) return;
     if (typing()) { if (e.key === 'Escape') (document.activeElement as HTMLElement).blur(); return; }
     if (helpOpen()) { if (e.key === 'Escape' || e.key === '?') setHelp(false); return; }
     if (e.key === 'Escape' && (detailOpen || entering)) { leave(); return; }
@@ -915,7 +934,7 @@ const mount: MountViewer = (root, arch, env) => {
   listen(window, 'blur', () => { keys.clear(); triggerHeld = false; });
   listen(renderer.domElement, 'click', () => {
     if (document.pointerLockElement === renderer.domElement) return;
-    if (!detailOpen && !entering) Promise.resolve(renderer.domElement.requestPointerLock?.()).catch(() => {});
+    if (!detailOpen && !entering && !picking) Promise.resolve(renderer.domElement.requestPointerLock?.()).catch(() => {});
   });
   listen(renderer.domElement, 'pointerdown', (e) => {
     if (document.pointerLockElement !== renderer.domElement || e.button !== 0) return;
@@ -1157,7 +1176,7 @@ const mount: MountViewer = (root, arch, env) => {
       shake = Math.max(shake, weapon.id === 'shotgun' ? 0.35 : 0.08);
     }
     aimed = gun && onFoot && alive ? battle.aimTarget(pos, yaw + Math.PI, weapon) : -1;
-    const target = aimed >= 0 ? battle.positions().find((r) => r.name === RIVALS[aimed].name) : undefined;
+    const target = aimed >= 0 ? battle.positions().find((r) => r.name === RIVALS[aimed]) : undefined;
     reticle.visible = !!target;
     if (target) {
       reticle.position.set(target.x, 0.22, target.z);
@@ -1364,6 +1383,6 @@ const mount: MountViewer = (root, arch, env) => {
     renderer.dispose();
     renderer.forceContextLoss();
     root.innerHTML = '';
-    root.classList.remove('wk-walk', 'entering');
+    root.classList.remove('wk-walk', 'entering', 'picking');
   };
 };
