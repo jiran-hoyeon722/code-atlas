@@ -467,6 +467,20 @@ test('laravel repo with ts opens both with php first', async () => {
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(runs[0].prefer).toBe('php');
   expect(runs[0].langs).toEqual(['php', 'ts']);
+  expect(screen.getByText('Laravel + TypeScript')).toBeTruthy();
+});
+
+test('when only one language has files to analyze, loading shows it like a single-language repo', async () => {
+  const { deps, runs } = fakes();
+  render(<App deps={deps} />);
+  drop(items(dirHandle('shop', {
+    'composer.json': '{"require":{"laravel/framework":"^11.0"}}',
+    app: { 'User.php': '<?php' },
+    resources: { js: { 'api.gen.ts': '' } },
+  })));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(runs[0].langs).toEqual(['php', 'ts']);
+  expect(screen.getByText('Laravel · app')).toBeTruthy();
 });
 
 test('merged laravel city keeps the framework name in the saved record and recent list', async () => {

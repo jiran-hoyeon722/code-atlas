@@ -1,22 +1,27 @@
 import { analyze, UnsupportedRepoError, type Progress } from './analyze';
 import type { Architecture } from './architecture';
 import { analyzeWithQuality, type AnalysisWithQuality, type AnalyzeWithQualityOptions } from './battle/quality';
-import { detect } from './detect';
+import { detect, type Detection } from './detect';
 import { mergeArchitectures } from './merge';
 import type { Parsers } from './parsers';
 import { sourcesFor } from './sources';
 import type { Lang, RepoInput } from './types';
 
+/** The languages of `langs` that have something to analyze, in order. */
+export function mergePlan(input: RepoInput, langs: Lang[]): { lang: Lang; detection: Detection; files: number }[] {
+  return langs.flatMap((lang) => {
+    const detection = detect(input, lang);
+    // detect falls back to another language when `lang` is not a candidate, so only exact matches count.
+    if (detection?.lang !== lang) return [];
+    const files = sourcesFor(detection, input.files).length;
+    return files > 0 ? [{ lang, detection, files }] : [];
+  });
+}
+
 /** langs[0] = 주 언어(배틀 데이터 대상). 분석할 게 없는 언어(UnsupportedRepoError)는 건너뛴다; 주 언어가 그러면 다음 언어가 주 언어가 된다. 전부 없으면 UnsupportedRepoError. */
 export function analyzeLangs(input: RepoInput, parsers: Parsers, langs: Lang[], opts: AnalyzeWithQualityOptions = {}): AnalysisWithQuality {
   const { onProgress, onQualityProgress, prefer: _prefer, ...rest } = opts;
-  // detect falls back to another language when `l` is not a candidate, so only exact matches count.
-  const plan = langs.flatMap((lang) => {
-    const detection = detect(input, lang);
-    if (detection?.lang !== lang) return [];
-    const files = sourcesFor(detection, input.files).length;
-    return files > 0 ? [{ lang, files }] : [];
-  });
+  const plan = mergePlan(input, langs);
   const total = plan.reduce((s, p) => s + p.files, 0);
 
   const parts: Architecture[] = [];

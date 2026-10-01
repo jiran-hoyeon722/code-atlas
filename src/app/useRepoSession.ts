@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { mergePlan } from '../engine/analyzeLangs';
 import type { Architecture } from '../engine/architecture';
 import type { PackedQuality } from '../engine/battle/pack';
 import type { QualityIssue } from '../engine/battle/quality';
 import type { Quality } from '../engine/battle/types';
 import { isSourcePath } from '../engine/collect';
-import { detect } from '../engine/detect';
+import { detect, type Detection } from '../engine/detect';
 import { mergeRoles } from '../engine/merge';
 import { countLangs, pickLang } from '../engine/pick';
 import { presetFor, type Role } from '../engine/presets';
@@ -357,22 +358,23 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     const input = await loadRepo(chosen, (done, total) => onRead({ done, total }));
     if (!alive()) return;
 
-    const rolesOf = (detection: NonNullable<ReturnType<typeof detect>>) =>
-      presetFor(detection, sourcesFor(detection, input.files).map((f) => f.path)).roles;
+    const rolesOf = (detection: Detection) => presetFor(detection, sourcesFor(detection, input.files).map((f) => f.path)).roles;
+    const single = (detection: Detection): Partial<LoadingInfo> =>
+      ({ framework: detection.framework ? FRAMEWORK[detection.framework] : null, sourceDir: detection.sourceDir, roles: rolesOf(detection) });
     let loadingInfo: Partial<LoadingInfo>;
     if (merged) {
-      // same skip rule as analyzeLangs, so progress role indexes point at these roles
-      const parts = langs.flatMap((l) => {
-        const detection = detect(input, l);
-        if (detection?.lang !== l || sourcesFor(detection, input.files).length === 0) return [];
-        return [{ lang: l, roles: rolesOf(detection) }];
-      });
-      if (parts.length === 0) return toLanding(NOTICE.noFiles);
-      loadingInfo = { framework: repoLabel({ lang: primary!, langs, framework: null }), sourceDir: '', roles: mergeRoles(parts) };
+      // the plan analyzeLangs follows, so progress role indexes point at these roles
+      const plan = mergePlan(input, langs);
+      if (plan.length === 0) return toLanding(NOTICE.noFiles);
+      loadingInfo = plan.length === 1 ? single(plan[0].detection) : {
+        framework: repoLabel({ lang: plan[0].lang, langs: plan.map((p) => p.lang), frameworks: plan.map((p) => p.detection.framework), framework: null }),
+        sourceDir: '',
+        roles: mergeRoles(plan.map((p) => ({ lang: p.lang, roles: rolesOf(p.detection) }))),
+      };
     } else {
       const detection = detect(input, prefer);
       if (!detection) return toLanding(NOTICE.noFiles);
-      loadingInfo = { framework: detection.framework ? FRAMEWORK[detection.framework] : null, sourceDir: detection.sourceDir, roles: rolesOf(detection) };
+      loadingInfo = single(detection);
     }
     setState((s) => ({ ...s, phase: 'analyzing' }));
     setStep({ phase: 'read', done: input.files.length, total: input.files.length }, loadingInfo);

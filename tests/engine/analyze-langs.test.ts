@@ -6,7 +6,7 @@ import { nodeLocate } from '../../src/engine/node';
 import { isSourcePath, isConfigPath } from '../../src/engine/collect';
 import { analyze, UnsupportedRepoError, type Progress } from '../../src/engine/analyze';
 import { analyzeWithQuality } from '../../src/engine/battle/quality';
-import { analyzeLangs } from '../../src/engine/analyzeLangs';
+import { analyzeLangs, mergePlan } from '../../src/engine/analyzeLangs';
 import type { RepoInput } from '../../src/engine/types';
 
 function loadRepo(name: string, prefix = ''): RepoInput {
@@ -114,5 +114,21 @@ describe('analyzeLangs', () => {
     const r = analyzeLangs(input, parsers, ['go'], { now: NOW, onProgress: (p) => events.push(p) });
     expect(r).toEqual(analyzeWithQuality(input, parsers, { now: NOW, prefer: 'go', onProgress: (p) => expected.push(p) }));
     expect(events).toEqual(expected);
+  });
+});
+
+describe('mergePlan', () => {
+  test('lists each language with its detection and file count, in order', () => {
+    const plan = mergePlan(mixed(), ['py', 'go']);
+    expect(plan.map((p) => [p.lang, p.detection.lang, p.files])).toEqual([
+      ['py', 'py', loadRepo('py-mini').files.length],
+      ['go', 'go', loadRepo('go-mini').files.length],
+    ]);
+  });
+
+  test('drops a language with no files or one detect would swap', () => {
+    const input = loadRepo('go-mini');
+    input.files.push({ path: 'build.gradle.kts', text: '' }, { path: 'scripts/run.sh', text: 'echo hi\n' });
+    expect(mergePlan(input, ['kotlin', 'go', 'shell']).map((p) => p.lang)).toEqual(['go']);
   });
 });
