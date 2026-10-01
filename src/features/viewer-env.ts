@@ -12,6 +12,8 @@ export interface Selection {
 
 export interface ViewerEnv {
   readSource(path: string): Promise<string | null>;
+  /** Asks for read access to the source now, while the user's click or key press allows a permission prompt. */
+  allowSource?(): Promise<boolean>;
   vscodeHref(path: string): string | null;
   requestVscodeSetup(): void;
   selection: Selection;

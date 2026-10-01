@@ -12,6 +12,8 @@ import { repoLabel } from '../lang-label';
 export interface ViewerShellProps {
   arch: Architecture;
   readSource(path: string): Promise<string | null>;
+  /** Asks for read access to the folder now (needs a user gesture); true when the source can be read. */
+  allowSource?(): Promise<boolean>;
   canReconnect: boolean;
   onReconnect(): void;
   onReanalyze(): void;
@@ -59,7 +61,7 @@ function initialState(webgl: boolean): { tab: TabId; sel: Selection } {
 
 const treeUrl = (o: GithubOrigin) => `https://github.com/${o.owner}/${o.repo}/tree/${o.sha}${o.subdir ? `/${o.subdir.split('/').map(encodeURIComponent).join('/')}` : ''}`;
 
-export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onReanalyze, onOpenOther, onCollapse, origin, battle }: ViewerShellProps) {
+export function ViewerShell({ arch, readSource, allowSource, canReconnect, onReconnect, onReanalyze, onOpenOther, onCollapse, origin, battle }: ViewerShellProps) {
   const webgl = useMemo(() => hasWebGL(), []);
   const initial = useMemo(() => initialState(webgl), [webgl]);
   const [tab, setTab] = useState<TabId>(initial.tab);
@@ -72,6 +74,8 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
   const repoRootRef = useRef<string | null>(getRepoRoot(arch.name));
   const readSourceRef = useRef(readSource);
   readSourceRef.current = readSource;
+  const allowSourceRef = useRef(allowSource);
+  allowSourceRef.current = allowSource;
   const battleRef = useRef(battle);
   battleRef.current = battle;
   const collapseRef = useRef(onCollapse);
@@ -117,6 +121,7 @@ export function ViewerShell({ arch, readSource, canReconnect, onReconnect, onRea
     let dispose: (() => void) | null = null;
     const env: ViewerEnv = {
       readSource: (path) => readSourceRef.current(path),
+      allowSource: () => allowSourceRef.current?.() ?? Promise.resolve(true),
       vscodeHref: (path) => (repoRootRef.current ? vscodeHref(repoRootRef.current, path) : null),
       requestVscodeSetup: () => {
         if (live) setSetupOpen(true);

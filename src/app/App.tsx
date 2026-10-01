@@ -16,6 +16,7 @@ export function App({ deps }: { deps?: Partial<SessionDeps> }) {
           key={v.id}
           arch={v.arch}
           readSource={s.readSource}
+          allowSource={s.allowSource}
           canReconnect={v.canReconnect}
           onReconnect={s.onReconnect}
           onReanalyze={() => void s.onReanalyze()}

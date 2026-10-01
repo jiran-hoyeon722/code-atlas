@@ -363,6 +363,23 @@ test('cached analysis with a granted handle reads source from the stored folder'
   await waitFor(() => expect(h.shell!.canReconnect).toBe(false));
 });
 
+test('allowSource asks for folder access up front and flags a reconnect when it is refused', async () => {
+  for (const perm of ['granted', 'denied'] as PermissionState[]) {
+    const { deps, store } = fakes();
+    const base = archFor({ name: 'x', files: [{ path: 'app/A.php', text: '' }], configs: {} }, 'php');
+    store.set('k1', {
+      key: 'k1', name: 'shop-api', framework: 'laravel', lang: 'php', files: 1, analyzedAt: '2026-09-28T10:00:00.000Z',
+      architecture: { ...base, name: 'shop-api' }, handle: dirHandle('shop-api', { app: { 'A.php': '<?php' } }, 1, perm),
+    });
+    render(<App deps={deps} />);
+    fireEvent.click(await screen.findByRole('button', { name: /^shop-api(?!.*삭제)/ }));
+    await screen.findByText('viewer:shop-api:php');
+    expect(await h.shell!.allowSource!()).toBe(perm === 'granted');
+    await waitFor(() => expect(h.shell!.canReconnect).toBe(perm !== 'granted'));
+    cleanup();
+  }
+});
+
 test('reconnect with the same folder keeps the analysis and attaches source access', async () => {
   const { deps, runs, store } = fakes();
   const repo: Tree = { app: { 'A.php': '<?php // A' } };
