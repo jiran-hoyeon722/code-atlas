@@ -280,3 +280,15 @@ test('old single-language architecture still highlights by arch.lang', async () 
   const old: Architecture = { ...arch(), lang: 'go', nodes: [node('cmd/main.go', 0), node('pkg/a.go', 1)] };
   expect(await codeClass(old, 'pkg/a.go')).toContain('language-go');
 });
+
+test('a merged role named like its layer shows the layer once in the chip', () => {
+  const a = arch();
+  a.layers[3] = { ...a.layers[3], label: '기반' };
+  a.roles = [{ ...a.roles[0], name: 'Go · 진입점' }, { ...a.roles[1], name: 'Go · 기반' }];
+  a.langs = ['go', 'py'];
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  const dispose = mountCity(root, a, env({ selection: { file: HOSTILE } }));
+  expect(root.querySelector('[data-el="panel-body"] .chip')!.textContent).toBe('Go · 기반');
+  dispose();
+});
