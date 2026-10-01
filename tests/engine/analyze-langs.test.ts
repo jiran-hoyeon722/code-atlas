@@ -117,6 +117,12 @@ describe('analyzeLangs', () => {
   });
 });
 
+test('mixed-mini fixture has a Python file outside 기타', () => {
+  const a = analyzeLangs(loadRepo('mixed-mini'), parsers, ['py', 'go'], { now: NOW }).architecture;
+  const pyRoles = a.nodes.filter((n) => n.lang === 'py').map((n) => a.roles[n.role].name);
+  expect(pyRoles).toContain('Python · 진입점');
+});
+
 describe('mergePlan', () => {
   test('lists each language with its detection and file count, in order', () => {
     const plan = mergePlan(mixed(), ['py', 'go']);
