@@ -49,13 +49,27 @@ export const approach = (distance: number, stop: number, speed: number, dt: numb
 /** Shamblers never break into a run, whatever speed they end up at. */
 export const shamble = (prev: Gait, speed: number): Gait => (nextGait(prev, speed) === 'Idle' ? 'Idle' : 'Walking');
 
+/** Per-spawn overrides, so the same bodies can play monsters other than the virus. */
+export interface FoeStyle {
+  hp?: number;
+  /** Multiplies the kind's walking speed. */
+  speed?: number;
+  color?: string;
+  /** See-through body. */
+  ghost?: boolean;
+  /** Name shown over the head with a health bar. */
+  label?: string | null;
+  /** Comes back through onKill and positions(). */
+  tag?: string;
+}
+
 export interface HordeHooks {
   blocked(x: number, z: number, r: number): boolean;
   clear(ax: number, az: number, bx: number, bz: number): boolean;
   /** A free spot between `min` and `max` from (x, z), or null. */
   spot(x: number, z: number, min: number, max: number): { x: number; z: number } | null;
   onPlayerHit(damage: number, fromX: number, fromZ: number, push: number): void;
-  onKill(kind: FoeKind): void;
+  onKill(kind: FoeKind, tag?: string): void;
   onBossDown(): void;
   /** The giant's slam hit the ground at (x, z). */
   onQuake(x: number, z: number): void;
@@ -66,7 +80,7 @@ export interface HordePlayer { x: number; z: number; y: number }
 export interface Horde {
   /** Starts loading robots so spawns later do not wait on the model. */
   warm(count: number): void;
-  spawn(kind: 'zombie' | 'elite', x: number, z: number): boolean;
+  spawn(kind: 'zombie' | 'elite', x: number, z: number, style?: FoeStyle): boolean;
   /** Pulls the giant together at (x, z) over `duration` seconds; it cannot be hurt until it has formed. */
   formBoss(x: number, z: number, duration: number): boolean;
   update(dt: number, time: number, player: HordePlayer, canHit: boolean): void;
@@ -80,20 +94,21 @@ export interface Horde {
   damageArea(x: number, y: number, z: number, radius: number, damage: number, fromX: number, fromZ: number, bossBonus?: number): number;
   /** Every zombie and elite drops dead (cure) or vanishes in a puff (the giant forming). */
   clear(how: 'die' | 'poof'): void;
-  positions(): { kind: FoeKind; x: number; z: number }[];
+  positions(): { kind: FoeKind; x: number; z: number; tag?: string }[];
   readonly zombies: number;
   readonly elites: number;
   readonly boss: { hp: number; max: number; forming: boolean; alive: boolean; x: number; z: number } | null;
   dispose(): void;
 }
 
-type Pooled = { robot: Robot; mats: THREE.MeshStandardMaterial[]; eyes: THREE.Group };
+type Pooled = { robot: Robot; mats: THREE.MeshStandardMaterial[]; eyes: THREE.Group; colors: THREE.Color[] };
 type Tag = { canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; sprite: THREE.Sprite; hp: number };
 type Foe = {
   kind: FoeKind; rule: FoeRule; p: Pooled; root: THREE.Group;
   x: number; z: number; heading: number; hp: number; state: 'rise' | 'live' | 'dead'; t: number;
   gait: Gait; engaged: boolean; cooldown: number; pendingHit: number; stun: number; vx: number; vz: number; flash: number;
   tag: Tag | null; growFor: number; slam: number; orb: number; minion: number; slamAt: number; orbAt: number;
+  max: number; speedMul: number; label: string | null; hunt?: string; glow: THREE.Color;
 };
 type Wave = { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; x: number; z: number; r: number; hit: boolean; on: boolean };
 type Orb = { mesh: THREE.Mesh; x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number };
@@ -153,7 +168,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
         if (!mesh.isMesh) return;
         (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach((m) => { if ((m as THREE.MeshStandardMaterial).emissive) mats.push(m as THREE.MeshStandardMaterial); });
       });
-      const p = { robot, mats, eyes: addEyes(robot) };
+      const p = { robot, mats, eyes: addEyes(robot), colors: mats.map((m) => m.color.clone()) };
       all.push(p);
       idle.push(p);
     }).catch(() => { loading--; });
@@ -185,12 +200,14 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     ctx.fill();
     ctx.textAlign = 'center';
     ctx.font = '700 28px system-ui, sans-serif';
-    ctx.fillStyle = '#b6ff9a';
-    ctx.fillText('엘리트 바이러스', 128, 38);
+    ctx.fillStyle = f.label ? '#f4f5f8' : '#b6ff9a';
+    let text = f.label ?? '엘리트 바이러스';
+    while (text.length > 4 && ctx.measureText(text).width > 228) text = text.slice(0, -2);
+    ctx.fillText(text === (f.label ?? '엘리트 바이러스') ? text : `${text}…`, 128, 38);
     ctx.fillStyle = 'rgba(255,255,255,.15)';
     ctx.fillRect(30, 52, 196, 10);
-    ctx.fillStyle = '#39ff7a';
-    ctx.fillRect(30, 52, 196 * (f.hp / f.rule.hp), 10);
+    ctx.fillStyle = f.label ? `#${f.glow.clone().multiplyScalar(2.2).getHexString()}` : '#39ff7a';
+    ctx.fillRect(30, 52, 196 * (f.hp / f.max), 10);
     tag.tex.needsUpdate = true;
   };
 
@@ -223,7 +240,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     idle.push(f.p);
     foes.splice(foes.indexOf(f), 1);
   };
-  const acquire = (kind: FoeKind, x: number, z: number): Foe | null => {
+  const acquire = (kind: FoeKind, x: number, z: number, style: FoeStyle = {}): Foe | null => {
     const p = idle.pop();
     if (!p) { if (all.length + loading < POOL) load(); return null; }
     const rule = FOES[kind];
@@ -231,14 +248,27 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     root.scale.setScalar(rule.scale);
     root.add(p.robot.root);
     p.robot.root.rotation.x = HUNCH[kind];
-    p.mats.forEach((m) => { m.emissive.copy(EMISSIVE[kind]); m.emissiveIntensity = kind === 'boss' ? 0.5 : 1; });
+    const glow = style.color ? new THREE.Color(style.color) : EMISSIVE[kind];
+    p.mats.forEach((m, k) => {
+      m.emissive.copy(glow);
+      m.emissiveIntensity = kind === 'boss' ? 0.5 : 1;
+      m.color.copy(p.colors[k]);
+      if (style.color) m.color.lerp(glow, 0.55);
+      const ghost = !!style.ghost;
+      if (m.transparent !== ghost) { m.transparent = ghost; m.needsUpdate = true; }
+      m.opacity = ghost ? 0.42 : 1;
+      m.depthWrite = !ghost;
+    });
     p.robot.play('Idle', 0, true);
     scene.add(root);
     const f: Foe = {
       kind, rule, p, root, x, z, heading: Math.random() * Math.PI * 2, hp: rule.hp, state: 'rise', t: 0,
       gait: 'Idle', engaged: false, cooldown: 0.6, pendingHit: 0, stun: 0, vx: 0, vz: 0, flash: 0,
-      tag: kind === 'elite' ? tags.pop() ?? makeTag() : null, growFor: 0, slam: SLAM_EVERY * 0.5, orb: ORB_EVERY, minion: MINION_EVERY * 0.6, slamAt: 0, orbAt: 0,
+      tag: kind === 'elite' || style.label ? tags.pop() ?? makeTag() : null, growFor: 0, slam: SLAM_EVERY * 0.5, orb: ORB_EVERY, minion: MINION_EVERY * 0.6, slamAt: 0, orbAt: 0,
+      max: style.hp ?? rule.hp, speedMul: style.speed ?? 1, label: style.label ?? null, hunt: style.tag, glow,
     };
+    f.hp = f.max;
+    if (f.tag) f.tag.hp = -1;
     foes.push(f);
     return f;
   };
@@ -249,7 +279,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     f.p.robot.play('Death', 0.12);
     if (f.tag) f.tag.sprite.visible = false;
     motes.burst(f.x, height(f) * 0.5, f.z, f.kind === 'boss' ? 160 : f.kind === 'elite' ? 40 : 14, f.kind === 'boss' ? 16 : 4, 3, 1.2);
-    hooks.onKill(f.kind);
+    hooks.onKill(f.kind, f.hunt);
     if (f.kind === 'boss') hooks.onBossDown();
   };
   const hurt = (f: Foe, damage: number, dx: number, dz: number, push: number, stun: number) => {
@@ -371,8 +401,8 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     }
   }
 
-  function spawnAt(kind: 'zombie' | 'elite', x: number, z: number) {
-    const f = acquire(kind, x, z);
+  function spawnAt(kind: 'zombie' | 'elite', x: number, z: number, style?: FoeStyle) {
+    const f = acquire(kind, x, z, style);
     if (!f) return false;
     motes.burst(x, 0.2, z, kind === 'elite' ? 30 : 12, kind === 'elite' ? 5 : 2.5, 2, 0.9);
     return true;
@@ -397,7 +427,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
       f.heading = 0;
       return true;
     },
-    positions: () => foes.filter((f) => f.state !== 'dead').map((f) => ({ kind: f.kind, x: f.x, z: f.z })),
+    positions: () => foes.filter((f) => f.state !== 'dead').map((f) => ({ kind: f.kind, x: f.x, z: f.z, tag: f.hunt })),
     clear(how) {
       [...foes].forEach((f) => {
         if (f.kind === 'boss' || f.state === 'dead') return;
@@ -460,7 +490,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
               f.pendingHit = f.kind === 'elite' ? 0.55 : 0.4;
             } else if (robot.current !== robot.actions.Punch || !robot.current.isRunning()) robot.play('Idle', 0.25);
           } else if (sees) {
-            const speed = approach(d, reach, f.rule.speed, dt);
+            const speed = approach(d, reach, f.rule.speed * f.speedMul, dt);
             move(f, dx, dz, speed, dt);
             turn(f, dx, dz, dt, 6);
             f.gait = shamble(f.gait, speed);

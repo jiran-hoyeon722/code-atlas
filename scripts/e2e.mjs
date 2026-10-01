@@ -304,6 +304,25 @@ async function main() {
       await page.waitForSelector('.wk-virus[hidden]', { state: 'attached', timeout: 5_000 });
     });
 
+    await step('codecity GTA: auto hunt walks an expedition and keeps virus mode off', async () => {
+      await page.keyboard.press('o');
+      await page.waitForSelector('.wk-auto:not([hidden])', { timeout: 5_000 });
+      await page.waitForSelector('.wk-auto-card:not([hidden])', { timeout: 5_000 });
+      assert(/원정/.test(await page.locator('[data-el=c-title]').textContent()), 'no expedition brief card');
+      await shot(page, 'walk-auto-brief.png');
+      await page.waitForSelector('.wk-auto-card[hidden]', { state: 'attached', timeout: 20_000 });
+      assert(await page.locator('[data-el=a-route] li').count() > 0, 'expedition route is empty');
+      await page.waitForFunction(() => document.querySelector('.wk-walk')?.classList.contains('inside'), null, { timeout: 60_000 });
+      await page.waitForTimeout(800);
+      assert(await page.locator('[data-el=d-why]:not([hidden])').count() === 1, 'code view does not explain why the file was visited');
+      await shot(page, 'walk-auto-read.png');
+      await page.keyboard.press('v');
+      assert(await page.locator('.wk-virus:not([hidden])').count() === 0, 'virus mode started during auto hunt');
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.wk-auto[hidden]', { state: 'attached', timeout: 5_000 });
+      await page.waitForFunction(() => !document.querySelector('.wk-walk')?.classList.contains('inside'), null, { timeout: 5_000 });
+    });
+
     await step('graph tab renders', async () => {
       await page.click('.ca-shell [role=tab]:has-text("그래프")');
       await page.waitForSelector('.ca-shell-mount .cg-canvas canvas', { timeout: 30_000 });
