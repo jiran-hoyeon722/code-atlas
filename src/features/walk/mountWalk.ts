@@ -11,7 +11,7 @@ import type { MountViewer } from '../viewer-env';
 import { esc } from '../escape';
 import { roleColors } from '../palette';
 import { renderCode } from '../code-viewer/highlight';
-import { FLOOR, LANE, STREET, layoutWalk, type WalkBuilding } from './walkLayout';
+import { FLOOR, LANE, STREET, boardFontSize, layoutWalk, type WalkBuilding } from './walkLayout';
 import { BEAM_FRAG, BEAM_VERT, BUILDING_FRAG, BUILDING_VERT, SKY_FRAG, SKY_VERT } from './walkShaders';
 import { createModelHero, type Emote } from './walkHero';
 import { createTraffic, routeBetween } from './walkTraffic';
@@ -436,6 +436,8 @@ const mount: MountViewer = (root, arch, env) => {
     ctx.fillRect(0, 0, 1024, 12);
     ctx.fillStyle = '#f2f3f7';
     ctx.font = '700 84px system-ui, sans-serif';
+    const size = boardFontSize(ctx.measureText(role.name).width);
+    if (size !== 84) ctx.font = `700 ${size}px system-ui, sans-serif`;
     ctx.fillText(role.name, 40, 118);
     ctx.fillStyle = '#9aa0ad';
     ctx.font = '500 34px system-ui, sans-serif';
