@@ -25,7 +25,8 @@ import { createBeacon, createGuide, createMarkers, createMotes, createSparks, ty
 import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type WeaponId } from './walkWeapons';
 import { DIFFICULTIES, DIFFICULTY, FORM_TIME, createSiege, createVirus, isDifficulty, isInfected, pickOrigin, pickSpawnSite, type Difficulty } from './walkVirus';
 import { HELI_BOSS_BONUS, createHorde } from './walkHorde';
-import { follow, shakeOffset, turnToward } from './walkMotion';
+import { decay, follow, shakeOffset, turnToward } from './walkMotion';
+import { QUEST, QUEST_KEY, createQuest, type QuestId } from './walkQuest';
 import { characterById, dealCharacters, type Character } from './walkCharacters';
 import { openPicker } from './walkPicker';
 import type { RideCar } from './walkTraffic';
@@ -89,6 +90,10 @@ const MARKUP = `
     <button class="auto-btn" data-el="auto-btn">${AUTO_ICON}<span data-el="auto-label">자동 사냥 시작</span><kbd>O</kbd></button>
     <button class="virus-btn" data-el="virus-btn">${VIRUS_ICON}<span data-el="virus-label">바이러스 모드 시작</span><kbd>V</kbd></button>
     <div class="field"><span class="lbl">바이러스 난이도</span><div class="v-diff" data-el="v-diff" role="radiogroup" aria-label="바이러스 난이도">${DIFFICULTIES.map((d) => `<button role="radio" aria-checked="false" data-diff="${d}" title="${DIFF_HINT[d]}">${DIFFICULTY[d].label}</button>`).join('')}</div></div>
+    <section class="quest" data-el="quest" aria-label="첫 걸음" hidden>
+        <div class="q-head"><b>첫 걸음</b><span data-el="quest-count"></span><button data-el="quest-close" aria-label="첫 걸음 닫기" title="닫기">×</button></div>
+        <ul data-el="quest-list"></ul>
+    </section>
     <div class="tips"><b>WASD</b> 이동 · <b>클릭</b> 시점 · <b>F</b> 공격 · <b>E</b> 행동 · <b>1~6</b> 무기 · <b>?</b> 전체 조작법</div>
 </div>
 <div class="wk-virus glass" data-el="virus" hidden>
@@ -726,7 +731,7 @@ const mount: MountViewer = (root, arch, env) => {
     renderBattle();
     toast(`${c.name} 캐릭터로 출발! 라이벌 ${RIVALS.length}명이 도시 어딘가에 있어요`);
     (document.activeElement as HTMLElement | null)?.blur();
-    if (!guideSeen) showGuide(0);
+    if (!guideSeen) showGuide(0); else showQuest();
   });
   cleanups.push(closePicker);
 
@@ -804,6 +809,9 @@ const mount: MountViewer = (root, arch, env) => {
   const guide = createGuide(scene);
   const energy = createMotes(scene, 900, new THREE.Color('#5dff8f').multiplyScalar(2.2), 0.35, true);
   const dust = createMotes(scene, 700, new THREE.Color('#8a8778'), 1.6, false);
+  const puffs = createMotes(scene, 160, new THREE.Color('#b9b6aa'), 0.32, false);
+  let squash = 0;
+  let strideLeft = 0;
   const openSpot = (x: number, z: number, min: number, max: number, r: number) => {
     const turn0 = Math.random() * Math.PI * 2;
     for (let d = min; d <= max; d += 1.5)
@@ -1186,6 +1194,7 @@ const mount: MountViewer = (root, arch, env) => {
   }
   async function openDetail(b: WalkBuilding) {
     const n = arch.nodes[b.i];
+    if (!auto) questDone('enter');
     detailOpen = true;
     root.classList.add('inside');
     $('d-name').textContent = n.name;
@@ -1240,6 +1249,7 @@ const mount: MountViewer = (root, arch, env) => {
     spotted.splice(0).forEach((el) => el.classList.remove('g-spot', 'g-lift'));
     if (step < 0) {
       try { localStorage.setItem(GUIDE_KEY, '1'); } catch { /* storage may be blocked */ }
+      showQuest();
       return;
     }
     keys.clear();
@@ -1273,6 +1283,35 @@ const mount: MountViewer = (root, arch, env) => {
   listen($('guide-open'), 'click', () => { setHelp(false); showGuide(0); });
   let guideSeen = false;
   try { guideSeen = !!localStorage.getItem(GUIDE_KEY); } catch { guideSeen = false; }
+
+  // ---- first steps: a checklist learnt by doing, shown once until every task is done ----
+  const quest = createQuest();
+  let questOn = false;
+  const renderQuest = () => {
+    $('quest-count').textContent = `${quest.count} / ${QUEST.length}`;
+    $('quest-list').innerHTML = QUEST.map(({ id, text }) =>
+      `<li class="${quest.has(id) ? 'done' : ''}"><i aria-hidden="true"></i><span>${guideHtml(text, esc).replace(/<b>/g, '<kbd>').replace(/<\/b>/g, '</kbd>')}</span></li>`).join('');
+  };
+  const closeQuest = (finished: boolean) => {
+    questOn = false;
+    $('quest').hidden = true;
+    try { localStorage.setItem(QUEST_KEY, '1'); } catch { /* storage may be blocked */ }
+    if (finished) toast('첫 걸음 완료! 이제 라이벌을 찾아 나서 보세요');
+  };
+  function showQuest() {
+    let done = false;
+    try { done = !!localStorage.getItem(QUEST_KEY); } catch { done = true; }
+    if (done || questOn) return;
+    questOn = true;
+    renderQuest();
+    $('quest').hidden = false;
+  }
+  const questDone = (id: QuestId) => {
+    if (!questOn || !quest.mark(id)) return;
+    renderQuest();
+    if (quest.finished) window.setTimeout(() => { if (questOn) closeQuest(true); }, 900);
+  };
+  listen($('quest-close'), 'click', () => closeQuest(false));
 
   // ---- auto hunt: expeditions out from a root file along the files that use it; virus mode stays off meanwhile ----
   const repo = readRepo(arch);
@@ -1499,7 +1538,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (e.code === 'KeyG') { hero.emote(EMOTES[emoteIndex++ % EMOTES.length]); return; }
     if (e.code === 'Space') {
       e.preventDefault();
-      if (footY <= 0.001) vy = JUMP;
+      if (footY <= 0.001) { vy = JUMP; if (mode === 'walk') questDone('jump'); }
       return;
     }
     keys.add(e.code);
@@ -1807,6 +1846,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (!blockedWalker(pos.x, pos.z + stepZ)) pos.z += stepZ; else { vel.z = 0; knock.z = 0; }
     vy -= GRAVITY * dt;
     footY = Math.max(0, footY + vy * dt);
+    const landing = footY === 0 && vy < 0 ? -vy : 0;
     if (footY === 0 && vy < 0) vy = 0;
     const speed = Math.hypot(vel.x, vel.z);
     const prev = heading;
@@ -1825,6 +1865,24 @@ const mount: MountViewer = (root, arch, env) => {
     const run = Math.max(0, Math.min(1, (speed - WALK) / (RUN - WALK)));
     hero.animate({ speed, run, airborne: footY > 0.05, turn: turnRate, dt, time });
     hero.root.position.set(pos.x, footY + 0.16, pos.z);
+    if (questOn && onFoot && !auto) {
+      if (speed > 1.5) questDone('walk');
+      if (run > 0.6) questDone('run');
+    }
+    if (onFoot && alive && !reduceMotion) {
+      if (landing > 4) {
+        squash = Math.max(squash, Math.min(1, landing / 11));
+        puffs.burst(pos.x, 0.15, pos.z, 6 + Math.round(squash * 8), 1.6, 0.4, 0.55);
+      }
+      // A puff behind each running footfall; walking stays clean.
+      strideLeft -= speed * dt;
+      if (strideLeft <= 0) {
+        strideLeft = 1.5;
+        if (run > 0.5 && footY === 0) puffs.burst(pos.x - vel.x * 0.04, 0.12, pos.z - vel.z * 0.04, 3, 0.7, 0.35, 0.45);
+      }
+    }
+    squash = decay(squash, 9, dt);
+    hero.root.scale.set(1 + squash * 0.08, 1 - squash * 0.16, 1 + squash * 0.08);
     hero.root.rotation.y = heading;
     const gun = weapon.kind === 'gun';
     heroHeld.follow(hero.rig, gun && (aimHold > 0 || triggerHeld) ? aimVec.set(Math.sin(aimHold > 0 ? aimHeading : heading), 0, Math.cos(aimHold > 0 ? aimHeading : heading)) : null, hero.root.visible && onFoot && alive);
@@ -1947,6 +2005,7 @@ const mount: MountViewer = (root, arch, env) => {
     beacon.update(time, dt);
     energy.update(dt);
     dust.update(dt);
+    puffs.update(dt);
     guideClock -= dt;
     if (guideClock <= 0) {
       guideClock = 0.5;
@@ -2129,6 +2188,7 @@ const mount: MountViewer = (root, arch, env) => {
     guide.dispose();
     energy.dispose();
     dust.dispose();
+    puffs.dispose();
     heroHeld.dispose();
     kit.dispose();
     tracers.dispose();

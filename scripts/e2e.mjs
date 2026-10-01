@@ -288,7 +288,20 @@ async function main() {
       assert((await page.locator('[data-el=g-next]').textContent()) === '시작하기', 'guide does not end on its fifth step');
       await page.click('[data-el=g-next]');
       await page.waitForSelector('.wk-guide[hidden]', { state: 'attached', timeout: 5_000 });
-      await page.waitForTimeout(1000);
+      await page.waitForSelector('[data-el=quest]:not([hidden])', { timeout: 5_000 });
+      // Back away from the door the walk starts at, so the run is not cut short by the wall.
+      await page.keyboard.down('Shift');
+      await page.keyboard.down('KeyS');
+      // Software-rendered frames are slow and each one advances at most 0.05 s of game time, so give the run a while.
+      await page.waitForFunction(() => document.querySelectorAll('[data-el=quest-list] li.done').length >= 2, null, { timeout: 15_000 }).catch(() => {});
+      await page.keyboard.press('Space');
+      await page.waitForTimeout(700);
+      await page.keyboard.up('KeyS');
+      await page.keyboard.up('Shift');
+      const ticked = await page.locator('[data-el=quest-list] li').evaluateAll((els) => els.map((el) => `${el.className === 'done' ? '✓' : '✗'} ${el.textContent}`));
+      assert(ticked.filter((t) => t.startsWith('✓')).length === 3, `walking, running and jumping should tick 3 first-steps tasks: ${ticked.join(' | ')}`);
+      await shot(page, 'walk-quest.png');
+      await page.waitForTimeout(500);
       await page.keyboard.press('/');
       await page.keyboard.type('userService');
       await page.keyboard.press('Enter');
@@ -298,6 +311,7 @@ async function main() {
       await page.waitForFunction(() => document.querySelector('[data-el=d-src]')?.textContent?.includes('export const fetchUsers'), null, { timeout: 20_000 });
       const name = await page.locator('[data-el=d-name]').textContent();
       assert(name.startsWith('userService'), `walk detail shows another file: "${name}"`);
+      await page.waitForSelector('[data-el=quest]', { state: 'hidden', timeout: 5_000 });
       await page.waitForTimeout(600);
       await shot(page, 'walk-code.png');
       await page.keyboard.press('Escape');
