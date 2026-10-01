@@ -120,7 +120,7 @@ function fakes() {
   const store = new Map<string, CacheEntry>();
   const runs: Run[] = [];
   const saved: CacheEntry[] = [];
-  const summary = ({ key, name, framework, lang, langs, files, analyzedAt }: CacheEntry): CacheSummary => ({ key, name, framework, lang, ...(langs && { langs }), files, analyzedAt });
+  const summary = ({ key, name, framework, lang, langs, frameworks, files, analyzedAt }: CacheEntry): CacheSummary => ({ key, name, framework, lang, ...(langs && { langs }), ...(frameworks && { frameworks }), files, analyzedAt });
   const deps: SessionDeps = {
     startAnalysis: vi.fn((input: RepoInput, opts: { prefer?: Lang; langs?: Lang[]; onProgress(p: Progress): void }) => {
       let resolve!: (a: Architecture) => void;
@@ -467,6 +467,25 @@ test('laravel repo with ts opens both with php first', async () => {
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(runs[0].prefer).toBe('php');
   expect(runs[0].langs).toEqual(['php', 'ts']);
+});
+
+test('merged laravel city keeps the framework name in the saved record and recent list', async () => {
+  const { deps, runs, saved } = fakes();
+  render(<App deps={deps} />);
+  drop(items(dirHandle('shop', {
+    'composer.json': '{"require":{"laravel/framework":"^11.0"}}',
+    'vite.config.js': 'export default {}',
+    app: { 'User.php': '<?php' },
+    resources: { js: { 'app.ts': '', 'b.ts': '' } },
+  })));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  await act(async () => {
+    runs[0].resolve({ ...archFor(runs[0].input, 'php'), langs: ['php', 'ts'], frameworks: ['laravel', null] });
+  });
+  expect(await screen.findByText('viewer:shop:php')).toBeTruthy();
+  expect(saved[0]).toMatchObject({ langs: ['php', 'ts'], frameworks: ['laravel', null] });
+  await act(async () => h.shell!.onOpenOther());
+  expect(await screen.findByText(/^Laravel \+ TypeScript · 4 파일/)).toBeTruthy();
 });
 
 test('react folder with stray php files opens as ts without asking', async () => {

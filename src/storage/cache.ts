@@ -12,6 +12,8 @@ export interface CacheSummary {
   lang: Lang;
   /** set only for a repo opened as several languages merged into one city; `lang` is the first */
   langs?: Lang[];
+  /** merged only, same order as `langs` */
+  frameworks?: (string | null)[];
   files: number;
   analyzedAt: string;
   /** set when the analysis came from a public GitHub repo; code is fetched again from that commit */
@@ -106,8 +108,8 @@ export async function listAnalyses(): Promise<CacheSummary[]> {
   const all = await run<CacheEntry[]>('readonly', (s) => s.getAll());
   return all
     .map((e): CacheSummary => {
-      const { key, name, framework, lang, langs, files, analyzedAt, origin } = e;
-      return { key, name, framework, lang, ...(langs && { langs }), files, analyzedAt, ...(origin && { origin }), battle: battleState(e), hasHandle: !!e.handle };
+      const { key, name, framework, lang, langs, frameworks, files, analyzedAt, origin } = e;
+      return { key, name, framework, lang, ...(langs && { langs }), ...(frameworks && { frameworks }), files, analyzedAt, ...(origin && { origin }), battle: battleState(e), hasHandle: !!e.handle };
     })
     .sort((a, b) => (a.analyzedAt < b.analyzedAt ? 1 : a.analyzedAt > b.analyzedAt ? -1 : 0));
 }

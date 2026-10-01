@@ -34,6 +34,8 @@ export interface Architecture {
   failed: Extraction['failed'];
   unresolved: number;
   langs?: Lang[];
+  /** merged only, same order as `langs` */
+  frameworks?: Detection['framework'][];
 }
 
 export const nodeLang = (arch: Architecture, i: number): Lang => arch.nodes[i].lang ?? arch.lang;

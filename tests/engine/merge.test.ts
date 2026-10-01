@@ -83,6 +83,14 @@ describe('mergeArchitectures', () => {
     expect(mergeRoles([py, go])).toEqual(mergeArchitectures([py, go]).roles);
   });
 
+  test('frameworks follow the parts order; framework stays null', () => {
+    const php: Architecture = { ...go, lang: 'php', framework: 'laravel' };
+    const m = mergeArchitectures([php, py]);
+    expect(m.frameworks).toEqual(['laravel', null]);
+    expect(m.framework).toBeNull();
+    expect('frameworks' in mergeArchitectures([php])).toBe(false);
+  });
+
   test('no parts is an error', () => {
     expect(() => mergeArchitectures([])).toThrow('mergeArchitectures needs at least one part');
   });

@@ -46,5 +46,6 @@ export function mergeArchitectures(parts: Architecture[]): Architecture {
     failed: parts.flatMap((p) => p.failed),
     unresolved: parts.reduce((s, p) => s + p.unresolved, 0),
     langs: parts.map((p) => p.lang),
+    frameworks: parts.map((p) => p.framework),
   };
 }

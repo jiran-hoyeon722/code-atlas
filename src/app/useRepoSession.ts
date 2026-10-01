@@ -391,7 +391,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     const { architecture: arch, quality, qualityIssue } = result;
 
     await save({
-      key, name: listing.name, framework: arch.framework, lang: arch.lang, ...(arch.langs && { langs: arch.langs }), files: arch.nodes.length,
+      key, name: listing.name, framework: arch.framework, lang: arch.lang, ...(arch.langs && { langs: arch.langs }), ...(arch.frameworks && { frameworks: arch.frameworks }), files: arch.nodes.length,
       analyzedAt: arch.generatedAt, architecture: arch, handle: src.handle, ...(src.origin && { origin: src.origin }),
       ...(quality && { quality }), ...(qualityIssue && { qualityIssue }),
     });
