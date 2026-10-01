@@ -1207,7 +1207,12 @@ const mount: MountViewer = (root, arch, env) => {
     const request = ++codeRequest;
     const source = await env.readSource(n.path).catch(() => null);
     if (disposed || request !== codeRequest) return;
-    if (source === null) { src.textContent = '소스를 읽지 못했어요. 폴더를 다시 연결해 주세요.'; return; }
+    if (source === null) {
+      src.textContent = auto && sourceBlocked
+        ? '폴더 읽기 권한이 없어 코드를 보여 줄 수 없어요. 위쪽 "폴더 다시 연결"을 누른 뒤 O 로 자동 사냥을 다시 켜 주세요.'
+        : '소스를 읽지 못했어요. 폴더를 다시 연결해 주세요.';
+      return;
+    }
     const lang = nodeLang(arch, b.i);
     src.className = `hljs language-${LANGS[lang]?.hljs ?? 'plaintext'}`;
     renderCode(src, source, lang);
@@ -1313,8 +1318,14 @@ const mount: MountViewer = (root, arch, env) => {
     pilot.spawned(count);
     toast(`위험 신호 — ${WARNINGS[st.sign.kind].label}: ${nameOf(st.i)}`, 2600);
   }
+  let sourceBlocked = false;
   function startAuto() {
     if (auto || picking || guideOpen()) return;
+    // The pilot opens buildings without a click, when the browser may no longer ask for folder access; ask now, on the O press.
+    void env.allowSource?.().then((ok) => {
+      sourceBlocked = !ok;
+      if (!ok && auto) toast('폴더 읽기 권한이 없어 코드는 보여 줄 수 없어요 — 위쪽 "폴더 다시 연결"을 누른 뒤 O 로 다시 켜 주세요', 6000);
+    });
     if (virus.state === 'spreading') {
       if (!siege.cancellable) { toast('괴물을 처치해야 자동 사냥을 켤 수 있어요'); return; }
       endVirus(false);

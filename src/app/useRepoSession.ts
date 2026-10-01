@@ -561,6 +561,15 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     }
   };
 
+  /** Asks for folder read permission now, while a click or key press still lets the browser show the prompt. */
+  const allowSource = async (): Promise<boolean> => {
+    const cur = current.current;
+    if (!cur || cur.files || cur.origin || !cur.handle) return true;
+    const ok = await hasReadPermission(cur.handle);
+    setCanReconnect(!ok);
+    return ok;
+  };
+
   const onReconnect = () => void pick('reconnect');
 
   const onReanalyze = async () => {
@@ -606,6 +615,7 @@ export function useRepoSession(overrides?: Partial<SessionDeps>) {
     onCancel,
     onConfirmTooMany: (ok: boolean) => answerWith(ok),
     readSource,
+    allowSource,
     onReconnect,
     onReanalyze,
     onOpenOther,
