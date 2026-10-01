@@ -25,6 +25,7 @@ import { DIFFICULTIES, DIFFICULTY, FORM_TIME, createSiege, createVirus, isDiffic
 import { HELI_BOSS_BONUS, createHorde } from './walkHorde';
 import { turnToward } from './walkMotion';
 import type { RideCar } from './walkTraffic';
+import { GUIDE, GUIDE_KEY } from './walkGuide';
 import robotUrl from './assets/RobotExpressive.glb?url';
 
 const WALK = 4.2;
@@ -61,7 +62,7 @@ const HELP = [
   ['행동', [['E', '건물 들어가기 · 차 타기 · 바이러스 치료'], ['H', '헬기 타기 (라이벌 4명을 다 잡으면)']]],
   ['바이러스', [['V', '바이러스 모드 시작 · 그만두기 (괴물이 나타나면 못 그만둬요)'], ['하 · 중 · 상', '난이도 — 하는 바닥 화살표 안내, 상은 빠른 확산과 좀비 떼'], ['E (근원지 앞)', '백신 주입 — 도시가 다 감염되기 전에'], ['괴물', '다 감염되면 나타나요. 시간 안에 못 잡으면 레포가 무너지고 분석 기록이 지워져요']]],
   ['헬기', [['W S', '앞으로 · 뒤로'], ['A D · 마우스', '방향 돌리기'], ['Q E', '옆으로 이동'], ['Space · C (Ctrl · X)', '올라가기 · 내려가기'], ['Shift', '가속'], ['F · 클릭', '기관총 (누르고 있기)'], ['G · 우클릭', '폭탄 떨어뜨리기'], ['마우스 위아래', '조준점 가깝게 · 멀리'], ['H', '천천히 내려가 착륙 (Space 로 취소)']]],
-  ['화면', [['/', '파일 이름으로 순간 이동'], ['T', '날씨 바꾸기'], ['V', '바이러스 모드'], ['?', '이 도움말']]],
+  ['화면', [['/', '파일 이름으로 순간 이동'], ['T', '날씨 바꾸기'], ['V', '바이러스 모드'], ['?', '이 도움말 · 게임 가이드']]],
 ] as const;
 
 const DIFF_HINT: Record<Difficulty, string> = {
@@ -105,8 +106,18 @@ const MARKUP = `
     <div class="hh-hint" data-el="hh-hint"></div>
 </div>
 <div class="wk-help glass" data-el="help" hidden role="dialog" aria-label="조작법">
-    <div class="h-head"><b>조작법</b><button data-el="help-close">닫기 (Esc)</button></div>
+    <div class="h-head"><b>조작법</b><span><button data-el="guide-open">게임 가이드</button><button data-el="help-close">닫기 (Esc)</button></span></div>
     <div class="h-body" data-el="help-body"></div>
+</div>
+<div class="wk-guide" data-el="guide" hidden>
+    <section class="g-card glass" role="dialog" aria-modal="true" aria-labelledby="wk-guide-title">
+        <div class="g-step" data-el="g-step"></div>
+        <h2 id="wk-guide-title" data-el="g-title"></h2>
+        <div class="g-repo" data-el="g-repo"></div>
+        <p data-el="g-body"></p>
+        <div class="g-keys" data-el="g-keys"></div>
+        <div class="g-foot"><div class="g-dots" data-el="g-dots"></div><button data-el="g-skip">건너뛰기</button><button data-el="g-prev">이전</button><button class="primary" data-el="g-next">다음</button></div>
+    </section>
 </div>
 <canvas class="wk-map glass" data-el="map" width="200" height="200" title="클릭하면 그 위치로 이동"></canvas>
 <div class="wk-prompt glass" data-el="prompt"></div>
@@ -1160,6 +1171,38 @@ const mount: MountViewer = (root, arch, env) => {
   const setHelp = (on: boolean) => { $('help').hidden = !on; if (on) keys.clear(); };
   listen($('help-btn'), 'click', (e) => { setHelp(!helpOpen()); (e.currentTarget as HTMLElement).blur(); });
   listen($('help-close'), 'click', () => setHelp(false));
+  let guideStep = -1;
+  const guideOpen = () => guideStep >= 0;
+  function showGuide(step: number) {
+    guideStep = step;
+    $('guide').hidden = step < 0;
+    if (step < 0) {
+      try { localStorage.setItem(GUIDE_KEY, '1'); } catch { /* storage may be blocked */ }
+      return;
+    }
+    keys.clear();
+    triggerHeld = false;
+    if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+    const g = GUIDE[step];
+    const last = step === GUIDE.length - 1;
+    $('g-step').textContent = `${step + 1} / ${GUIDE.length}`;
+    $('g-title').textContent = g.title;
+    $('g-repo').textContent = step === 0 ? arch.name : '';
+    $('g-body').textContent = g.body;
+    $('g-keys').innerHTML = g.keys.map(([k, what]) => `<span><kbd>${esc(k)}</kbd>${esc(what)}</span>`).join('');
+    $('g-dots').innerHTML = GUIDE.map((_, k) => `<i class="${k === step ? 'on' : ''}"></i>`).join('');
+    $<HTMLButtonElement>('g-prev').disabled = step === 0;
+    $('g-next').textContent = last ? '시작하기' : '다음';
+    $('g-next').focus();
+  }
+  const guideNext = () => showGuide(guideStep < GUIDE.length - 1 ? guideStep + 1 : -1);
+  listen($('g-next'), 'click', guideNext);
+  listen($('g-prev'), 'click', () => showGuide(Math.max(0, guideStep - 1)));
+  listen($('g-skip'), 'click', () => showGuide(-1));
+  listen($('guide-open'), 'click', () => { setHelp(false); showGuide(0); });
+  let guideSeen = false;
+  try { guideSeen = !!localStorage.getItem(GUIDE_KEY); } catch { guideSeen = false; }
+  if (!guideSeen) showGuide(0);
 
   // ---- input ----
   const typing = () => document.activeElement instanceof HTMLInputElement;
@@ -1167,6 +1210,12 @@ const mount: MountViewer = (root, arch, env) => {
   let emoteIndex = 0;
   listen(window, 'keydown', (e) => {
     if (e.metaKey || e.altKey || (e.ctrlKey && e.key !== 'Control')) return;
+    if (guideOpen()) {
+      if (e.key === 'Escape') showGuide(-1);
+      else if (e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); guideNext(); }
+      else if (e.key === 'ArrowLeft') showGuide(Math.max(0, guideStep - 1));
+      return;
+    }
     if (typing()) { if (e.key === 'Escape') (document.activeElement as HTMLElement).blur(); return; }
     if (helpOpen()) { if (e.key === 'Escape' || e.key === '?') setHelp(false); return; }
     if (e.key === 'Escape' && (detailOpen || entering)) { leave(); return; }

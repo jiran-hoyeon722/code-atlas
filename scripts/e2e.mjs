@@ -250,7 +250,14 @@ async function main() {
     await step('codecity GTA tab: search, walk up to a door, E opens the code', async () => {
       await page.click('.ca-shell [role=tab]:has-text("코드시티GTA")');
       await page.waitForSelector('.wk-walk canvas', { timeout: 30_000 });
-      await page.waitForTimeout(2500);
+      await page.waitForSelector('.wk-guide:not([hidden])', { timeout: 10_000 });
+      await page.waitForTimeout(1500);
+      await shot(page, 'walk-guide.png');
+      for (let k = 0; k < 4; k++) await page.click('[data-el=g-next]');
+      assert((await page.locator('[data-el=g-next]').textContent()) === '시작하기', 'guide does not end on its fifth step');
+      await page.click('[data-el=g-next]');
+      await page.waitForSelector('.wk-guide[hidden]', { state: 'attached', timeout: 5_000 });
+      await page.waitForTimeout(1000);
       await page.keyboard.press('/');
       await page.keyboard.type('userService');
       await page.keyboard.press('Enter');
