@@ -17,6 +17,7 @@ export interface ArchNode {
   centrality: number;
   routeRefs: number;
   routeFiles: string[];
+  lang?: Lang;
 }
 
 export interface Architecture {
@@ -32,6 +33,7 @@ export interface Architecture {
   edges: [from: number, to: number, weight: number, kinds: Edge['kinds'], upward: 0 | 1][];
   failed: Extraction['failed'];
   unresolved: number;
+  langs?: Lang[];
 }
 
 const CONCEPTUAL_KINDS = new Set(['binds', 'triggers']);

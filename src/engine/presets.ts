@@ -21,7 +21,7 @@ export interface Preset {
   roles: Role[];
 }
 
-const layers = (application: string, domain: string): Layer[] => [
+export const layers = (application: string, domain: string): Layer[] => [
   { key: 'entry', label: '진입점', hint: '요청·화면이 처음 들어오는 곳' },
   { key: 'application', label: application, hint: '진입점의 요청을 처리하는 작업 흐름' },
   { key: 'domain', label: domain, hint: '핵심 데이터와 외부 시스템 연동' },
