@@ -12,6 +12,42 @@ const WANDER_SPEED = 2.2;
 const CHASE_SPEED = 6.2;
 const PERSONAL = 1.1;
 
+export interface CityBounds { minX: number; maxX: number; minZ: number; maxZ: number }
+
+/** One open spot per compass quarter (N, E, S, W) in the outer fifth of the city; a quarter with no free edge spot gets any open spot in the city. */
+export function edgeSpots(bounds: CityBounds, count: number, random: () => number, blocked: (x: number, z: number) => boolean) {
+  const w = bounds.maxX - bounds.minX, h = bounds.maxZ - bounds.minZ;
+  const band = 0.2;
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  // Each quarter: [x range, z range] as fractions of the city.
+  const quarters = [
+    [[0.25, 0.75], [0, band]],
+    [[1 - band, 1], [0.25, 0.75]],
+    [[0.25, 0.75], [1 - band, 1]],
+    [[0, band], [0.25, 0.75]],
+  ];
+  const order = quarters.map((q) => q);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  const out: { x: number; z: number }[] = [];
+  for (let k = 0; k < count; k++) {
+    const [[x0, x1], [z0, z1]] = order[k % order.length];
+    let spot: { x: number; z: number } | null = null;
+    for (let t = 0; t < 60 && !spot; t++) {
+      const x = bounds.minX + w * lerp(x0, x1, random()), z = bounds.minZ + h * lerp(z0, z1, random());
+      if (!blocked(x, z)) spot = { x, z };
+    }
+    for (let t = 0; t < 200 && !spot; t++) {
+      const x = bounds.minX + w * random(), z = bounds.minZ + h * random();
+      if (!blocked(x, z)) spot = { x, z };
+    }
+    out.push(spot ?? { x: (bounds.minX + bounds.maxX) / 2, z: (bounds.minZ + bounds.maxZ) / 2 });
+  }
+  return out;
+}
+
 export interface BattleHooks {
   blocked(x: number, z: number): boolean;
   /** No building stands between the two points. */
@@ -56,7 +92,7 @@ const angleTo = (at: THREE.Vector3, heading: number, x: number, z: number) => {
   return Math.abs(Math.atan2(Math.sin(target - heading), Math.cos(target - heading)));
 };
 
-export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vector3, kit: WeaponKit, hooks: BattleHooks): Battle {
+export function createBattle(scene: THREE.Scene, url: string, kit: WeaponKit, hooks: BattleHooks, bounds: CityBounds): Battle {
   const owned: { dispose(): void }[] = [];
   let disposed = false;
   let caught = 0;
@@ -97,8 +133,9 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
 
   // Weapons change every visit on purpose, so the tab plays differently each time.
   const dealt = dealWeapons(RIVALS.length, Math.random);
+  const starts = edgeSpots(bounds, RIVALS.length, Math.random, hooks.blocked);
   const rivals: Rival[] = RIVALS.map((name, k) => {
-    const at = pickSpot(spawn.x, spawn.z, 22, 42);
+    const at = new THREE.Vector2(starts[k].x, starts[k].z);
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 112;
