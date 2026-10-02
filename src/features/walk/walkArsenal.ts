@@ -197,12 +197,14 @@ export function createPickups(scene: THREE.Scene, kit: WeaponKit, drops: readonl
   const keep = <T extends { dispose(): void }>(x: T) => (owned.push(x), x);
   const ringGeo = keep(new THREE.RingGeometry(0.55, 0.78, 32).rotateX(-Math.PI / 2));
   const columnGeo = keep(new THREE.CylinderGeometry(0.45, 0.6, 2.6, 16, 1, true).translate(0, 1.3, 0));
-  const mats = new Map<Rarity, { ring: THREE.Material; column: THREE.Material }>();
+  const crateGeo = keep(new THREE.BoxGeometry(0.7, 0.45, 0.45));
+  const mats = new Map<Rarity, { ring: THREE.Material; column: THREE.Material; crate: THREE.Material }>();
   (Object.keys(RARITY_COLOR) as Rarity[]).forEach((r) => {
     const c = new THREE.Color(RARITY_COLOR[r]);
     mats.set(r, {
       ring: keep(new THREE.MeshBasicMaterial({ color: c.clone().multiplyScalar(2.2), transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending })),
       column: keep(new THREE.MeshBasicMaterial({ color: c.clone().multiplyScalar(0.9), transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })),
+      crate: keep(new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.35, roughness: 0.7 })),
     });
   });
   const box = new THREE.Box3();
@@ -216,7 +218,7 @@ export function createPickups(scene: THREE.Scene, kit: WeaponKit, drops: readonl
     root.add(ring, column, holder);
     root.visible = false;
     scene.add(root);
-    return { root, ring, column, holder, id: null as WeaponId | null };
+    return { root, ring, column, holder, key: '' };
   });
   const self: Pickups = {
     sync(k, drop) {
@@ -225,12 +227,14 @@ export function createPickups(scene: THREE.Scene, kit: WeaponKit, drops: readonl
       it.root.visible = drop.live;
       if (!drop.live) return;
       it.root.position.set(drop.x, 0, drop.z);
-      if (it.id === drop.id) return;
-      it.id = drop.id;
+      const key = drop.ammo ? `ammo:${drop.id}` : drop.id;
+      if (it.key === key) return;
+      it.key = key;
       const m = mats.get(rarityOf(drop.id))!;
       it.ring.material = m.ring;
       it.column.material = m.column;
       it.holder.clear();
+      if (drop.ammo) { it.holder.add(new THREE.Mesh(crateGeo, m.crate)); return; }
       const model = kit.model(drop.id);
       const s = drop.id === 'grenade' ? 4 : drop.id === 'pistol' ? 2.8 : 2.1;
       model.scale.setScalar(s);

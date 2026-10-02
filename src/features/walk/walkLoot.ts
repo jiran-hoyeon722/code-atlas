@@ -62,6 +62,8 @@ export interface Inventory {
   usable(id: WeaponId): boolean;
   /** Grants the weapon with a pickup's worth of ammo, or tops up the ammo of one already owned. */
   pickup(id: WeaponId): { fresh: boolean; left: number };
+  /** Adds rounds to a weapon already owned; returns the new count. */
+  refill(id: WeaponId, rounds: number): number;
   /** Uses one round; false when there was nothing to fire. */
   spend(id: WeaponId): boolean;
   /** `want` when it can be used, otherwise the first loaded fallback (fists at worst). */
@@ -84,6 +86,11 @@ export function createInventory(): Inventory {
       ammo.set(id, left);
       return { fresh, left };
     },
+    refill(id, rounds) {
+      const left = (ammo.get(id) ?? 0) + rounds;
+      ammo.set(id, left);
+      return left;
+    },
     spend(id) {
       const n = ammo.get(id) ?? 0;
       if (n <= 0) return false;
@@ -104,7 +111,11 @@ export function autoWeapon(inv: Inventory, want: WeaponId | null, current: Weapo
   return FALLBACK.includes(current) ? current : inv.best(FALLBACK[0]);
 }
 
-export interface LootDrop { x: number; z: number; id: WeaponId; live: boolean; wait: number }
+export interface LootDrop {
+  x: number; z: number; id: WeaponId; live: boolean; wait: number;
+  /** Rounds in an ammo box for `id`; left out or 0 for the weapon itself. */
+  ammo?: number;
+}
 
 export interface LootField {
   readonly drops: readonly LootDrop[];
@@ -141,5 +152,81 @@ export function createLootField(spots: Point[], random: () => number, place: (ta
       });
       return { picked, back };
     },
+  };
+}
+
+// ---- virus-mode drops: zombies and elites sometimes leave a weapon or an ammo box where they fell ----
+
+export const DROP_CHANCE = { zombie: 0.12, elite: 0.6 } as const;
+export const DROP_LIFE = 25;
+export const DROP_BLINK = 5;
+export const DROP_CAP = 12;
+const RANK: Rarity[] = ['common', 'uncommon', 'rare', 'legendary'];
+const ranged = (id: WeaponId) => weaponById(id).kind !== 'melee';
+const limited = (id: WeaponId) => weaponById(id).ammo !== undefined;
+
+export type DropRoll = { id: WeaponId; ammo: number } | null;
+
+/**
+ * `ammo` 0 is a weapon pickup, otherwise an ammo box of that many rounds for an owned weapon that runs out (half a pickup's worth).
+ * Weapons use the street odds with the legendary chance doubled; elites never leave common loot, and until the player
+ * owns a gun every drop is one.
+ */
+export function rollDrop(kind: 'zombie' | 'elite', owned: readonly WeaponId[], random: () => number): DropRoll {
+  if (random() >= DROP_CHANCE[kind]) return null;
+  const floor = kind === 'elite' ? 1 : 0;
+  const guns = owned.filter((id) => limited(id) && RANK.indexOf(rarityOf(id)) >= floor);
+  if (guns.length && random() < 0.5) {
+    const id = guns[Math.min(guns.length - 1, Math.floor(random() * guns.length))];
+    return { id, ammo: Math.ceil(weaponById(id).ammo! * 0.5) };
+  }
+  const odds = RANK.map((t, k) => (k < floor ? 0 : t === 'legendary' ? RARITY_ODDS[t] * 2 : RARITY_ODDS[t]));
+  let r = random() * odds.reduce((a, b) => a + b, 0);
+  let tier: Rarity = 'legendary';
+  for (let k = 0; k < RANK.length; k++) {
+    if (r < odds[k]) { tier = RANK[k]; break; }
+    r -= odds[k];
+  }
+  const pool = (Object.keys(RARITY) as Exclude<WeaponId, 'fist'>[]).filter((id) => RARITY[id] === tier && (owned.some(ranged) || ranged(id)));
+  return { id: pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))], ammo: 0 };
+}
+
+/** A drop slot; `wait` counts down its remaining life and `ammo` is 0 for a weapon. */
+export interface FoeDrop extends LootDrop { ammo: number }
+
+export interface DropField {
+  /** Always DROP_CAP slots; dead ones are free. */
+  readonly drops: readonly FoeDrop[];
+  /** Places a drop, taking the oldest live slot when all are used; returns the slot. */
+  add(x: number, z: number, roll: NonNullable<DropRoll>): number;
+  /** Ages drops and picks up every live one within reach of (x, z); expired drops vanish for good. */
+  update(dt: number, x: number, z: number): FoeDrop[];
+  clear(): void;
+}
+
+/** Shown, or blinking off during its last DROP_BLINK seconds. */
+export const dropShown = (d: FoeDrop) => d.live && (d.wait > DROP_BLINK || Math.floor(d.wait * 4) % 2 === 0);
+
+export function createDropField(): DropField {
+  const drops: FoeDrop[] = Array.from({ length: DROP_CAP }, () => ({ x: 0, z: 0, id: 'fist', live: false, wait: 0, ammo: 0 }));
+  return {
+    drops,
+    add(x, z, roll) {
+      let k = drops.findIndex((d) => !d.live);
+      if (k < 0) k = drops.reduce((best, d, i) => (d.wait < drops[best].wait ? i : best), 0);
+      Object.assign(drops[k], { x, z, id: roll.id, ammo: roll.ammo, live: true, wait: DROP_LIFE });
+      return k;
+    },
+    update(dt, x, z) {
+      const picked: FoeDrop[] = [];
+      drops.forEach((d) => {
+        if (!d.live) return;
+        if (Math.hypot(d.x - x, d.z - z) <= PICKUP_REACH) { d.live = false; picked.push({ ...d }); return; }
+        d.wait -= dt;
+        if (d.wait <= 0) d.live = false;
+      });
+      return picked;
+    },
+    clear() { drops.forEach((d) => { d.live = false; }); },
   };
 }

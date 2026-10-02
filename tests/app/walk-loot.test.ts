@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { RARITY, RARITY_ODDS, RESPAWN_MAX, RESPAWN_MIN, autoWeapon, createInventory, createLootField, lootCount, placeLoot, rollLoot, type Point } from '../../src/features/walk/walkLoot';
+import { DROP_BLINK, DROP_CAP, DROP_CHANCE, DROP_LIFE, RARITY, RARITY_ODDS, RESPAWN_MAX, RESPAWN_MIN, autoWeapon, createDropField, createInventory, createLootField, dropShown, lootCount, placeLoot, rarityOf, rollDrop, rollLoot, type Point } from '../../src/features/walk/walkLoot';
 import { RIVAL_WEAPONS, WEAPONS, dealWeapons, inBeam, segmentGap, weaponById } from '../../src/features/walk/walkWeapons';
 
 const seeded = (seed: number) => () => {
@@ -110,4 +110,78 @@ test('a beam only catches what is ahead of the shooter', () => {
   expect(inBeam(-0.5, 0, 0, 0, 10, 0, 1.2)).toBe(false);
   expect(inBeam(0, 1, 0, 0, 10, 0, 1.2)).toBe(false);
   expect(inBeam(0.3, 0.5, 0, 0, 10, 0, 1.2)).toBe(true);
+});
+
+test('foes drop loot at their rates, with legendaries twice as likely as in the street', () => {
+  const random = seeded(21);
+  const n = 40000;
+  const owned = ['fist', 'pistol', 'laser', 'rocket'] as const;
+  for (const kind of ['zombie', 'elite'] as const) {
+    const rolls = Array.from({ length: n }, () => rollDrop(kind, owned, random));
+    const hits = rolls.filter((r) => r !== null);
+    expect(Math.abs(hits.length / n - DROP_CHANCE[kind])).toBeLessThan(0.01);
+    const weapons = hits.filter((r) => !r!.ammo);
+    const ammo = hits.filter((r) => r!.ammo);
+    expect(ammo.length).toBeGreaterThan(hits.length * 0.4);
+    ammo.forEach((r) => expect(r!.ammo).toBe(Math.ceil(weaponById(r!.id).ammo! / 2)));
+    if (kind === 'zombie') {
+      const legend = weapons.filter((r) => rarityOf(r!.id) === 'legendary').length / weapons.length;
+      expect(Math.abs(legend - RARITY_ODDS.legendary * 2 / (1 + RARITY_ODDS.legendary))).toBeLessThan(0.015);
+    }
+  }
+});
+
+test('elites never drop common loot, not even ammo for a common gun', () => {
+  const random = seeded(5);
+  for (let k = 0; k < 5000; k++) {
+    const r = rollDrop('elite', ['fist', 'bat', 'pistol', 'flamer'], random);
+    if (r) expect(rarityOf(r.id)).not.toBe('common');
+  }
+});
+
+test('until the player owns a gun every drop is a gun, pistol or better', () => {
+  const random = seeded(9);
+  for (let k = 0; k < 5000; k++) {
+    const r = rollDrop('zombie', ['fist', 'bat', 'pipe'], random);
+    if (!r) continue;
+    expect(r.ammo).toBe(0);
+    expect(weaponById(r.id).kind).not.toBe('melee');
+  }
+});
+
+test('drops expire after their life, blinking at the end, and the oldest gives way at the cap', () => {
+  const field = createDropField();
+  expect(field.drops).toHaveLength(DROP_CAP);
+  const first = field.add(0, 0, { id: 'pistol', ammo: 0 });
+  field.update(1, 100, 100);
+  for (let k = 1; k < DROP_CAP; k++) field.add(k * 10, 0, { id: 'smg', ammo: 0 });
+  expect(field.drops.every((d) => d.live)).toBe(true);
+  expect(field.add(500, 0, { id: 'rocket', ammo: 0 })).toBe(first);
+  expect(field.drops[first]).toMatchObject({ x: 500, id: 'rocket', wait: DROP_LIFE });
+
+  const one = createDropField();
+  const k = one.add(0, 0, { id: 'laser', ammo: 6 });
+  one.update(DROP_LIFE - DROP_BLINK - 0.5, 100, 100);
+  expect(dropShown(one.drops[k])).toBe(true);
+  const seen = new Set<boolean>();
+  for (let t = 0; t < 16; t++) { one.update(0.25, 100, 100); if (one.drops[k].live) seen.add(dropShown(one.drops[k])); }
+  expect(seen).toEqual(new Set([true, false]));
+  one.update(2, 100, 100);
+  expect(one.drops[k].live).toBe(false);
+});
+
+test('walking over a drop picks it up once; clear removes the rest', () => {
+  const field = createDropField();
+  field.add(0, 0, { id: 'laser', ammo: 6 });
+  field.add(30, 0, { id: 'smg', ammo: 0 });
+  expect(field.update(0.1, 1, 0)).toMatchObject([{ id: 'laser', ammo: 6 }]);
+  expect(field.update(0.1, 1, 0)).toEqual([]);
+  field.clear();
+  expect(field.drops.some((d) => d.live)).toBe(false);
+});
+
+test('refill adds rounds to an owned gun', () => {
+  const inv = createInventory();
+  inv.pickup('laser');
+  expect(inv.refill('laser', 6)).toBe(weaponById('laser').ammo! + 6);
 });

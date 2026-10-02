@@ -23,7 +23,7 @@ import { createVehicles, type Vehicle } from './walkVehicles';
 import { THEMES, type Theme } from './walkThemes';
 import { createBeacon, createGuide, createMarkers, createMotes, createSparks, type PathPoint } from './walkFx';
 import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type WeaponId } from './walkWeapons';
-import { RARITY_COLOR, autoWeapon, createInventory, createLootField, lootCount, placeLoot, rarityOf, type Point as LootPoint } from './walkLoot';
+import { RARITY_COLOR, autoWeapon, createDropField, createInventory, createLootField, dropShown, lootCount, placeLoot, rarityOf, rollDrop, type LootDrop, type Point as LootPoint } from './walkLoot';
 import { createPickups, createShots } from './walkArsenal';
 import { DIFFICULTIES, DIFFICULTY, FORM_TIME, MAX_ORIGINS, createSiege, createVirus, isDifficulty, isInfected, pickOrigins, pickSpawnSite, storedDifficulty, type Difficulty } from './walkVirus';
 import { FOES, createHorde, type FoeKind } from './walkHorde';
@@ -926,9 +926,10 @@ const mount: MountViewer = (root, arch, env) => {
     clear: clearLine,
     spot: (x, z, min, max) => openSpot(x, z, min, max, 0.6),
     onPlayerHit: (damage, fx, fz, push, from) => hurtPlayer(damage, fx, fz, push, from),
-    onKill: (kind, tag) => {
+    onKill: (kind, tag, x, z) => {
       if (tag) { pilot.onKill(tag); return; }
       kills++;
+      if (kind !== 'boss') dropLoot(kind, x, z);
       if (kind !== 'boss' && tankQuest.kill()) tankArrives();
     },
     onBossDown: () => { bossDown = true; },
@@ -1009,6 +1010,7 @@ const mount: MountViewer = (root, arch, env) => {
     siege.stop();
     horde.setChase(false);
     horde.clear('die');
+    foeDrops.clear();
     curing = 0;
     hideSources();
     guide.setPath(null);
@@ -1320,6 +1322,15 @@ const mount: MountViewer = (root, arch, env) => {
   const loot = createLootField(placeLoot(lootDoors, lootCount(layout.buildings.length), random, lootFree, [[pos.x, pos.z]]), random,
     (taken) => placeLoot(lootDoors, 1, random, lootFree, taken)[0] ?? null);
   const pickups = createPickups(scene, kit, loot.drops);
+  const foeDrops = createDropField();
+  const dropPickups = createPickups(scene, kit, foeDrops.drops);
+  function dropLoot(kind: 'zombie' | 'elite', x: number, z: number) {
+    if (virus.state !== 'spreading' || !['outbreak', 'forming', 'boss'].includes(siege.phase)) return;
+    const roll = rollDrop(kind, WEAPONS.filter((w) => inventory.owns(w.id)).map((w) => w.id), Math.random);
+    if (!roll) return;
+    const at = lootFree(x, z) ? openSpot(x, z, 0, 8, 0.7) : { x, z };
+    if (at) foeDrops.add(at.x, at.z, roll);
+  }
   let aimPitch = 0.55;
   let flyYaw = 0;
   const hud = { alt: '', speed: '', hint: '', bomb: -1, gun: false, lift: 0 };
@@ -2733,17 +2744,29 @@ const mount: MountViewer = (root, arch, env) => {
     shots.update(dt);
     flames.update(dt);
     const grab = onFoot && alive && footY < 1 ? loot.update(dt, pos.x, pos.z) : loot.update(dt, Infinity, Infinity);
-    grab.picked.forEach((d) => {
+    const take = (d: LootDrop) => {
       const w = weaponById(d.id);
+      if (d.ammo) {
+        inventory.refill(d.id, d.ammo);
+        sound.play('pickup');
+        sparks.burst(d.x, 1, d.z, 16);
+        toast(`탄약 +${d.ammo} (${w.name})`);
+        renderWeapons();
+        return;
+      }
       const { fresh, left } = inventory.pickup(d.id);
       const slot = slotKey(WEAPONS.indexOf(w));
       sound.play('pickup');
       sparks.burst(d.x, 1, d.z, 16);
       toast(fresh ? `${w.name} 획득! (${slot})` : `${w.name} 탄약 보충 — ${left}발`);
       if (weapon.id === 'fist') selectWeapon(w, true); else renderWeapons();
-    });
+    };
+    grab.picked.forEach(take);
+    (onFoot && alive && footY < 1 ? foeDrops.update(dt, pos.x, pos.z) : foeDrops.update(dt, Infinity, Infinity)).forEach(take);
     if (grab.picked.length || grab.back.length) loot.drops.forEach((d, k) => pickups.sync(k, d));
+    foeDrops.drops.forEach((d, k) => dropPickups.sync(k, { ...d, live: dropShown(d) }));
     pickups.update(time);
+    dropPickups.update(time);
     rain.update(time, camera.position);
     clearView(camera.position, v.set(pos.x, 1.4 + footY, pos.z));
     composer.render();
@@ -2770,6 +2793,7 @@ const mount: MountViewer = (root, arch, env) => {
     shots.dispose();
     flames.dispose();
     pickups.dispose();
+    dropPickups.dispose();
     coreLight.dispose();
     vehicles.dispose();
     sparks.dispose();
