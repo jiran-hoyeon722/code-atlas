@@ -78,6 +78,12 @@ export function segmentGap(x: number, z: number, ax: number, az: number, bx: num
   return Math.hypot(x - ax - ux * t, z - az - uz * t);
 }
 
+/** Whether (x, z) is within `reach` of the beam (ax, az)–(bx, bz) and ahead of where it starts, never behind the shooter. */
+export function inBeam(x: number, z: number, ax: number, az: number, bx: number, bz: number, reach: number) {
+  if ((x - ax) * (bx - ax) + (z - az) * (bz - az) <= 0) return false;
+  return segmentGap(x, z, ax, az, bx, bz) <= reach;
+}
+
 export interface HeldWeapon {
   readonly id: WeaponId;
   set(id: WeaponId): void;

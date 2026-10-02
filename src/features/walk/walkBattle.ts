@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { spawnRobot, type Robot } from './walkRobot';
 import type { Character } from './walkCharacters';
 import { decay, separation, turnToward, within } from './walkMotion';
-import { RIVAL_HP, damageAt, dealWeapons, segmentGap, splash, type HeldWeapon, type Weapon, type WeaponKit } from './walkWeapons';
+import { RIVAL_HP, damageAt, dealWeapons, inBeam, splash, type HeldWeapon, type Weapon, type WeaponKit } from './walkWeapons';
 
 export const RIVALS = ['김준석', '유남균', '김명제', '박호연'];
 const UNDRESSED = '#9aa0ad';
@@ -180,21 +180,24 @@ export function createBattle(scene: THREE.Scene, url: string, kit: WeaponKit, ho
     if (Math.hypot(dx, dz) < 0.35) return;
     r.heading = turnToward(r.heading, Math.atan2(dx, dz), dt, rate, 9);
   };
-  const hurt = (r: Rival, damage: number, dx: number, dz: number, push: number, stun: number) => {
+  // `interrupt` false: a flame or beam tick only hurts, otherwise ticks every 0.12 s would cancel every attack.
+  const hurt = (r: Rival, damage: number, dx: number, dz: number, push: number, stun: number, interrupt = true) => {
     if (!r.robot || r.down) return;
     const d = Math.hypot(dx, dz) || 1;
     r.hp = Math.max(0, r.hp - damage);
     r.vx = (dx / d) * push;
     r.vz = (dz / d) * push;
-    r.stun = stun;
-    r.pendingHit = 0;
-    r.burst = 0;
+    if (interrupt) {
+      r.stun = stun;
+      r.pendingHit = 0;
+      r.burst = 0;
+    }
     if (r.hp <= 0) {
       r.down = true;
       caught++;
       r.robot.play('Death', 0.1);
       hooks.onCaught(r.name, caught, rivals.length);
-    } else r.robot.play('No', 0.08, true);
+    } else if (interrupt) r.robot.play('No', 0.08, true);
     paintTag(r);
   };
   const nudge = (r: Rival, [sx, sz]: [number, number]) => {
@@ -279,9 +282,9 @@ export function createBattle(scene: THREE.Scene, url: string, kit: WeaponKit, ho
     beam(ax, az, bx, bz, width, damage) {
       let count = 0;
       rivals.forEach((r) => {
-        if (!r.robot || r.down || segmentGap(r.x, r.z, ax, az, bx, bz) > width + 0.45) return;
+        if (!r.robot || r.down || !inBeam(r.x, r.z, ax, az, bx, bz, width + 0.45)) return;
         count++;
-        hurt(r, damage, bx - ax, bz - az, 2, 0.25);
+        hurt(r, damage, bx - ax, bz - az, 2, 0, false);
       });
       return count;
     },

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ease, type Heli } from './walkHeli';
 import type { Sparks } from './walkFx';
 import type { Tracers } from './walkWeapons';
+import { HELI_BOSS_BONUS } from './walkHorde';
 
 export const GUN_COOLDOWN = 0.075;
 export const GUN_DAMAGE = 1;
@@ -74,8 +75,8 @@ export const shakeAt = (distance: number, reach = 80) => Math.max(0, 1 - distanc
 
 export interface HeliArmsHooks {
   surfaceAt: Surface;
-  /** Area damage at a hit point, knocking targets away from (fromX, fromZ). */
-  hit(x: number, y: number, z: number, radius: number, damage: number, fromX: number, fromZ: number): number;
+  /** Area damage at a hit point, knocking targets away from (fromX, fromZ); `bossBonus` multiplies what the giant takes. */
+  hit(x: number, y: number, z: number, radius: number, damage: number, fromX: number, fromZ: number, bossBonus: number): number;
   blast(x: number, y: number, z: number): void;
   sparks: Sparks;
   tracers: Tracers;
@@ -95,8 +96,8 @@ export interface HeliArms {
   /** 0 right after a drop, 1 when the next bomb is ready. */
   readonly bombCharge: number;
   bomb(): boolean;
-  /** A blast with the bomb's flash, smoke and shake; the hero's rockets and grenades go off through here too. */
-  explode(p: Impact, radius?: number, damage?: number): void;
+  /** A blast with the bomb's flash, smoke and shake; the hero's rockets and grenades go off through here too, with `bossBonus` 1. */
+  explode(p: Impact, radius?: number, damage?: number, bossBonus?: number): void;
   update(dt: number, time: number, input: HeliArmsInput): void;
   dispose(): void;
 }
@@ -216,10 +217,10 @@ export function createHeliArms(scene: THREE.Scene, heli: Heli, hooks: HeliArmsHo
     if (d >= GUN_RANGE) return;
     hooks.sparks.burst(end.x, end.y + 0.1, end.z, 3);
     if (Math.random() < 0.6) spawnPuffs(end.x, end.y, end.z, 1, 0.55, 1.2);
-    hooks.hit(end.x, end.y, end.z, GUN_RADIUS, GUN_DAMAGE, heli.root.position.x, heli.root.position.z);
+    hooks.hit(end.x, end.y, end.z, GUN_RADIUS, GUN_DAMAGE, heli.root.position.x, heli.root.position.z, HELI_BOSS_BONUS);
   }
 
-  function explode(p: Impact, radius = BOMB_RADIUS, damage = BOMB_DAMAGE) {
+  function explode(p: Impact, radius = BOMB_RADIUS, damage = BOMB_DAMAGE, bossBonus = HELI_BOSS_BONUS) {
     const blast = blasts.reduce((a, c) => (c.age > a.age ? c : a), blasts[0]);
     blast.age = 0;
     blast.radius = radius;
@@ -231,7 +232,7 @@ export function createHeliArms(scene: THREE.Scene, heli: Heli, hooks: HeliArmsHo
     lightFor = 0.5;
     hooks.sparks.burst(p.x, p.y + 0.5, p.z, 60);
     spawnPuffs(p.x, p.y, p.z, Math.round(radius * 1.6), 1.6 * Math.min(1, radius / 7), radius * 0.7);
-    hooks.hit(p.x, p.y, p.z, radius, damage, p.x, p.z);
+    hooks.hit(p.x, p.y, p.z, radius, damage, p.x, p.z, bossBonus);
     hooks.blast(p.x, p.y, p.z);
   }
 
