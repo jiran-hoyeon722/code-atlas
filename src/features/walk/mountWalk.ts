@@ -935,6 +935,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (!origins.length) return;
     virus.start(origins, r.spread);
     siege.start(r);
+    horde.setChase(r.chase);
     kills = 0;
     bossDown = false;
     bossFormed = false;
@@ -982,6 +983,7 @@ const mount: MountViewer = (root, arch, env) => {
     const last = sources.find((x) => x.site === nearOrigin)?.core.position.clone() ?? coreLight.position.clone();
     virus.cure();
     siege.stop();
+    horde.setChase(false);
     horde.clear('die');
     curing = 0;
     hideSources();
