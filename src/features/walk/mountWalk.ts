@@ -1227,7 +1227,10 @@ const mount: MountViewer = (root, arch, env) => {
     renderCode(src, source, lang);
     $('d-gutter').textContent = source.split('\n').map((_, k) => k + 1).join('\n');
   }
+  let exiting: { t0: number; dur: number; from: THREE.Vector3; fromLook: THREE.Vector3 } | null = null;
   function leave() {
+    // Only pull back if the camera has actually moved toward the door (detail open or mid-flight).
+    if (!reduceMotion && (detailOpen || entering)) exiting = { t0: performance.now(), dur: 650, from: camera.position.clone(), fromLook: lookAt.clone() };
     detailOpen = false;
     entering = null;
     codeRequest++;
@@ -2032,6 +2035,7 @@ const mount: MountViewer = (root, arch, env) => {
     // Last frame's shake must come off first, or the follow lerp would chase it and the jitter would pile up.
     camera.position.sub(shakeOff);
     shakeOff.set(0, 0, 0);
+    if (exiting && (entering || mode !== 'walk' || !alive)) exiting = null;
     if (entering) {
       const b = entering.b;
       doorPoint.set(b.x, 1.9, b.z + b.face * (b.d / 2));
@@ -2075,7 +2079,7 @@ const mount: MountViewer = (root, arch, env) => {
       lookAt.lerp(v.set(hpos.x, hpos.y + 2 - heli.altitude * 0.45, hpos.z).lerp(heliArms.aim, ahead), follow(8, dt));
       camera.lookAt(lookAt);
     } else {
-      $('fade').style.opacity = '0';
+      if (!exiting) $('fade').style.opacity = '0';
       if (auto && now - manualAt > 3000) {
         // Director: trail behind on the move, rise over long trips, swing round a falling pack.
         const far = pilot.remaining > 60;
@@ -2092,8 +2096,17 @@ const mount: MountViewer = (root, arch, env) => {
       orbit(camReach);
       bob += dt * speed * 2.6;
       camPos.y = Math.max(0.6, camPos.y) + (reduceMotion ? 0 : Math.sin(bob) * 0.035 * run);
-      camera.position.lerp(camPos, follow(9, dt));
-      lookAt.lerp(v.set(pos.x, 1.6 + footY * 0.4, pos.z), follow(14, dt));
+      if (exiting) {
+        const t = Math.min(1, (now - exiting.t0) / exiting.dur);
+        const k = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        camera.position.lerpVectors(exiting.from, camPos, k);
+        lookAt.lerpVectors(exiting.fromLook, v.set(pos.x, 1.6 + footY * 0.4, pos.z), k);
+        $('fade').style.opacity = String((1 - t) * 0.55);
+        if (t === 1) exiting = null;
+      } else {
+        camera.position.lerp(camPos, follow(9, dt));
+        lookAt.lerp(v.set(pos.x, 1.6 + footY * 0.4, pos.z), follow(14, dt));
+      }
       camera.lookAt(lookAt);
     }
     if (shake > 0.001 && !reduceMotion) {
