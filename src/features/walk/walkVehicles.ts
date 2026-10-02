@@ -10,6 +10,7 @@ const SPEC = {
 const COUNT = { car: 5, bike: 5 };
 const PAINT = ['#e8554e', '#3ec48a', '#f2a93b', '#4dabf7', '#e36bd0', '#e9ecef', '#845ef7'];
 const RESPAWN_AWAY = 60;
+const EXTRA_MAX = 6;
 
 export interface DriveInput { throttle: number; steer: number; boost: boolean; handbrake: boolean }
 export interface Impact { x: number; z: number; speed: number }
@@ -27,6 +28,8 @@ export interface Vehicles {
   occupied(x: number, z: number, r: number): boolean;
   /** Knocks the driven vehicle back after hitting something outside this module (traffic, people). */
   bounce(factor: number): void;
+  /** Parks one more vehicle at that pose if it fits; past the cap the oldest extra one (not being driven) goes. */
+  add(kind: VehicleKind, x: number, z: number, heading: number): Vehicle | null;
   dispose(): void;
 }
 
@@ -96,19 +99,30 @@ export function createVehicles(scene: THREE.Scene, layout: WalkLayout, blocked: 
     return { x: 0, z: layout.bounds.maxZ - 12, heading: Math.PI };
   };
 
-  type Unit = Vehicle & { parts: ReturnType<typeof buildCar>; spin: number; steerAngle: number; left: boolean };
+  type Unit = Vehicle & { parts: ReturnType<typeof buildCar>; spin: number; steerAngle: number; left: boolean; extra?: boolean };
   let nextId = 0;
   const units: Unit[] = [];
+  const build = (kind: VehicleKind, at: { x: number; z: number; heading: number }) => {
+    const paint = mat(PAINT[Math.floor(random() * PAINT.length)], { metalness: 0.6, roughness: 0.3 });
+    const parts = kind === 'car' ? buildCar(paint) : buildBike(paint);
+    const u: Unit = { id: nextId++, kind, x: at.x, z: at.z, heading: at.heading, speed: 0, lean: 0, group: parts.g, parts, spin: 0, steerAngle: 0, left: false };
+    scene.add(parts.g);
+    units.push(u);
+    return u;
+  };
   if (layout.lanes.length) (['car', 'bike'] as VehicleKind[]).forEach((kind) => {
-    for (let k = 0; k < COUNT[kind]; k++) {
-      const paint = mat(PAINT[Math.floor(random() * PAINT.length)], { metalness: 0.6, roughness: 0.3 });
-      const parts = kind === 'car' ? buildCar(paint) : buildBike(paint);
-      const at = spots();
-      const u: Unit = { id: nextId++, kind, x: at.x, z: at.z, heading: at.heading, speed: 0, lean: 0, group: parts.g, parts, spin: 0, steerAngle: 0, left: false };
-      scene.add(parts.g);
-      units.push(u);
-    }
+    for (let k = 0; k < COUNT[kind]; k++) build(kind, spots());
   });
+  const shared = new Set<unknown>([tire, chrome, glass, head, tail]);
+  const drop = (u: Unit) => {
+    units.splice(units.indexOf(u), 1);
+    scene.remove(u.group);
+    u.group.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return;
+      o.geometry.dispose();
+      if (!shared.has(o.material)) (o.material as THREE.Material).dispose();
+    });
+  };
 
   let driving: Unit | null = null;
   const axis = (u: Vehicle, k: number): [number, number] => [u.x + Math.sin(u.heading) * SPEC[u.kind].half * k, u.z + Math.cos(u.heading) * SPEC[u.kind].half * k];
@@ -159,6 +173,19 @@ export function createVehicles(scene: THREE.Scene, layout: WalkLayout, blocked: 
     occupied: (x, z, r) => units.some((u) => touches(u, x, z, r)),
     bounce(factor) {
       if (driving) driving.speed *= factor;
+    },
+    add(kind, x, z, heading) {
+      const probe = { kind, x, z, heading } as Unit;
+      if ([-1, 0, 1].some((k) => {
+        const [ax, az] = axis(probe, k);
+        return blocked(ax, az, SPEC[kind].radius) || units.some((o) => touches(o, ax, az, SPEC[kind].radius));
+      })) return null;
+      const extras = units.filter((u) => u.extra && u !== driving);
+      if (extras.length >= EXTRA_MAX) drop(extras[0]);
+      const u = build(kind, { x, z, heading });
+      u.extra = true;
+      place(u);
+      return u;
     },
     update(dt, input, player) {
       units.forEach((u) => {

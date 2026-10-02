@@ -30,6 +30,7 @@ import { FOES, createHorde, type FoeKind } from './walkHorde';
 import { decay, follow, reachAlong as reachAlongLine, shakeOffset, turnToward } from './walkMotion';
 import { SHELL, TANK, createTank, createTankQuest, tankDamage, tankQuestText } from './walkTank';
 import { QUEST, QUEST_KEY, createQuest, type QuestId } from './walkQuest';
+import { parseCheat } from './walkCheat';
 import { SOUND_KEY, createSound } from './walkSound';
 import { characterById, dealCharacters, type Character } from './walkCharacters';
 import { openPicker } from './walkPicker';
@@ -82,6 +83,7 @@ const HELP = [
   ['헬기', [['W S', '앞으로 · 뒤로'], ['A D · 마우스', '방향 돌리기'], ['Q E', '옆으로 이동'], ['Space · C (Ctrl · X)', '올라가기 · 내려가기'], ['Shift', '가속'], ['F · 클릭', '기관총 (누르고 있기)'], ['G · 우클릭', '폭탄 떨어뜨리기'], ['마우스 위아래', '조준점 가깝게 · 멀리'], ['H', '천천히 내려가 착륙 (Space 로 취소)']]],
   ['탱크', [['W S', '앞으로 · 뒤로 (무거워서 천천히 붙어요)'], ['A D', '차체 돌리기'], ['마우스', '포탑 돌리기 — 보는 쪽을 조준해요'], ['F · 클릭', '포격 — 넓게 터지고 1.2초마다 장전'], ['몸통', '좀비는 깔아뭉개고 엘리트는 크게 다쳐요. 탱크 안에선 공격받지 않아요'], ['E', '타기 · 내리기 — 치료 · 건물 · 옥상은 내려서 해요']]],
   ['자동 사냥', [['O', '자동 사냥 켜기 · 끄기 — 많이 쓰이는 뿌리 파일에서 출발해, 그 파일을 쓰는 코드를 따라가며 배워요'], ['몬스터', '그 파일에 위험 신호(순환 참조 · 역방향 의존 · 복잡한 함수 등)가 있을 때만 나타나요'], ['이동 · 행동 키', '누르면 바로 직접 조종으로 돌아와요'], ['드래그 · 휠', '잠깐 시점 돌리기 (자동 사냥은 계속돼요)']]],
+  ['치트키', [['`', '치트키 입력창 열기'], ['tank · helicopter · car · motorcycle', '탱크 · 헬기 · 자동차 · 오토바이 소환']]],
   ['화면', [['/', '파일 이름으로 순간 이동'], ['T', '날씨 바꾸기'], ['M', '소리 켜기 · 끄기'], ['V', '바이러스 모드'], ['O', '자동 사냥'], ['?', '이 도움말 · 게임 가이드']]],
 ] as const;
 
@@ -174,6 +176,7 @@ const MARKUP = `
 <div class="wk-hurt" data-el="hurt"></div>
 <div class="wk-battle glass"><div class="hp"><i data-el="hp"></i></div><div class="rivals" data-el="rivals"></div></div>
 <div class="wk-toast" data-el="toast"></div>
+<input class="wk-cheat glass" data-el="cheat" type="text" placeholder="치트키 입력 (Enter)" autocomplete="off" spellcheck="false" aria-label="치트키" hidden>
 <section class="wk-detail glass" data-el="detail" aria-label="건물 상세">
     <div class="head"><div class="title"><b data-el="d-name"></b><div class="path" data-el="d-path"></div></div><button data-el="d-close">나가기 (Esc)</button></div>
     <div class="metrics" data-el="d-metrics"></div>
@@ -1461,11 +1464,17 @@ const mount: MountViewer = (root, arch, env) => {
       }
     return null;
   }
-  function tankArrives() {
+  // A cheat tank summoned outside an outbreak is not the quest's, so the outbreak ending leaves it be.
+  let tankStays = false;
+  function dropTank(min = 10) {
     // Never drop it on the player: look farther out, and only as a last resort settle for a spot it may need to drive out of.
-    const at = tankSpot() ?? tankSpot(46, Math.max(80, span), false) ?? (() => { const p = freeSpotNear(pos.x, pos.z, 30, 80); return { x: p.x, z: p.z, h: 0 }; })();
+    const at = tankSpot(min) ?? tankSpot(46, Math.max(80, span), false) ?? (() => { const p = freeSpotNear(pos.x, pos.z, 30, 80); return { x: p.x, z: p.z, h: 0 }; })();
     tank.spawn(at.x, at.z, at.h);
     sound.play('ding');
+  }
+  function tankArrives() {
+    tankStays = false;
+    dropTank();
     toast('탱크가 도착했어요! 표시된 곳에서 E 로 탑승', 5000);
   }
   function boardTank() {
@@ -1496,6 +1505,7 @@ const mount: MountViewer = (root, arch, env) => {
     updatePrompt();
   }
   function removeTank() {
+    if (tankStays) return;
     if (mode === 'tank') leaveTank();
     tank.hide();
     nearTank = false;
@@ -1520,6 +1530,7 @@ const mount: MountViewer = (root, arch, env) => {
     leaveTank();
     tank.hide();
     nearTank = false;
+    tankStays = false;
     tankQuest.wreck();
     sound.play('boom', 1);
     shake = Math.max(shake, 1);
@@ -1527,7 +1538,7 @@ const mount: MountViewer = (root, arch, env) => {
     flames.burst(x, 1.2, z, 120, 5, 4, 1.2);
     puffs.burst(x, 1, z, 50, 6, 1.5, 1.6);
     hurt = 1;
-    toast('탱크가 부서졌어요! 밖으로 튕겨 나왔어요 — 이번 확산에는 탱크가 다시 오지 않아요', 5000);
+    toast(tankQuest.wrecked ? '탱크가 부서졌어요! 밖으로 튕겨 나왔어요 — 이번 확산에는 탱크가 다시 오지 않아요' : '탱크가 부서졌어요! 밖으로 튕겨 나왔어요', 5000);
     renderVirus();
   }
   const tankHud = { bar: -1, hp: -1 };
@@ -1919,6 +1930,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (e.key === 'Escape' && (detailOpen || entering)) { leave(); return; }
     if (detailOpen || entering) return;
     if (e.key === '?') { setHelp(true); return; }
+    if (e.code === 'Backquote') { e.preventDefault(); openCheat(); return; }
     const isE = e.key === 'e' || e.key === 'E' || e.key === 'ㄷ';
     if (e.code === 'KeyM') { toggleSound(); return; }
     if (e.code === 'KeyT') { applyTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]); return; }
@@ -2027,6 +2039,66 @@ const mount: MountViewer = (root, arch, env) => {
     yaw = heading + Math.PI;
     (e.target as HTMLInputElement).blur();
   });
+
+  // ---- cheat console: ` opens a box so typed letters don't drive the game keys ----
+  const cheatBox = $<HTMLInputElement>('cheat');
+  function openCheat() {
+    if (auto) stopAuto();
+    keys.clear();
+    triggerHeld = false;
+    if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+    cheatBox.value = '';
+    cheatBox.hidden = false;
+    cheatBox.focus();
+  }
+  const closeCheat = () => {
+    cheatBox.hidden = true;
+    if (document.activeElement === cheatBox) cheatBox.blur();
+  };
+  function cheatVehicle(kind: 'car' | 'bike') {
+    const turn0 = Math.random() * Math.PI * 2;
+    for (let r = 4; r <= 24; r += 1.5)
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+        const x = pos.x + Math.cos(turn0 + a) * r, z = pos.z + Math.sin(turn0 + a) * r;
+        if (x < bounds.minX + 3 || x > bounds.maxX - 3 || z < bounds.minZ + 3 || z > bounds.maxZ - 3) continue;
+        for (const h of [Math.PI / 2, 0]) if (vehicles.add(kind, x, z, h)) return true;
+      }
+    return false;
+  }
+  function runCheat(text: string) {
+    const cheat = parseCheat(text);
+    if (!cheat) { toast('알 수 없는 치트키예요'); return; }
+    if (mode !== 'walk') { toast('탈것에서 내린 뒤 써 주세요'); return; }
+    if (cheat === 'tank') {
+      tankStays = virus.state !== 'spreading';
+      dropTank(6);
+      toast('치트: 탱크 소환! E 로 탑승', 4000);
+    } else if (cheat === 'helicopter') {
+      const spot = freeSpotNear(pos.x, pos.z, 9, 30);
+      heli.arrive(spot.x, spot.z, Math.atan2((bounds.minX + bounds.maxX) / 2 - spot.x, (bounds.minZ + bounds.maxZ) / 2 - spot.z));
+      sound.play('ding');
+      toast('치트: 헬기 도착 — H 로 탑승', 4000);
+    } else {
+      if (!cheatVehicle(cheat === 'car' ? 'car' : 'bike')) { toast('주변에 세울 자리가 없어요 — 넓은 길에서 다시 써 주세요'); return; }
+      sound.play('ding');
+      toast(cheat === 'car' ? '치트: 자동차 소환! E 로 운전' : '치트: 오토바이 소환! E 로 운전', 4000);
+    }
+  }
+  listen(cheatBox, 'keydown', (e) => {
+    if (e.isComposing) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      const text = cheatBox.value;
+      closeCheat();
+      if (text.trim()) runCheat(text);
+    } else if (e.key === 'Escape' || e.code === 'Backquote') {
+      e.preventDefault();
+      e.stopPropagation();
+      closeCheat();
+    }
+  });
+  listen(cheatBox, 'blur', () => { cheatBox.hidden = true; });
 
   // ---- minimap ----
   const map = $<HTMLCanvasElement>('map');
