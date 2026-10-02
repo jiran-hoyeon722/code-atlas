@@ -23,8 +23,8 @@ import { createVehicles, type Vehicle } from './walkVehicles';
 import { THEMES, type Theme } from './walkThemes';
 import { createBeacon, createGuide, createMarkers, createMotes, createSparks, type PathPoint } from './walkFx';
 import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type WeaponId } from './walkWeapons';
-import { DIFFICULTIES, DIFFICULTY, FORM_TIME, createSiege, createVirus, isDifficulty, isInfected, pickOrigin, pickSpawnSite, type Difficulty } from './walkVirus';
-import { HELI_BOSS_BONUS, createHorde } from './walkHorde';
+import { DIFFICULTIES, DIFFICULTY, FORM_TIME, MAX_ORIGINS, createSiege, createVirus, isDifficulty, isInfected, pickOrigins, pickSpawnSite, storedDifficulty, type Difficulty } from './walkVirus';
+import { FOES, HELI_BOSS_BONUS, createHorde } from './walkHorde';
 import { decay, follow, shakeOffset, turnToward } from './walkMotion';
 import { QUEST, QUEST_KEY, createQuest, type QuestId } from './walkQuest';
 import { SOUND_KEY, createSound } from './walkSound';
@@ -69,18 +69,20 @@ const HELP = [
   ['이동', [['W A S D', '걷기'], ['Shift', '달리기'], ['Space', '점프'], ['클릭', '마우스로 시점 돌리기 (Esc 로 풀기)'], ['휠', '카메라 거리']]],
   ['전투', [['1 ~ 6', '무기 고르기'], ['F · 클릭', '공격 (기관단총은 누르고 있기)'], ['G', '감정 표현']]],
   ['행동', [['E', '건물 들어가기 · 차 타기 · 바이러스 치료'], ['H', '헬기 타기 (라이벌 4명을 다 잡으면)']]],
-  ['바이러스', [['V', '바이러스 모드 시작 · 그만두기 (괴물이 나타나면 못 그만둬요)'], ['하 · 중 · 상', '난이도 — 하는 바닥 화살표 안내, 상은 빠른 확산과 좀비 떼'], ['E (근원지 앞)', '백신 주입 — 도시가 다 감염되기 전에'], ['괴물', '다 감염되면 나타나요. 시간 안에 못 잡으면 레포가 무너지고 분석 기록이 지워져요']]],
+  ['바이러스', [['V', '바이러스 모드 시작 · 그만두기 (괴물이 나타나면 못 그만둬요)'], ['쉬움 ~ 신', '난이도 — 쉬움은 근원지 1곳과 바닥 화살표, 어려울수록 근원지가 늘고(신은 5곳) 빨리 번지며 좀비가 세져요'], ['E (근원지 앞)', '백신 주입 — 근원지를 모두 치료하면 클리어'], ['괴물', '도시가 다 감염되면 나타나요. 처치하면 클리어'], ['10분', '시작부터 10분 안에 끝내지 못하면 레포가 무너지고 분석 기록이 지워져요']]],
   ['헬기', [['W S', '앞으로 · 뒤로'], ['A D · 마우스', '방향 돌리기'], ['Q E', '옆으로 이동'], ['Space · C (Ctrl · X)', '올라가기 · 내려가기'], ['Shift', '가속'], ['F · 클릭', '기관총 (누르고 있기)'], ['G · 우클릭', '폭탄 떨어뜨리기'], ['마우스 위아래', '조준점 가깝게 · 멀리'], ['H', '천천히 내려가 착륙 (Space 로 취소)']]],
   ['자동 사냥', [['O', '자동 사냥 켜기 · 끄기 — 많이 쓰이는 뿌리 파일에서 출발해, 그 파일을 쓰는 코드를 따라가며 배워요'], ['몬스터', '그 파일에 위험 신호(순환 참조 · 역방향 의존 · 복잡한 함수 등)가 있을 때만 나타나요'], ['이동 · 행동 키', '누르면 바로 직접 조종으로 돌아와요'], ['드래그 · 휠', '잠깐 시점 돌리기 (자동 사냥은 계속돼요)']]],
   ['화면', [['/', '파일 이름으로 순간 이동'], ['T', '날씨 바꾸기'], ['M', '소리 켜기 · 끄기'], ['V', '바이러스 모드'], ['O', '자동 사냥'], ['?', '이 도움말 · 게임 가이드']]],
 ] as const;
 
 const DIFF_HINT: Record<Difficulty, string> = {
-  easy: '하 — 바닥에 근원지로 가는 형광 화살표가 보여요',
-  normal: '중 — 보통 속도, 화살표 없음',
-  hard: '상 — 빨리 번지고 좀비가 빨리 생겨요, 화살표 없음',
+  easy: '쉬움 — 근원지 1곳, 바닥에 근원지로 가는 형광 화살표가 보여요',
+  normal: '보통 — 근원지 2곳, 좀비가 조금 더 세요, 화살표 없음',
+  hard: '어려움 — 근원지 3곳, 빨리 번지고 좀비 떼가 몰려와요',
+  hell: '지옥 — 근원지 4곳, 아주 빨리 번지고 좀비와 엘리트가 훨씬 세요',
+  god: '신 — 근원지 5곳, 100초 만에 도시가 다 감염돼요. 버틸 수 있다면',
 };
-const VIRUS_NOTE = '하늘로 솟은 초록 빛기둥이 근원지예요. 건물 앞에서 <b>E</b> 로 백신을 넣으세요. 감염된 건물은 코드를 볼 수 없고 차도 끊겨요.';
+const VIRUS_NOTE = '하늘로 솟은 초록 빛기둥이 근원지예요. 근원지마다 건물 앞에서 <b>E</b> 로 백신을 넣어야 끝나요. <b>10분</b> 안에 못 끝내면 레포가 무너져요.';
 const GUIDE_NOTE = ' 바닥의 형광 화살표를 따라가세요.';
 
 const MARKUP = `
@@ -98,9 +100,10 @@ const MARKUP = `
     <div class="tips"><b>WASD</b> 이동 · <b>클릭</b> 시점 · <b>F</b> 공격 · <b>E</b> 행동 · <b>1~6</b> 무기 · <b>?</b> 전체 조작법</div>
 </div>
 <div class="wk-virus glass" data-el="virus" hidden>
-    <div class="v-head">${VIRUS_ICON}<b data-el="v-title">바이러스 확산 중</b><span data-el="v-time">00:00</span></div>
+    <div class="v-head">${VIRUS_ICON}<b data-el="v-title">바이러스 확산 중</b><span data-el="v-time" title="남은 시간 — 0이 되면 레포가 무너져요">10:00</span></div>
     <div class="v-bar"><i data-el="v-bar"></i></div>
     <div class="v-row"><span>감염된 건물</span><b data-el="v-count"></b></div>
+    <div class="v-row"><span>치료한 근원지</span><b data-el="v-origins"></b></div>
     <div class="v-row"><span>근원지 신호</span><span class="signal" data-el="v-signal"><i></i><i></i><i></i><i></i><i></i></span></div>
     <div class="v-row"><span>난이도</span><b data-el="v-diff-label"></b></div>
     <div class="v-row"><span>처치한 바이러스</span><b data-el="v-kills">0</b></div>
@@ -411,7 +414,7 @@ const mount: MountViewer = (root, arch, env) => {
   const sinkAttr = new THREE.InstancedBufferAttribute(aSink, 1);
   sinkAttr.setUsage(THREE.DynamicDrawUsage);
   bgeo.setAttribute('aSink', sinkAttr);
-  const uniforms = { uFog: { value: fogColor }, uFocus: { value: -1 }, uTime: { value: 0 }, uDay: { value: 0 }, uLit: { value: 0.5 }, uSunDir: { value: moonDir }, uSky: { value: new THREE.Color() }, uOrigin: { value: -1 } };
+  const uniforms = { uFog: { value: fogColor }, uFocus: { value: -1 }, uTime: { value: 0 }, uDay: { value: 0 }, uLit: { value: 0.5 }, uSunDir: { value: moonDir }, uSky: { value: new THREE.Color() }, uOrigins: { value: Array.from({ length: MAX_ORIGINS }, () => -1) } };
   const bmat = keep(new THREE.ShaderMaterial({ vertexShader: BUILDING_VERT, fragmentShader: BUILDING_FRAG, uniforms }));
   const buildings = new THREE.InstancedMesh(bgeo, bmat, Math.max(1, pc));
   buildings.count = pc;
@@ -807,27 +810,43 @@ const mount: MountViewer = (root, arch, env) => {
   const diffKey = 'code-atlas.walk.virus-difficulty';
   let difficulty: Difficulty = 'normal';
   try {
-    const stored = localStorage.getItem(diffKey);
-    if (isDifficulty(stored)) difficulty = stored;
+    difficulty = storedDifficulty(localStorage.getItem(diffKey));
   } catch { /* storage may be blocked */ }
   let curing = 0;
-  let nearOrigin = false;
+  /** The uncured origin the player stands at, or -1. */
+  let nearOrigin = -1;
+  let curingAt = -1;
   let kills = 0;
   let bossDown = false;
   let bossFormed = false;
   let collapsed = false;
   let closedCount = 0;
-  // On 상 the minimap only rings the neighbourhood, not the building itself.
-  const mapHint = { x: 0, z: 0, fuzz: 0 };
-  const core = new THREE.Group();
   const coreMat = glow('#39ff7a', 2.6);
-  const coreShell = new THREE.Mesh(keep(new THREE.IcosahedronGeometry(0.75, 1)), keep(new THREE.MeshBasicMaterial({ color: new THREE.Color('#39ff7a').multiplyScalar(1.6), wireframe: true })));
-  core.add(new THREE.Mesh(keep(new THREE.IcosahedronGeometry(0.38, 0)), coreMat), coreShell);
+  const coreGeo = keep(new THREE.IcosahedronGeometry(0.38, 0));
+  const shellGeo = keep(new THREE.IcosahedronGeometry(0.75, 1));
+  const shellMat = keep(new THREE.MeshBasicMaterial({ color: new THREE.Color('#39ff7a').multiplyScalar(1.6), wireframe: true }));
+  // One marker per possible origin. From 어려움 up the minimap only rings each origin's neighbourhood, not the building itself.
+  const sources = Array.from({ length: MAX_ORIGINS }, () => {
+    const core = new THREE.Group();
+    const shell = new THREE.Mesh(shellGeo, shellMat);
+    core.add(new THREE.Mesh(coreGeo, coreMat), shell);
+    core.visible = false;
+    scene.add(core);
+    return { site: -1, core, shell, pillar: createBeacon(scene, BEAM_VERT, BEAM_FRAG), hint: { x: 0, z: 0, fuzz: 0 } };
+  });
+  // A single light follows the nearest live origin; a light per origin would cost every lit material in the city.
   const coreLight = new THREE.PointLight('#39ff7a', 0, 18, 1.6);
-  core.add(coreLight);
-  core.visible = false;
-  scene.add(core);
-  const beacon = createBeacon(scene, BEAM_VERT, BEAM_FRAG);
+  scene.add(coreLight);
+  const liveSources = () => sources.filter((src) => src.site >= 0 && virus.active.includes(src.site));
+  const syncOrigins = () => {
+    const live = liveSources();
+    uniforms.uOrigins.value = sources.map((_, k) => live[k]?.site ?? -1);
+  };
+  const hideSource = (src: (typeof sources)[number]) => {
+    src.site = -1;
+    src.core.visible = false;
+    src.pillar.hide();
+  };
   const guide = createGuide(scene);
   const energy = createMotes(scene, 900, new THREE.Color('#5dff8f').multiplyScalar(2.2), 0.35, true);
   const dust = createMotes(scene, 700, new THREE.Color('#8a8778'), 1.6, false);
@@ -853,58 +872,93 @@ const mount: MountViewer = (root, arch, env) => {
     onQuake: (x, z) => { shake = Math.max(shake, Math.max(0.25, 1 - Math.hypot(x - pos.x, z - pos.z) / 60)); },
   });
   const originBuilding = () => (virus.origin >= 0 ? layout.buildings[virus.origin] : null);
+  const nearestOrigin = () => {
+    let best: WalkBuilding | null = null;
+    for (const k of virus.active) {
+      const b = layout.buildings[k];
+      if (!best || gap(b, pos.x, pos.z) < gap(best, pos.x, pos.z)) best = b;
+    }
+    return best;
+  };
+  const foeStyle = (kind: 'zombie' | 'elite' | 'boss') => {
+    const m = rule().foe;
+    return { hp: FOES[kind].hp * m.hp, speed: m.speed, damage: m.damage };
+  };
   const buildingInfected = (b: WalkBuilding | null) => !!b && virus.state !== 'off' && isInfected(virus.levels[indexOf.get(b) ?? -1] ?? 0);
   const nodeInfected = (node: number) => buildingInfected(byNode.get(node) ?? null);
   const rule = () => siege.rule;
   function startVirus() {
-    const o = pickOrigin(sites, { x: pos.x, z: pos.z }, Math.random);
-    if (o < 0) return;
     const r = DIFFICULTY[difficulty];
-    virus.start(o, r.spread);
+    const origins = pickOrigins(sites, { x: pos.x, z: pos.z }, r.origins, Math.random);
+    if (!origins.length) return;
+    virus.start(origins, r.spread);
     siege.start(r);
     kills = 0;
     bossDown = false;
     bossFormed = false;
     horde.warm(r.zombieCap + r.eliteCap + 1);
-    const b = layout.buildings[o];
-    core.position.set(b.x, 1.6, b.z + b.face * (b.d / 2 + 1.4));
-    core.visible = true;
+    const fuzzy = DIFFICULTIES.indexOf(difficulty) >= DIFFICULTIES.indexOf('hard');
+    sources.forEach((src, k) => {
+      const o = origins[k];
+      if (o === undefined) { hideSource(src); return; }
+      const b = layout.buildings[o];
+      src.site = o;
+      src.core.position.set(b.x, 1.6, b.z + b.face * (b.d / 2 + 1.4));
+      src.core.visible = true;
+      src.pillar.show(b.x, b.z, b.h + ridge(b) + 0.16);
+      const a = Math.random() * Math.PI * 2;
+      const off = fuzzy ? 14 + Math.random() * 14 : 0;
+      Object.assign(src.hint, { x: b.x + Math.cos(a) * off, z: b.z + Math.sin(a) * off, fuzz: off });
+    });
     coreLight.intensity = 10;
-    beacon.show(b.x, b.z, b.h + ridge(b) + 0.16);
-    uniforms.uOrigin.value = o;
-    const a = Math.random() * Math.PI * 2;
-    const off = difficulty === 'hard' ? 14 + Math.random() * 14 : 0;
-    Object.assign(mapHint, { x: b.x + Math.cos(a) * off, z: b.z + Math.sin(a) * off, fuzz: off });
-    toast(r.guide ? '바이러스가 퍼지기 시작했어요! 바닥의 형광 화살표를 따라 근원지로 가서 E 로 치료하세요' : '바이러스가 퍼지기 시작했어요! 초록 빛기둥이 솟은 근원지 건물 앞에서 E 로 치료하세요', 5000);
+    syncOrigins();
+    const where = origins.length > 1 ? ` ${origins.length}곳에서` : '';
+    toast(r.guide ? `바이러스가${where} 퍼지기 시작했어요! 바닥의 형광 화살표를 따라 근원지로 가서 E 로 치료하세요 — 10분 안에` : `바이러스가${where} 퍼지기 시작했어요! 초록 빛기둥이 솟은 근원지를 모두 찾아 E 로 치료하세요 — 10분 안에`, 5000);
+    renderVirus();
+  }
+  function hideSources() {
+    sources.forEach(hideSource);
+    coreLight.intensity = 0;
+    syncOrigins();
+  }
+  function cureSource(site: number) {
+    const src = sources.find((x) => x.site === site);
+    const at = src ? src.core.position.clone() : new THREE.Vector3(layout.buildings[site].x, 1.6, layout.buildings[site].z);
+    if (virus.active.length <= 1) { endVirus(true); return; }
+    virus.cureOrigin(site);
+    curing = 0;
+    if (src) hideSource(src);
+    syncOrigins();
+    sparks.burst(at.x, 1.6, at.z, 40);
+    energy.burst(at.x, 1.6, at.z, 60, 8, 4, 1.4);
+    toast(`근원지 치료! 남은 근원지 ${virus.active.length}곳 — 초록 빛기둥을 찾아가세요`, 4000);
     renderVirus();
   }
   function endVirus(cured: boolean, byBoss = false) {
     const seconds = virus.elapsed;
     const saved = virus.infected;
+    const last = sources.find((x) => x.site === nearOrigin)?.core.position.clone() ?? coreLight.position.clone();
     virus.cure();
     siege.stop();
     horde.clear('die');
     curing = 0;
-    core.visible = false;
-    coreLight.intensity = 0;
-    beacon.hide();
+    hideSources();
     guide.setPath(null);
-    uniforms.uOrigin.value = -1;
     if (byBoss) {
       const b = horde.boss;
       if (b) { energy.burst(b.x, 8, b.z, 200, 22, 6, 1.8); sparks.burst(b.x, 4, b.z, 120); }
       shake = Math.max(shake, 1);
       toast(`초대형 바이러스 처치! 레포를 지켜냈어요 — 도시가 되살아나요 (${clock(seconds)})`, 6000);
     } else if (cured) {
-      sparks.burst(core.position.x, 1.6, core.position.z, 60);
-      energy.burst(core.position.x, 1.6, core.position.z, 80, 8, 4, 1.4);
+      sparks.burst(last.x, 1.6, last.z, 60);
+      energy.burst(last.x, 1.6, last.z, 80, 8, 4, 1.4);
       toast(`바이러스 퇴치! ${clock(seconds)} 만에 건물 ${fmt(saved)}개를 되살렸어요`, 5000);
     }
     renderVirus();
   }
   const toggleVirus = () => {
     if (auto) { toast('자동 사냥 중에는 바이러스 모드를 쓸 수 없어요 — O 로 자동 사냥을 끄세요'); return; }
-    if (virus.state === 'spreading' && !siege.cancellable) { toast('괴물을 처치해야 끝나요'); return; }
+    if (virus.state === 'spreading' && !siege.cancellable) { toast(siege.phase === 'collapsing' || siege.phase === 'over' ? '레포가 무너지고 있어요…' : '괴물을 처치해야 끝나요'); return; }
     if (virus.state === 'spreading') endVirus(false);
     else if (virus.state === 'off') startVirus();
   };
@@ -922,7 +976,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (bar !== bossHud.bar) { bossHud.bar = bar; $('b-bar').style.width = `${bar}%`; }
     const time = phase === 'boss' ? clock(Math.ceil(siege.timeLeft)) : '';
     if (time !== bossHud.time) { bossHud.time = time; $('b-time').textContent = time; }
-    el.classList.toggle('urgent', phase === 'boss' && siege.timeLeft < 20);
+    el.classList.toggle('urgent', phase === 'boss' && siege.timeLeft < 60);
   }
   function renderDifficulty() {
     const locked = virus.state !== 'off';
@@ -943,14 +997,16 @@ const mount: MountViewer = (root, arch, env) => {
     if (!on) return;
     const total = layout.buildings.length;
     $('v-title').textContent = siege.phase === 'outbreak' ? '바이러스 확산 중' : '도시 전체 감염';
-    $('v-time').textContent = clock(virus.elapsed);
+    $('v-time').textContent = clock(Math.ceil(siege.timeLeft));
+    $('virus').classList.toggle('urgent', siege.timeLeft < 60);
     $('v-count').textContent = `${fmt(virus.infected)} / ${fmt(total)}`;
+    $('v-origins').textContent = `${virus.origins.length - virus.active.length} / ${virus.origins.length}`;
     $('v-bar').style.width = `${(virus.infected / Math.max(1, total)) * 100}%`;
     $('v-diff-label').textContent = rule().label;
     $('v-kills').textContent = fmt(kills);
     const note = VIRUS_NOTE + (rule().guide ? GUIDE_NOTE : '');
     if ($('v-note').dataset.note !== note) { $('v-note').dataset.note = note; $('v-note').innerHTML = note; }
-    const b = originBuilding();
+    const b = nearestOrigin();
     const strength = b ? Math.max(0, 1 - Math.hypot(b.x - pos.x, b.z - pos.z) / Math.max(40, span * 0.8)) : 0;
     const bars = Math.max(1, Math.ceil(strength * 5));
     $('v-signal').querySelectorAll('i').forEach((el, k) => el.classList.toggle('on', k < bars));
@@ -973,13 +1029,14 @@ const mount: MountViewer = (root, arch, env) => {
         if (k < 0) return;
         const door = frontOf(layout.buildings[k]);
         const at = openSpot(door.x, door.z, 0, 8, 0.6);
-        if (at) horde.spawn('zombie', at.x, at.z);
+        if (at) horde.spawn('zombie', at.x, at.z, foeStyle('zombie'));
       } else if (ev === 'elite') {
-        const b = originBuilding();
-        if (!b) return;
+        const live = virus.active;
+        if (!live.length) return;
+        const b = layout.buildings[live[Math.floor(Math.random() * live.length)]];
         const door = frontOf(b);
         const at = openSpot(door.x, door.z, 2, 14, 1.2);
-        if (at) horde.spawn('elite', at.x, at.z);
+        if (at) horde.spawn('elite', at.x, at.z, foeStyle('elite'));
       }
     });
   }
@@ -988,7 +1045,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (!b) return;
     const door = frontOf(b);
     const at = openSpot(door.x, door.z, 0, 40, 3.2) ?? door;
-    bossFormed = horde.formBoss(at.x, at.z, FORM_TIME * 0.85);
+    bossFormed = horde.formBoss(at.x, at.z, FORM_TIME * 0.85, foeStyle('boss'));
   }
   // Collapse: each building sinks in turn from the origin outwards, dragging its roof parts with it.
   const sinkOf = new Float32Array(layout.buildings.length);
@@ -1138,7 +1195,7 @@ const mount: MountViewer = (root, arch, env) => {
     else if (mode === 'walk' && alive && !detailOpen && !entering) {
       const hpos = heli.root.position;
       if (curing > 0) html = `백신 주입 중… ${Math.round((curing / CURE_TIME) * 100)}% — 자리를 지키세요`;
-      else if (nearOrigin) html = '<b>E</b> 백신 주입 — 바이러스 근원지를 찾았어요!';
+      else if (nearOrigin >= 0) html = '<b>E</b> 백신 주입 — 바이러스 근원지를 찾았어요!';
       else if (heli.state === 'parked' && Math.hypot(hpos.x - pos.x, hpos.z - pos.z) < 7) html = '<b>H</b> 헬기 타기';
       else if (nearVehicle) html = `<b>E</b> 운전 — ${nearVehicle.kind === 'car' ? '자동차' : '오토바이'}`;
       else if (nearCar) html = `<b>E</b> 탑승 — ${name(nearCar.f)} → ${name(nearCar.t)}`;
@@ -1203,7 +1260,7 @@ const mount: MountViewer = (root, arch, env) => {
     updatePrompt();
   }
   function interact() {
-    if (nearOrigin) { if (curing <= 0) curing = 0.001; updatePrompt(); }
+    if (nearOrigin >= 0) { if (curing <= 0) { curing = 0.001; curingAt = nearOrigin; } updatePrompt(); }
     else if (nearVehicle) driveVehicle(nearVehicle);
     else if (nearCar) hitch(nearCar);
     else if (focus && buildingInfected(focus)) toast('바이러스에 잠식된 건물은 코드를 볼 수 없어요 — 근원지를 치료하면 다시 열려요');
@@ -1676,10 +1733,10 @@ const mount: MountViewer = (root, arch, env) => {
       mapCtx.fillStyle = `rgba(90, 255, 140, ${0.3 + level * 0.7})`;
       mapCtx.fillRect(x, y, Math.max(1.5, (b.w / span) * 200), Math.max(1.5, (b.d / span) * 200));
     });
-    if (virus.state === 'spreading' && siege.phase === 'outbreak') {
-      const [hx, hy] = toMap(mapHint.x, mapHint.z);
+    if (virus.state === 'spreading' && siege.phase === 'outbreak') liveSources().forEach(({ hint }) => {
+      const [hx, hy] = toMap(hint.x, hint.z);
       const t = (performance.now() / 1000 * 0.9) % 1;
-      const r0 = 4 + (mapHint.fuzz / span) * 200;
+      const r0 = 4 + (hint.fuzz / span) * 200;
       mapCtx.lineWidth = 2;
       mapCtx.strokeStyle = 'rgba(57, 255, 122, .9)';
       mapCtx.beginPath();
@@ -1689,7 +1746,7 @@ const mount: MountViewer = (root, arch, env) => {
       mapCtx.beginPath();
       mapCtx.arc(hx, hy, r0 + 3 + t * 18, 0, Math.PI * 2);
       mapCtx.stroke();
-    }
+    });
     horde.positions().forEach((f) => {
       const [x, y] = toMap(f.x, f.z);
       mapCtx.fillStyle = f.kind === 'zombie' ? '#b6ff4a' : '#39ff7a';
@@ -1789,7 +1846,7 @@ const mount: MountViewer = (root, arch, env) => {
     renderer.toneMappingExposure = t.exposure;
     bloom.strength = t.bloom;
     uniforms.uDay.value = t.day;
-    beacon.tone(t.day);
+    sources.forEach((src) => src.pillar.tone(t.day));
     uniforms.uLit.value = t.lit;
     uniforms.uSky.value.set(t.horizon);
     lampsOn = t.lamps;
@@ -1838,7 +1895,7 @@ const mount: MountViewer = (root, arch, env) => {
   let guideClock = 0;
   let trafficClock = 0;
   const guidePath = (): PathPoint[] | null => {
-    const o = originBuilding();
+    const o = nearestOrigin();
     if (!o) return null;
     const near = layout.buildings.reduce((best, b) => (gap(b, pos.x, pos.z) < gap(best, pos.x, pos.z) ? b : best), o);
     const door = frontOf(o);
@@ -2022,10 +2079,13 @@ const mount: MountViewer = (root, arch, env) => {
       toast('도시가 모두 감염됐어요! 근원지에서 초대형 바이러스가 깨어나요', 5000);
       formBoss();
     } else if (siege.phase === 'forming' && !bossFormed) formBoss();
-    if (events.includes('boss')) toast(`초대형 바이러스 등장! ${clock(rule().bossTime)} 안에 처치하지 않으면 레포가 붕괴돼요`, 5000);
+    if (events.includes('boss')) toast(`초대형 바이러스 등장! 남은 ${clock(Math.ceil(siege.timeLeft))} 안에 처치하지 않으면 레포가 붕괴돼요`, 5000);
     if (events.includes('won')) endVirus(true, true);
     if (events.includes('collapse')) {
       horde.clear('poof');
+      curing = 0;
+      guide.setPath(null);
+      hideSources();
       beacons.visible = beaconPoles.visible = false;
       signs.forEach((sg) => { sg.mesh.visible = false; sg.owner = -1; });
       if (detailOpen || entering) leave();
@@ -2041,7 +2101,7 @@ const mount: MountViewer = (root, arch, env) => {
       env.collapse();
     }
     renderBossHud();
-    beacon.update(time, dt);
+    sources.forEach((src) => src.pillar.update(time, dt));
     energy.update(dt);
     dust.update(dt);
     puffs.update(dt);
@@ -2051,16 +2111,20 @@ const mount: MountViewer = (root, arch, env) => {
       guide.setPath(rule().guide && siege.phase === 'outbreak' ? guidePath() : null);
     }
     guide.update(time);
-    if (core.visible) {
+    let lit: THREE.Group | null = null;
+    sources.forEach(({ core, shell }) => {
+      if (!core.visible) return;
       core.rotation.y = time * 1.4;
-      coreShell.rotation.x = time * 0.9;
+      shell.rotation.x = time * 0.9;
       core.position.y = 1.6 + Math.sin(time * 2.2) * 0.2;
-    }
+      if (!lit || Math.hypot(core.position.x - pos.x, core.position.z - pos.z) < Math.hypot(lit.position.x - pos.x, lit.position.z - pos.z)) lit = core;
+    });
+    if (lit) coreLight.position.copy((lit as THREE.Group).position);
     if (curing > 0) {
-      if (!nearOrigin || !alive || mode !== 'walk') { curing = 0; toast('치료가 끊겼어요 — 근원지 앞에 머물러야 해요'); }
+      if (nearOrigin < 0 || nearOrigin !== curingAt || !alive || mode !== 'walk') { curing = 0; toast('치료가 끊겼어요 — 근원지 앞에 머물러야 해요'); }
       else {
         curing += dt;
-        if (curing >= CURE_TIME) endVirus(true);
+        if (curing >= CURE_TIME) cureSource(curingAt);
       }
       updatePrompt();
     }
@@ -2176,8 +2240,8 @@ const mount: MountViewer = (root, arch, env) => {
       if (mode !== 'ride') traffic.setFocus(near ? near.i : null, pos);
       nearVehicle = onFoot && alive ? vehicles.nearest(pos.x, pos.z) : null;
       nearCar = onFoot && alive && !nearVehicle ? traffic.nearest(pos.x, pos.z, 6.5) : null;
-      const ob = virus.state === 'spreading' && siege.phase === 'outbreak' ? originBuilding() : null;
-      nearOrigin = !!ob && onFoot && alive && gap(ob, pos.x, pos.z) < REACH + 0.5;
+      const ob = virus.state === 'spreading' && siege.phase === 'outbreak' && onFoot && alive ? nearestOrigin() : null;
+      nearOrigin = ob && gap(ob, pos.x, pos.z) < REACH + 0.5 ? indexOf.get(ob) ?? -1 : -1;
       if ((detailOpen || entering) && buildingInfected(entering?.b ?? focus)) {
         leave();
         toast('이 건물이 바이러스에 잠식됐어요 — 밖으로 나왔어요');
@@ -2233,7 +2297,7 @@ const mount: MountViewer = (root, arch, env) => {
     hero.dispose();
     battle.dispose();
     horde.dispose();
-    beacon.dispose();
+    sources.forEach((src) => src.pillar.dispose());
     guide.dispose();
     energy.dispose();
     dust.dispose();
