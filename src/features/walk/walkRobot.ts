@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Character } from './walkCharacters';
 
+/** What a robot wears: colours for the body, joints and eyes, and gear on its head. */
+export type RobotLook = Pick<Character, 'body' | 'joint' | 'glow' | 'gear'>;
+
 let cached: { url: string; promise: Promise<GLTF>; failedAt?: number } | null = null;
 /** After a failed load, spawns reuse the rejection this long instead of each asking the network again. */
 const RETRY_AFTER = 10_000;
@@ -34,7 +37,7 @@ export interface Robot {
 const ONCE = ['Jump', 'Wave', 'ThumbsUp', 'Punch', 'Death', 'No', 'Yes', 'Sitting'];
 
 // Each robot is a skeleton-aware clone with its own mixer; a character repaints copies of the materials, never the shared original.
-export async function spawnRobot(url: string, height: number, dress?: Character | string): Promise<Robot> {
+export async function spawnRobot(url: string, height: number, dress?: RobotLook | string): Promise<Robot> {
   const look = typeof dress === 'string' ? undefined : dress;
   const tint = typeof dress === 'string' ? dress : look?.body;
   const [{ clone }, gltf] = await Promise.all([import('three/examples/jsm/utils/SkeletonUtils.js'), loadRobot(url)]);
@@ -90,7 +93,7 @@ export async function spawnRobot(url: string, height: number, dress?: Character 
 }
 
 // Built in metres on top of the bind-pose head, then re-expressed in the head bone's frame so it nods along.
-function wearGear(root: THREE.Object3D, look: Character, owned: { dispose(): void }[]) {
+function wearGear(root: THREE.Object3D, look: RobotLook, owned: { dispose(): void }[]) {
   let bone: THREE.Object3D | undefined;
   root.traverse((o) => { if (!bone && o.name === 'Head' && (o as THREE.Bone).isBone) bone = o; });
   if (!bone) return;

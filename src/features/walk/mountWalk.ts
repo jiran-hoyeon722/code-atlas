@@ -34,6 +34,8 @@ import { parseCheat } from './walkCheat';
 import { SOUND_KEY, createSound } from './walkSound';
 import { characterById, dealCharacters, type Character } from './walkCharacters';
 import { openPicker } from './walkPicker';
+import { TERRITORY, createTerritory, heldShare, nearestInfected, screenBearing, type Post } from './walkTerritory';
+import { SOLDIER_COLOR, createSoldiers } from './walkSoldiers';
 import type { RideCar } from './walkTraffic';
 import { GUIDE, GUIDE_KEY, guideHtml } from './walkGuide';
 import { SIGNS as WARNINGS, createAtlas, createPilot, packOf, readRepo, tagOf, type PilotCommand, type Point, type Stop } from './walkAuto';
@@ -79,7 +81,7 @@ const HELP = [
   ['이동', [['W A S D', '걷기'], ['Shift', '달리기'], ['Space', '점프'], ['R', '옥상 올라가기 · 내려가기'], ['클릭', '마우스로 시점 돌리기 (Esc 로 풀기)'], ['휠', '카메라 거리']]],
   ['전투', [['1 ~ 9 · 0', '무기 고르기 (가진 무기만)'], ['F · 클릭', '공격 (기관단총 · 화염방사기는 누르고 있기)'], ['무기 줍기', '처음엔 주먹뿐 — 무기는 도시에서 주워요. 하늘로 솟은 빛기둥(색 = 희귀도, 주황은 전설) 아래 무기 위를 지나가면 돼요. 화면 아래 표시가 가장 가까운 무기 쪽과 거리를 알려줘요'], ['탄약', '같은 무기를 또 주우면 채워져요. 다 쓰면 주먹으로 돌아가요'], ['G', '감정 표현']]],
   ['행동', [['E', '건물 들어가기 · 차 · 탱크 타기 · 바이러스 치료'], ['H', '헬기 타기 (라이벌 4명을 다 잡으면)']]],
-  ['바이러스', [['V', '바이러스 모드 시작 · 그만두기 (괴물이 나타나면 못 그만둬요)'], ['쉬움 ~ 신', '난이도 — 쉬움은 근원지 1곳과 바닥 화살표, 어려울수록 근원지가 늘고(신은 5곳) 빨리 번지며 좀비가 세져요'], ['E (근원지 앞)', '백신 주입 — 근원지를 모두 치료하면 클리어'], ['탱크 퀘스트', '지옥 · 신에서만 — 바이러스를 지옥 40 · 신 60마리 처치하면 가까운 길에 탱크가 와요 (한 번만)'], ['괴물', '도시가 다 감염되면 나타나요. 처치하면 클리어'], ['30분', '시작부터 30분 안에 끝내지 못하면 레포가 무너지고 분석 기록이 지워져요']]],
+  ['바이러스', [['V', '바이러스 모드 시작 · 그만두기 (괴물이 나타나면 못 그만둬요)'], ['쉬움 ~ 신', '난이도 — 쉬움은 근원지 1곳과 바닥 화살표, 어려울수록 근원지가 늘고(신은 5곳) 빨리 번지며 좀비가 세져요'], ['클리어', '셋 중 하나만 하면 끝 — ① 근원지를 모두 치료 ② (지옥 · 신) 건물 60%를 백신화 ③ 도시가 다 감염되면 나타나는 괴물 처치'], ['E (근원지 앞)', '근원지 치료 — 2.5초 동안 자리를 지키세요. 바이러스 창의 화살표가 남은 근원지 방향과 거리를 알려줘요'], ['E (감염 건물 앞)', '지옥 · 신에서만 — 백신 1개로 1.5초 주입해 건물을 되찾아요. 백신은 3개로 시작하고 바이러스를 잡을수록 충전돼요'], ['백신 병사', '백신 건물마다 2명이 나와 좀비를 쏘고, 지키는 건물은 20초마다 가까운 감염 건물로 백신을 퍼뜨려요. 병사가 전멸한 채 좀비가 붙으면 다시 빼앗겨요'], ['탱크 퀘스트', '지옥 · 신에서만 — 바이러스를 지옥 40 · 신 60마리 처치하면 가까운 길에 탱크가 와요 (한 번만)'], ['괴물', '도시가 다 감염되면 나타나요. 처치하면 클리어'], ['30분', '시작부터 30분 안에 끝내지 못하면 레포가 무너지고 분석 기록이 지워져요']]],
   ['헬기', [['W S', '앞으로 · 뒤로'], ['A D · 마우스', '방향 돌리기'], ['Q E', '옆으로 이동'], ['Space · C (Ctrl · X)', '올라가기 · 내려가기'], ['Shift', '가속'], ['F · 클릭', '기관총 (누르고 있기)'], ['G · 우클릭', '폭탄 떨어뜨리기'], ['마우스 위아래', '조준점 가깝게 · 멀리'], ['H', '천천히 내려가 착륙 (Space 로 취소)']]],
   ['탱크', [['W S', '앞으로 · 뒤로 (무거워서 천천히 붙어요)'], ['A D', '차체 돌리기'], ['마우스', '포탑 돌리기 — 보는 쪽을 조준해요'], ['F · 클릭', '포격 — 넓게 터지고 1.2초마다 장전'], ['몸통', '좀비는 깔아뭉개고 엘리트는 크게 다쳐요. 탱크 안에선 공격받지 않아요'], ['E', '타기 · 내리기 — 치료 · 건물 · 옥상은 내려서 해요']]],
   ['자동 사냥', [['O', '자동 사냥 켜기 · 끄기 — 많이 쓰이는 뿌리 파일에서 출발해, 그 파일을 쓰는 코드를 따라가며 배워요'], ['몬스터', '그 파일에 위험 신호(순환 참조 · 역방향 의존 · 복잡한 함수 등)가 있을 때만 나타나요'], ['이동 · 행동 키', '누르면 바로 직접 조종으로 돌아와요'], ['드래그 · 휠', '잠깐 시점 돌리기 (자동 사냥은 계속돼요)']]],
@@ -91,10 +93,11 @@ const DIFF_HINT: Record<Difficulty, string> = {
   easy: '쉬움 — 근원지 1곳, 바닥에 근원지로 가는 형광 화살표가 보여요',
   normal: '보통 — 근원지 2곳, 좀비가 조금 더 세요, 화살표 없음',
   hard: '어려움 — 근원지 3곳, 빨리 번지고 좀비 떼가 몰려와요',
-  hell: '지옥 — 근원지 4곳, 아주 빨리 번지고 좀비와 엘리트가 훨씬 세요. 40마리를 잡으면 탱크가 와요',
-  god: '신 — 근원지 5곳, 100초 만에 도시가 다 감염돼요. 60마리를 잡으면 탱크가 와요',
+  hell: '지옥 — 근원지 4곳, 아주 빨리 번지고 좀비와 엘리트가 훨씬 세요. 감염 건물에 백신을 넣어 땅을 되찾을 수 있어요(60%면 클리어). 40마리를 잡으면 탱크가 와요',
+  god: '신 — 근원지 5곳이 동시에 터지고 100초 만에 도시가 다 감염돼요. 백신으로 땅을 60% 되찾거나 근원지를 모두 치료하세요. 60마리를 잡으면 탱크가 와요',
 };
-const VIRUS_NOTE = '하늘로 솟은 초록 빛기둥이 근원지예요. 근원지마다 건물 앞에서 <b>E</b> 로 백신을 넣어야 끝나요. <b>30분</b> 안에 못 끝내면 레포가 무너져요.';
+const VIRUS_NOTE = '하늘로 솟은 초록 빛기둥이 근원지예요. 위 조건 중 <b>하나만</b> 해내면 끝나요. <b>30분</b> 안에 못 끝내면 레포가 무너져요.';
+const LAND_NOTE = ' 잠식된 건물 앞에서 <b>E</b> 로 백신을 넣으면 병사가 나와 지켜요.';
 const GUIDE_NOTE = ' 바닥의 형광 화살표를 따라가세요.';
 
 const MARKUP = `
@@ -114,9 +117,10 @@ const MARKUP = `
 <div class="wk-virus glass" data-el="virus" hidden>
     <div class="v-head">${VIRUS_ICON}<b data-el="v-title">바이러스 확산 중</b><span data-el="v-time" title="남은 시간 — 0이 되면 레포가 무너져요">30:00</span></div>
     <div class="v-bar"><i data-el="v-bar"></i></div>
+    <section class="v-goals" data-el="v-goals" aria-label="클리어 조건"></section>
+    <section class="v-where" data-el="v-where" aria-label="남은 근원지"></section>
+    <div class="v-vax" data-el="v-vax" hidden></div>
     <div class="v-row"><span>감염된 건물</span><b data-el="v-count"></b></div>
-    <div class="v-row"><span>치료한 근원지</span><b data-el="v-origins"></b></div>
-    <div class="v-row"><span>근원지 신호</span><span class="signal" data-el="v-signal"><i></i><i></i><i></i><i></i><i></i></span></div>
     <div class="v-row"><span>난이도</span><b data-el="v-diff-label"></b></div>
     <div class="v-row"><span>처치한 바이러스</span><b data-el="v-kills">0</b></div>
     <div class="v-tank" data-el="v-tank" hidden><span data-el="v-tank-text"></span><div class="v-bar"><i data-el="v-tank-bar"></i></div></div>
@@ -933,12 +937,105 @@ const mount: MountViewer = (root, arch, env) => {
     onKill: (kind, tag, x, z) => {
       if (tag) { pilot.onKill(tag); return; }
       kills++;
+      if (territory.kill()) toast(`백신 +1 — 지금 ${territory.charges}개. 잠식된 건물 앞에서 E`, 2200);
       if (kind !== 'boss') dropLoot(kind, x, z);
       if (kind !== 'boss' && tankQuest.kill()) tankArrives();
     },
     onBossDown: () => { bossDown = true; },
     onQuake: (x, z) => { shake = Math.max(shake, Math.max(0.25, 1 - Math.hypot(x - pos.x, z - pos.z) / 60)); },
   });
+  // ---- land grab (지옥 · 신): vaccinate infected buildings, soldiers hold them, 60% of the city wins ----
+  const territory = createTerritory();
+  const soldierShot = new THREE.Vector3();
+  const soldiers = createSoldiers(scene, robotUrl, kit, {
+    blocked: blockedWalker,
+    clear: clearLine,
+    spot: (x, z, min, max) => openSpot(x, z, min, max, 0.5),
+    fire(from, x, z, damage) {
+      tracers.fire(from, soldierShot.set(x, 1.1, z), SOLDIER_COLOR);
+      horde.damageArea(x, 1, z, 0.9, damage, from.x, from.z);
+    },
+  });
+  let injecting = 0;
+  let injectAt = -1;
+  /** The infected building the player can vaccinate from where they stand, or -1. */
+  let vaxTarget = -1;
+  let growClock = 0;
+  let raidClock = 0;
+  const landOn = () => rule().territory && virus.state === 'spreading' && siege.phase === 'outbreak';
+  const held = () => heldShare(virus.vaccinated, virus.origins.length);
+  const doorOf = (k: number) => frontOf(layout.buildings[k]);
+  function holdSite(k: number) {
+    if (!virus.vaccinate(k)) return false;
+    territory.forget(k);
+    const door = doorOf(k);
+    soldiers.post(k, door.x, door.z);
+    energy.burst(door.x, 1.4, door.z, 50, 6, 3, 1.2);
+    return true;
+  }
+  function loseSite(k: number) {
+    virus.reinfect(k);
+    soldiers.unpost(k);
+    territory.forget(k);
+  }
+  function landWon() {
+    if (!landOn() || held() < TERRITORY.goal) return false;
+    endVirus(true, false, true);
+    return true;
+  }
+  function vaccinateAt(k: number) {
+    injecting = 0;
+    if (!territory.spend()) return;
+    if (!holdSite(k)) return;
+    const b = layout.buildings[k];
+    sparks.burst(b.x, 2, b.z + b.face * (b.d / 2 + 1), 40);
+    if (landWon()) return;
+    toast(`백신 주입! ${arch.nodes[b.i].name} 을(를) 되찾았어요 — 병사가 나와 지켜요 (영토 ${Math.round(held() * 100)}% / ${TERRITORY.goal * 100}%)`, 3600);
+    renderVirus();
+  }
+  function landTick(dt: number) {
+    if (!landOn()) return;
+    const foes = horde.positions();
+    const posts: Post[] = [];
+    virus.vaccinated.forEach((v, k) => {
+      if (!v) return;
+      const door = doorOf(k);
+      posts.push({ site: k, soldiers: soldiers.count(k), threats: foes.reduce((n, f) => n + (Math.hypot(f.x - door.x, f.z - door.z) < TERRITORY.threat ? 1 : 0), 0) });
+    });
+    const lost = territory.update(dt, posts);
+    lost.forEach(loseSite);
+    if (lost.length) toast(`백신 건물 ${lost.length}곳을 바이러스에 빼앗겼어요 — 병사가 없으면 버티지 못해요`, 3200);
+    growClock += dt;
+    if (growClock >= TERRITORY.grow) {
+      growClock = 0;
+      let grown = 0;
+      posts.forEach(({ site }) => {
+        if (soldiers.count(site) <= 0) return;
+        const k = nearestInfected(sites, site, virus.levels, virus.vaccinated, virus.active, TERRITORY.reach);
+        if (k >= 0 && holdSite(k)) grown++;
+      });
+      if (grown && !landWon()) toast(`병사들이 지키는 건물에서 백신이 번졌어요 — ${grown}곳 추가 (영토 ${Math.round(held() * 100)}%)`, 3000);
+    }
+    raidClock += dt;
+    if (rule().raidEvery > 0 && raidClock >= rule().raidEvery) {
+      raidClock = 0;
+      // The virus strikes back at the held building nearest the player that still borders infected ground.
+      const target = posts.map((p) => p.site)
+        .filter((k) => nearestInfected(sites, k, virus.levels, virus.vaccinated, [], 40) >= 0)
+        .map((k) => ({ k, d: Math.hypot(sites[k].x - pos.x, sites[k].z - pos.z) }))
+        .filter(({ d }) => d < 90)
+        .sort((a, c) => a.d - c.d)[0];
+      if (target) {
+        const door = doorOf(target.k);
+        let n = 0;
+        for (let j = 0; j < TERRITORY.raid; j++) {
+          const at = openSpot(door.x, door.z, 8, 16, 0.6);
+          if (at && horde.spawn('zombie', at.x, at.z, foeStyle('zombie'))) n++;
+        }
+        if (n) toast(`좀비 ${n}마리가 ${arch.nodes[layout.buildings[target.k].i].name} 백신 건물을 습격해요!`, 3000);
+      }
+    }
+  }
   const originBuilding = () => (virus.origin >= 0 ? layout.buildings[virus.origin] : null);
   const nearestOrigin = () => {
     let best: WalkBuilding | null = null;
@@ -963,6 +1060,11 @@ const mount: MountViewer = (root, arch, env) => {
     siege.start(r);
     horde.setChase(r.chase);
     kills = 0;
+    territory.start(r);
+    soldiers.clear();
+    injecting = 0;
+    growClock = 0;
+    raidClock = 0;
     tankQuest.start(r);
     bossDown = false;
     bossFormed = false;
@@ -983,7 +1085,8 @@ const mount: MountViewer = (root, arch, env) => {
     coreLight.intensity = 10;
     syncOrigins();
     const where = origins.length > 1 ? ` ${origins.length}곳에서` : '';
-    toast(r.guide ? `바이러스가${where} 퍼지기 시작했어요! 바닥의 형광 화살표를 따라 근원지로 가서 E 로 치료하세요 — 30분 안에` : `바이러스가${where} 퍼지기 시작했어요! 초록 빛기둥이 솟은 근원지를 모두 찾아 E 로 치료하세요 — 30분 안에`, 5000);
+    if (r.territory) toast(`바이러스가${where} 동시에 터졌어요! 근원지를 모두 치료하거나, 잠식된 건물에 백신을 넣어 도시의 ${TERRITORY.goal * 100}%를 되찾으세요 — 오른쪽 위 창에 남은 근원지 방향이 나와요`, 7000);
+    else toast(r.guide ? `바이러스가${where} 퍼지기 시작했어요! 바닥의 형광 화살표를 따라 근원지로 가서 E 로 치료하세요 — 30분 안에` : `바이러스가${where} 퍼지기 시작했어요! 초록 빛기둥이 솟은 근원지를 모두 찾아 E 로 치료하세요 — 30분 안에`, 5000);
     renderVirus();
   }
   function hideSources() {
@@ -1004,7 +1107,8 @@ const mount: MountViewer = (root, arch, env) => {
     toast(`근원지 치료! 남은 근원지 ${virus.active.length}곳 — 초록 빛기둥을 찾아가세요`, 4000);
     renderVirus();
   }
-  function endVirus(cured: boolean, byBoss = false) {
+  function endVirus(cured: boolean, byBoss = false, byLand = false) {
+    const share = held();
     const seconds = virus.elapsed;
     const saved = virus.infected;
     const last = sources.find((x) => x.site === nearOrigin)?.core.position.clone() ?? coreLight.position.clone();
@@ -1016,9 +1120,14 @@ const mount: MountViewer = (root, arch, env) => {
     horde.clear('die');
     foeDrops.clear();
     curing = 0;
+    injecting = 0;
+    soldiers.clear();
     hideSources();
     guide.setPath(null);
-    if (byBoss) {
+    if (byLand) {
+      energy.burst(pos.x, 2, pos.z, 160, 18, 5, 1.6);
+      toast(`백신 영토 ${Math.round(share * 100)}% 달성! 도시를 되찾았어요 (${clock(seconds)})`, 6000);
+    } else if (byBoss) {
       const b = horde.boss;
       if (b) { energy.burst(b.x, 8, b.z, 200, 22, 6, 1.8); sparks.burst(b.x, 4, b.z, 120); }
       shake = Math.max(shake, 1);
@@ -1074,7 +1183,7 @@ const mount: MountViewer = (root, arch, env) => {
     $('v-time').textContent = clock(Math.ceil(siege.timeLeft));
     $('virus').classList.toggle('urgent', siege.timeLeft < 60);
     $('v-count').textContent = `${fmt(virus.infected)} / ${fmt(total)}`;
-    $('v-origins').textContent = `${virus.origins.length - virus.active.length} / ${virus.origins.length}`;
+    renderGoals();
     $('v-bar').style.width = `${(virus.infected / Math.max(1, total)) * 100}%`;
     $('v-diff-label').textContent = rule().label;
     $('v-kills').textContent = fmt(kills);
@@ -1084,12 +1193,42 @@ const mount: MountViewer = (root, arch, env) => {
       $('v-tank-bar').style.width = `${(tankQuest.count / tankQuest.goal) * 100}%`;
       $('v-tank').classList.toggle('done', tankQuest.done && !tankQuest.wrecked);
     }
-    const note = VIRUS_NOTE + (rule().guide ? GUIDE_NOTE : '');
+    const note = VIRUS_NOTE + (rule().guide ? GUIDE_NOTE : '') + (rule().territory ? LAND_NOTE : '');
     if ($('v-note').dataset.note !== note) { $('v-note').dataset.note = note; $('v-note').innerHTML = note; }
-    const b = nearestOrigin();
-    const strength = b ? Math.max(0, 1 - Math.hypot(b.x - pos.x, b.z - pos.z) / Math.max(40, span * 0.8)) : 0;
-    const bars = Math.max(1, Math.ceil(strength * 5));
-    $('v-signal').querySelectorAll('i').forEach((el, k) => el.classList.toggle('on', k < bars));
+  }
+  const setHtml = (el: HTMLElement, html: string) => { if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; } };
+  const ARROW = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l5 11-5-3-5 3z" fill="currentColor"/></svg>';
+  const camFwd = new THREE.Vector3();
+  // The goal list says plainly what ends the mode, and the origin list points at each one still standing.
+  function renderGoals() {
+    const r = rule();
+    const outbreak = siege.phase === 'outbreak';
+    const cured = virus.origins.length - virus.active.length;
+    const share = held();
+    const goal = (state: string, label: string, value = '') => `<div class="goal ${state}"><i></i><span>${label}</span>${value ? `<b>${value}</b>` : ''}</div>`;
+    const rows = outbreak
+      ? [
+        goal(cured === virus.origins.length ? 'done' : '', `근원지 ${virus.origins.length}곳 모두 치료`, `${cured} / ${virus.origins.length}`),
+        r.territory ? goal(share >= TERRITORY.goal ? 'done' : '', `건물 ${TERRITORY.goal * 100}% 백신화`, `${Math.round(share * 100)}%`) : '',
+        goal('later', '도시가 다 감염되면 괴물 처치'),
+      ]
+      : [goal('now', '초대형 바이러스 처치', siege.phase === 'boss' && horde.boss ? `${Math.round((horde.boss.hp / horde.boss.max) * 100)}%` : '')];
+    setHtml($('v-goals'), `<div class="g-title">클리어 조건 <small>${outbreak ? '하나만 달성하면 끝' : '이것만 남았어요'}</small></div>${rows.join('')}`);
+    // From 어려움 up the exact building is hidden, so the arrow points at the same fuzzy area the mini-map rings.
+    const live = outbreak ? liveSources() : [];
+    camera.getWorldDirection(camFwd);
+    const fl = Math.hypot(camFwd.x, camFwd.z) || 1;
+    const items = live.map((src) => {
+      const b = layout.buildings[src.site];
+      const tx = src.hint.fuzz ? src.hint.x : b.x, tz = src.hint.fuzz ? src.hint.z : b.z;
+      const d = Math.hypot(tx - pos.x, tz - pos.z);
+      return { d, fuzz: src.hint.fuzz, a: screenBearing(camFwd.x / fl, camFwd.z / fl, tx - pos.x, tz - pos.z) };
+    }).sort((a, c) => a.d - c.d);
+    $('v-where').hidden = !items.length;
+    setHtml($('v-where'), items.length ? `<div class="g-title">남은 근원지 <small>가까운 순 · 화면 기준 방향</small></div>${items.map((it, k) => `<div class="where${k ? '' : ' first'}"><span class="arrow" style="transform:rotate(${it.a.toFixed(2)}rad)">${ARROW}</span><span>근원지 ${k + 1}</span><b>${it.fuzz ? `약 ${fmt(Math.max(10, Math.round(it.d / 10) * 10))}m 근처` : `${fmt(Math.round(it.d))}m`}</b></div>`).join('')}` : '');
+    const vax = $('v-vax');
+    vax.hidden = !landOn();
+    if (landOn()) setHtml(vax, `<span class="drops">${Array.from({ length: TERRITORY.max }, (_, k) => `<i class="${k < territory.charges ? 'on' : ''}"></i>`).join('')}</span><span>백신 <b>${territory.charges}</b>개${territory.toNext ? ` · ${territory.toNext}마리 더 잡으면 +1` : ' · 가득'}</span>`);
   }
   listen($('virus-btn'), 'click', (e) => { toggleVirus(); (e.currentTarget as HTMLElement).blur(); });
   listen($('v-diff'), 'click', (e) => {
@@ -1430,8 +1569,10 @@ const mount: MountViewer = (root, arch, env) => {
     else if (mode === 'walk' && roof) html = alive ? `<b>R</b> 내려가기 — ${name(roof.i)} 옥상` : '';
     else if (mode === 'walk' && alive && !detailOpen && !entering) {
       const hpos = heli.root.position;
-      if (curing > 0) html = `백신 주입 중… ${Math.round((curing / CURE_TIME) * 100)}% — 자리를 지키세요`;
-      else if (nearOrigin >= 0) html = '<b>E</b> 백신 주입 — 바이러스 근원지를 찾았어요!';
+      if (curing > 0) html = `근원지 치료 중… ${Math.round((curing / CURE_TIME) * 100)}% — 자리를 지키세요`;
+      else if (nearOrigin >= 0) html = '<b>E</b> 근원지 치료 — 바이러스 근원지를 찾았어요!';
+      else if (injecting > 0) html = `백신 주입 중… ${Math.round((injecting / TERRITORY.inject) * 100)}% — 자리를 지키세요`;
+      else if (vaxTarget >= 0) html = territory.charges > 0 ? `<b>E</b> 백신 주입 — 이 건물을 되찾아요 (남은 백신 ${territory.charges}개)` : `백신이 없어요 — 바이러스를 ${territory.toNext}마리 더 잡으면 1개 생겨요`;
       else if (heli.state === 'parked' && Math.hypot(hpos.x - pos.x, hpos.z - pos.z) < 7) html = '<b>H</b> 헬기 타기';
       else if (nearTank) html = '<b>E</b> 탑승 — 탱크';
       else if (nearVehicle) html = `<b>E</b> 운전 — ${nearVehicle.kind === 'car' ? '자동차' : '오토바이'}`;
@@ -1600,6 +1741,11 @@ const mount: MountViewer = (root, arch, env) => {
   }
   function interact() {
     if (nearOrigin >= 0) { if (curing <= 0) { curing = 0.001; curingAt = nearOrigin; } updatePrompt(); }
+    else if (vaxTarget >= 0) {
+      if (territory.charges <= 0) toast(`백신이 없어요 — 바이러스를 ${territory.toNext}마리 더 잡으면 1개 생겨요`);
+      else if (injecting <= 0) { injecting = 0.001; injectAt = vaxTarget; }
+      updatePrompt();
+    }
     else if (nearTank) boardTank();
     else if (nearVehicle) driveVehicle(nearVehicle);
     else if (nearCar) hitch(nearCar);
@@ -2143,6 +2289,12 @@ const mount: MountViewer = (root, arch, env) => {
     mapCtx.drawImage(base, 0, 0);
     mapCtx.globalAlpha = 1;
     if (virus.state !== 'off') layout.buildings.forEach((b, k) => {
+      if (virus.vaccinated[k]) {
+        const [vx, vy] = toMap(b.x - b.w / 2, b.z - b.d / 2);
+        mapCtx.fillStyle = 'rgba(95, 208, 255, .95)';
+        mapCtx.fillRect(vx, vy, Math.max(1.5, (b.w / span) * 200), Math.max(1.5, (b.d / span) * 200));
+        return;
+      }
       const level = virus.levels[k];
       if (level < 0.02) return;
       const [x, y] = toMap(b.x - b.w / 2, b.z - b.d / 2);
@@ -2162,6 +2314,11 @@ const mount: MountViewer = (root, arch, env) => {
       mapCtx.beginPath();
       mapCtx.arc(hx, hy, r0 + 3 + t * 18, 0, Math.PI * 2);
       mapCtx.stroke();
+    });
+    soldiers.positions().forEach((sd) => {
+      const [x, y] = toMap(sd.x, sd.z);
+      mapCtx.fillStyle = SOLDIER_COLOR;
+      mapCtx.fillRect(x - 1.5, y - 1.5, 3, 3);
     });
     horde.positions().forEach((f) => {
       const [x, y] = toMap(f.x, f.z);
@@ -2586,16 +2743,19 @@ const mount: MountViewer = (root, arch, env) => {
     }
     battle.update(dt, pos, alive && onFoot && !detailOpen && !entering && !auto, footY);
     if (virus.update(dt)) {
-      parts.forEach((p, j) => { aInfect[j] = virus.levels[p.k]; });
+      parts.forEach((p, j) => { aInfect[j] = virus.vaccinated[p.k] ? -1 : virus.levels[p.k]; });
       infectAttr.needsUpdate = true;
       tintInfected(virus.levels);
     }
-    horde.update(dt, time, { x: pos.x, z: pos.z, y: flying ? heli.root.position.y : footY, flying }, alive && (onFoot || mode === 'tank') && !detailOpen && !entering);
+    soldiers.update(dt, pos, landOn() ? horde.positions() : []);
+    horde.update(dt, time, { x: pos.x, z: pos.z, y: flying ? heli.root.position.y : footY, flying, decoys: soldiers.decoys }, alive && (onFoot || mode === 'tank') && !detailOpen && !entering);
     const allInfected = virus.infected === layout.buildings.length && virus.levels.every((l) => l >= 1);
     const events = virus.state === 'spreading' ? siege.update(dt, { allInfected, bossDown, zombies: horde.zombies, elites: horde.elites }) : [];
     spawnFoes(events);
     if (events.includes('form')) {
       horde.clear('poof');
+      soldiers.clear();
+      injecting = 0;
       guide.setPath(null);
       curing = 0;
       toast('도시가 모두 감염됐어요! 근원지에서 초대형 바이러스가 깨어나요', 5000);
@@ -2606,6 +2766,8 @@ const mount: MountViewer = (root, arch, env) => {
     if (events.includes('won')) endVirus(true, true);
     if (events.includes('collapse')) {
       tankQuest.stop();
+      soldiers.clear();
+      injecting = 0;
       removeTank();
       horde.clear('poof', true);
       curing = 0;
@@ -2651,6 +2813,14 @@ const mount: MountViewer = (root, arch, env) => {
       else {
         curing += dt;
         if (curing >= CURE_TIME) cureSource(curingAt);
+      }
+      updatePrompt();
+    }
+    if (injecting > 0) {
+      if (vaxTarget < 0 || vaxTarget !== injectAt || !alive || mode !== 'walk' || !landOn()) { injecting = 0; toast('백신 주입이 끊겼어요 — 건물 앞에 머물러야 해요'); }
+      else {
+        injecting += dt;
+        if (injecting >= TERRITORY.inject) vaccinateAt(injectAt);
       }
       updatePrompt();
     }
@@ -2786,6 +2956,11 @@ const mount: MountViewer = (root, arch, env) => {
       nearCar = street && alive && !nearVehicle ? traffic.nearest(pos.x, pos.z, 6.5) : null;
       const ob = virus.state === 'spreading' && siege.phase === 'outbreak' && street && alive ? nearestOrigin() : null;
       nearOrigin = ob && gap(ob, pos.x, pos.z) < REACH + 0.5 ? indexOf.get(ob) ?? -1 : -1;
+      const fk = focus ? indexOf.get(focus) ?? -1 : -1;
+      const prevVax = vaxTarget;
+      vaxTarget = landOn() && street && alive && nearOrigin < 0 && fk >= 0 && buildingInfected(focus) && !virus.vaccinated[fk] && !virus.origins.includes(fk) ? fk : -1;
+      if (vaxTarget !== prevVax) updatePrompt();
+      landTick(0.2);
       if ((detailOpen || entering) && buildingInfected(entering?.b ?? focus)) {
         leave();
         toast('이 건물이 바이러스에 잠식됐어요 — 밖으로 나왔어요');
@@ -2868,6 +3043,7 @@ const mount: MountViewer = (root, arch, env) => {
     cleanups.forEach((fn) => fn());
     hero.dispose();
     battle.dispose();
+    soldiers.dispose();
     horde.dispose();
     sources.forEach((src) => src.pillar.dispose());
     guide.dispose();

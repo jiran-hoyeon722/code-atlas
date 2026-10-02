@@ -125,7 +125,22 @@ export interface HordeHooks {
   onQuake(x: number, z: number): void;
 }
 
-export interface HordePlayer { x: number; z: number; y: number; flying?: boolean }
+/** Something on the street other than the player that foes go for when it is nearer, e.g. a vaccine soldier. */
+export interface Decoy { x: number; z: number; hit(damage: number, fromX: number, fromZ: number): void }
+/** Foes leave the player for a decoy this close that is nearer than the player. */
+export const DECOY_SIGHT = 14;
+export interface HordePlayer { x: number; z: number; y: number; flying?: boolean; decoys?: readonly Decoy[] }
+
+/** The decoy a foe at (x, z) goes for instead of a player `playerD` away, or null. */
+export function preyOf(decoys: readonly Decoy[] | undefined, x: number, z: number, playerD: number): Decoy | null {
+  let best: Decoy | null = null;
+  let bestD = Math.min(DECOY_SIGHT, playerD);
+  decoys?.forEach((c) => {
+    const d = Math.hypot(c.x - x, c.z - z);
+    if (d < bestD) { bestD = d; best = c; }
+  });
+  return best;
+}
 
 export interface Horde {
   /** Starts loading robots so spawns later do not wait on the model. */
@@ -182,6 +197,8 @@ const HUNCH: Record<FoeKind, number> = { zombie: 0.24, elite: 0.12, boss: 0.04 }
 export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks: HordeHooks): Horde {
   const owned: { dispose(): void }[] = [];
   const keep = <T extends { dispose(): void }>(x: T) => (owned.push(x), x);
+  /** The decoy each swing in flight was aimed at; a swing with no entry is aimed at the player. */
+  const swungAt = new Map<Foe, Decoy>();
   let disposed = false;
   const idle: Pooled[] = [];
   const all: Pooled[] = [];
@@ -297,6 +314,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
   const bossGrow = (f: Foe) => (f.growFor > 0 ? 0.12 + 0.88 * Math.min(1, f.t / f.growFor) ** 2 : 1);
   const live = (f: Foe) => f.state !== 'dead' && !(f.kind === 'boss' && f.growFor > 0);
   const release = (f: Foe) => {
+    swungAt.delete(f);
     scene.remove(f.root);
     f.root.remove(f.p.robot.root);
     f.p.robot.mixer.stopAllAction();
@@ -597,17 +615,25 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
           bossUpdate(f, dt, player);
         } else {
           const reach = f.rule.radius + f.rule.reach;
-          const sees = seesPlayer(f.kind, d, hunting);
+          const prey = preyOf(player.decoys, f.x, f.z, d);
+          const tx = prey ? prey.x - f.x : dx, tz = prey ? prey.z - f.z : dz;
+          const td = prey ? Math.hypot(tx, tz) : d;
+          const sees = !!prey || seesPlayer(f.kind, d, hunting);
           // A crowd keeps the back row from reaching the player, so the swing starts a step early instead of shoving forever.
-          f.engaged = sees && within(f.engaged, d, reach + 0.8, reach + 1.5);
+          f.engaged = sees && within(f.engaged, td, reach + 0.8, reach + 1.5);
           if (!hunting || f.engaged || Math.hypot(f.x - f.stuckX, f.z - f.stuckZ) > STUCK_MOVE) { f.stuckX = f.x; f.stuckZ = f.z; f.stuckT = 0; }
           else f.stuckT += dt;
           if (f.pendingHit > 0) {
             f.pendingHit -= dt;
-            // Nothing on the street can climb, so a swing never reaches a player up on a roof.
-            if (f.pendingHit <= 0 && canHit && d < reach + 1.7 && player.y < 2) hooks.onPlayerHit(f.rule.damage * f.damageMul, f.x, f.z, f.kind === 'elite' ? 12 : 6, f.kind);
+            if (f.pendingHit <= 0) {
+              const aimed = swungAt.get(f);
+              swungAt.delete(f);
+              if (aimed) { if (Math.hypot(aimed.x - f.x, aimed.z - f.z) < reach + 1.7) aimed.hit(f.rule.damage * f.damageMul, f.x, f.z); }
+              // Nothing on the street can climb, so a swing never reaches a player up on a roof.
+              else if (canHit && d < reach + 1.7 && player.y < 2) hooks.onPlayerHit(f.rule.damage * f.damageMul, f.x, f.z, f.kind === 'elite' ? 12 : 6, f.kind);
+            }
           }
-          if (f.kind === 'elite' && !f.hunt) {
+          if (f.kind === 'elite' && !f.hunt && !prey) {
             f.throwIn -= dt * f.speedMul;
             if (f.throwIn <= 0 && sees && canHit && eliteThrows(d, player.y, reach + 1.7) && (player.y >= 2 || hooks.clear(f.x, f.z, player.x, player.z)) && lob(f, player)) {
               f.throwIn = THROW.every;
@@ -615,17 +641,18 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
             }
           }
           if (f.engaged) {
-            turn(f, dx, dz, dt, 10);
+            turn(f, tx, tz, dt, 10);
             f.gait = 'Idle';
             if (f.cooldown <= 0) {
               robot.play('Punch', 0.1, true);
               f.cooldown = f.rule.cooldown;
               f.pendingHit = f.kind === 'elite' ? 0.55 : 0.4;
+              if (prey) swungAt.set(f, prey); else swungAt.delete(f);
             } else if (robot.current !== robot.actions.Punch || !robot.current.isRunning()) robot.play('Idle', 0.25);
           } else if (sees) {
-            const speed = approach(d, reach, f.rule.speed * f.speedMul, dt);
-            move(f, dx, dz, speed, dt, hunting);
-            turn(f, dx, dz, dt, 6);
+            const speed = approach(td, reach, f.rule.speed * f.speedMul, dt);
+            move(f, tx, tz, speed, dt, hunting);
+            turn(f, tx, tz, dt, 6);
             f.gait = shamble(f.gait, speed);
             robot.play(f.gait, 0.3);
             if (robot.current) robot.current.timeScale = f.gait === 'Walking' ? 0.62 : 1;
