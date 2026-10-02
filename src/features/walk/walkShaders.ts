@@ -1,3 +1,5 @@
+import { MAX_ORIGINS } from './walkVirus';
+
 export const BUILDING_VERT = /* glsl */ `
 attribute vec3 aSize;
 attribute vec3 aColor;
@@ -32,7 +34,7 @@ void main() {
 // Windows, door and sign band are procedural so the city needs no texture files; values above 1 feed the bloom pass.
 export const BUILDING_FRAG = /* glsl */ `
 uniform vec3 uFog; uniform float uFocus; uniform float uTime; uniform float uDay; uniform float uLit; uniform vec3 uSunDir; uniform vec3 uSky;
-uniform float uOrigin;
+uniform float uOrigins[${MAX_ORIGINS}];
 varying vec3 vLocal; varying vec3 vN; varying vec3 vColor; varying vec3 vSize; varying vec3 vWorld;
 varying float vSeed; varying float vFace; varying float vBase; varying float vInfect; varying float vKind;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -144,7 +146,8 @@ void main() {
     float band = step(0.99, hash(vec2(floor(y * 1.5), floor(uTime * 7.0) + vSeed))) * inf;
     col = mix(col, vec3(0.4, 1.1, 0.5), band * 0.3 * side);
   }
-  float origin = 1.0 - step(0.5, abs(vSeed - uOrigin));
+  float origin = 0.0;
+  for (int k = 0; k < ${MAX_ORIGINS}; k++) origin = max(origin, 1.0 - step(0.5, abs(vSeed - uOrigins[k])));
   col += focus * vec3(0.05, 0.06, 0.09) * side;
   col = mix(col, uFog, smoothstep(80.0, 430.0, distance(vWorld, cameraPosition)));
   // Added after the fog so the origin keeps glowing however far away it is.

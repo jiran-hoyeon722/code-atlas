@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import {
-  COLLAPSE_TIME, DIFFICULTY, FORM_TIME, INFECTED_AT, createSiege, createVirus, isDifficulty, isInfected, pickSpawnSite, type SiegeWorld, type VirusSite,
+  COLLAPSE_TIME, DIFFICULTIES, DIFFICULTY, FORM_TIME, TIME_LIMIT, INFECTED_AT, createSiege, createVirus, isDifficulty, isInfected, pickSpawnSite, storedDifficulty, type SiegeWorld, type VirusSite,
 } from '../../src/features/walk/walkVirus';
 import { FOES, approach, shamble } from '../../src/features/walk/walkHorde';
 import { alongPath } from '../../src/features/walk/walkFx';
@@ -12,21 +12,40 @@ const run = (siege: ReturnType<typeof createSiege>, seconds: number, world: Sieg
   return events;
 };
 
-test('difficulty: only easy shows the guide, hard spreads and spawns faster, easy and normal share the pace', () => {
-  expect(DIFFICULTY.easy.guide).toBe(true);
-  expect(DIFFICULTY.normal.guide).toBe(false);
-  expect(DIFFICULTY.hard.guide).toBe(false);
-  expect(DIFFICULTY.normal.spread).toBe(150);
-  expect(Math.abs(DIFFICULTY.hard.spread - 150 * 0.55)).toBeLessThan(1);
-  expect(DIFFICULTY.hard.zombieEvery).toBeLessThan(DIFFICULTY.normal.zombieEvery);
-  expect(DIFFICULTY.hard.eliteEvery).toBeLessThan(DIFFICULTY.normal.eliteEvery);
-  expect(DIFFICULTY.hard.bossTime).toBeLessThan(DIFFICULTY.normal.bossTime);
-  const { guide: _g, label: _l, ...easy } = DIFFICULTY.easy;
-  const { guide: _n, label: _m, ...normal } = DIFFICULTY.normal;
-  expect(easy).toEqual(normal);
-  expect(isDifficulty('hard')).toBe(true);
+test('difficulty: five tiers in order, only easy shows the guide', () => {
+  expect(DIFFICULTIES).toEqual(['easy', 'normal', 'hard', 'hell', 'god']);
+  expect(DIFFICULTIES.map((d) => DIFFICULTY[d].label)).toEqual(['쉬움', '보통', '어려움', '지옥', '신']);
+  expect(DIFFICULTIES.filter((d) => DIFFICULTY[d].guide)).toEqual(['easy']);
+  expect(DIFFICULTIES.filter((d) => DIFFICULTY[d].chase)).toEqual(['hard', 'hell', 'god']);
+  expect(DIFFICULTIES.filter((d) => DIFFICULTY[d].tank)).toEqual(['hell', 'god']);
+  expect(isDifficulty('god')).toBe(true);
   expect(isDifficulty('nightmare')).toBe(false);
   expect(isDifficulty(null)).toBe(false);
+});
+
+test('each harder tier has more origins, a faster spread, more spawns and tougher foes', () => {
+  DIFFICULTIES.slice(1).forEach((d, k) => {
+    const prev = DIFFICULTY[DIFFICULTIES[k]];
+    const next = DIFFICULTY[d];
+    expect(next.origins).toBeGreaterThan(prev.origins);
+    expect(next.spread).toBeLessThan(prev.spread);
+    expect(next.zombieEvery).toBeLessThan(prev.zombieEvery);
+    expect(next.zombieCap).toBeGreaterThan(prev.zombieCap);
+    expect(next.eliteEvery).toBeLessThan(prev.eliteEvery);
+    expect(next.eliteCap).toBeGreaterThan(prev.eliteCap);
+    expect(next.foe.hp).toBeGreaterThan(prev.foe.hp);
+    expect(next.foe.damage).toBeGreaterThan(prev.foe.damage);
+    expect(next.foe.speed).toBeGreaterThan(prev.foe.speed);
+  });
+  DIFFICULTIES.forEach((d) => expect(DIFFICULTY[d].spread).toBeLessThan(TIME_LIMIT));
+});
+
+test('a saved difficulty survives, older saves included, and junk falls back to normal', () => {
+  expect(storedDifficulty('easy')).toBe('easy');
+  expect(storedDifficulty('hard')).toBe('hard');
+  expect(storedDifficulty('god')).toBe('god');
+  expect(storedDifficulty('하')).toBe('normal');
+  expect(storedDifficulty(null)).toBe('normal');
 });
 
 test('an outbreak can run at a difficulty-specific speed', () => {
@@ -79,9 +98,9 @@ test('full infection forms the giant, and killing it in time wins', () => {
   expect(siege.cancellable).toBe(false);
   expect(run(siege, FORM_TIME - 0.2, { ...calm, allInfected: true })).toEqual([]);
   expect(run(siege, 0.4, { ...calm, allInfected: true })).toEqual(['boss']);
-  expect(siege.timeLeft).toBeGreaterThan(DIFFICULTY.normal.bossTime - 0.5);
+  expect(siege.timeLeft).toBeCloseTo(TIME_LIMIT - 0.1 - FORM_TIME, 0);
   run(siege, 10, { ...calm, allInfected: true });
-  expect(siege.timeLeft).toBeCloseTo(DIFFICULTY.normal.bossTime - 10, 0);
+  expect(siege.timeLeft).toBeCloseTo(TIME_LIMIT - 10.1 - FORM_TIME, 0);
   siege.stop();
   expect(siege.phase).toBe('boss');
   expect(siege.update(0.1, { ...calm, allInfected: true, bossDown: true })).toEqual(['won']);
@@ -92,7 +111,7 @@ test('running out of time collapses the repo exactly once, and nothing stops it'
   const siege = createSiege();
   siege.start(DIFFICULTY.hard);
   const world = { ...calm, allInfected: true };
-  const events = run(siege, FORM_TIME + DIFFICULTY.hard.bossTime + 0.5, world);
+  const events = run(siege, TIME_LIMIT + 0.5, world, 0.5);
   expect(events).toEqual(['form', 'boss', 'collapse']);
   expect(siege.phase).toBe('collapsing');
   siege.stop();
@@ -101,6 +120,37 @@ test('running out of time collapses the repo exactly once, and nothing stops it'
   expect(siege.phase).toBe('over');
   expect(siege.progress).toBe(1);
   expect(run(siege, 5, world)).toEqual([]);
+});
+
+test('the 10-minute clock collapses the repo whatever phase it runs out in', () => {
+  const outbreak = createSiege();
+  outbreak.start(DIFFICULTY.god);
+  const capped = { ...calm, zombies: 999, elites: 999 };
+  expect(run(outbreak, TIME_LIMIT - 1, capped, 1)).toEqual([]);
+  expect(outbreak.phase).toBe('outbreak');
+  expect(outbreak.timeLeft).toBeCloseTo(1);
+  expect(run(outbreak, 2, capped, 1)).toEqual(['collapse']);
+  expect(outbreak.phase).toBe('collapsing');
+
+  const forming = createSiege();
+  forming.start(DIFFICULTY.easy, 3);
+  expect(forming.update(0.5, { ...calm, allInfected: true })).toEqual(['form']);
+  expect(run(forming, 3, { ...calm, allInfected: true })).toEqual(['collapse']);
+
+  const boss = createSiege();
+  boss.start(DIFFICULTY.normal, FORM_TIME + 5);
+  const world = { ...calm, allInfected: true };
+  expect(run(boss, FORM_TIME + 1, world)).toEqual(['form', 'boss']);
+  expect(boss.timeLeft).toBeLessThan(5);
+  expect(run(boss, 5, world)).toEqual(['collapse']);
+});
+
+test('killing the giant on the last frame still wins', () => {
+  const siege = createSiege();
+  siege.start(DIFFICULTY.normal, FORM_TIME + 1);
+  run(siege, FORM_TIME + 0.95, { ...calm, allInfected: true });
+  expect(siege.phase).toBe('boss');
+  expect(siege.update(1, { ...calm, allInfected: true, bossDown: true })).toEqual(['won']);
 });
 
 test('curing before full infection ends the siege quietly', () => {

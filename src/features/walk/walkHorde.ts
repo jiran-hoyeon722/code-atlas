@@ -39,7 +39,8 @@ const ORB_DAMAGE = 12;
 const MINION_EVERY = 11;
 const MINIONS = 3;
 const MINION_CAP = 9;
-const POOL = 34;
+// Every foe is a full skinned robot clone, so this caps the crowd for the frame rate; the hardest virus caps sit above it on purpose.
+const POOL = 64;
 /** Heli fire hurts the giant this much more than a zombie. */
 export const HELI_BOSS_BONUS = 2.5;
 
@@ -54,6 +55,8 @@ export interface FoeStyle {
   hp?: number;
   /** Multiplies the kind's walking speed. */
   speed?: number;
+  /** Multiplies the kind's hit damage. */
+  damage?: number;
   color?: string;
   /** See-through body. */
   ghost?: boolean;
@@ -82,7 +85,7 @@ export interface Horde {
   warm(count: number): void;
   spawn(kind: 'zombie' | 'elite', x: number, z: number, style?: FoeStyle): boolean;
   /** Pulls the giant together at (x, z) over `duration` seconds; it cannot be hurt until it has formed. */
-  formBoss(x: number, z: number, duration: number): boolean;
+  formBoss(x: number, z: number, duration: number, style?: FoeStyle): boolean;
   update(dt: number, time: number, player: HordePlayer, canHit: boolean): void;
   strike(at: THREE.Vector3, heading: number, weapon: Weapon): boolean;
   /** Where a shot along `heading` would land on a foe, or null. */
@@ -108,7 +111,7 @@ type Foe = {
   x: number; z: number; heading: number; hp: number; state: 'rise' | 'live' | 'dead'; t: number;
   gait: Gait; engaged: boolean; cooldown: number; pendingHit: number; stun: number; vx: number; vz: number; flash: number;
   tag: Tag | null; growFor: number; slam: number; orb: number; minion: number; slamAt: number; orbAt: number;
-  max: number; speedMul: number; label: string | null; hunt?: string; glow: THREE.Color;
+  max: number; speedMul: number; damageMul: number; label: string | null; hunt?: string; glow: THREE.Color;
 };
 type Wave = { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; x: number; z: number; r: number; hit: boolean; on: boolean };
 type Orb = { mesh: THREE.Mesh; x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number };
@@ -128,6 +131,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
   const all: Pooled[] = [];
   let loading = 0;
   const foes: Foe[] = [];
+  let giant: FoeStyle = {};
   const eyeGeo = keep(new THREE.SphereGeometry(0.045, 8, 6));
   const eyeMat = keep(new THREE.MeshBasicMaterial({ color: new THREE.Color('#b6ff4a').multiplyScalar(4) }));
   const v = new THREE.Vector3();
@@ -265,7 +269,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
       kind, rule, p, root, x, z, heading: Math.random() * Math.PI * 2, hp: rule.hp, state: 'rise', t: 0,
       gait: 'Idle', engaged: false, cooldown: 0.6, pendingHit: 0, stun: 0, vx: 0, vz: 0, flash: 0,
       tag: kind === 'elite' || style.label ? tags.pop() ?? makeTag() : null, growFor: 0, slam: SLAM_EVERY * 0.5, orb: ORB_EVERY, minion: MINION_EVERY * 0.6, slamAt: 0, orbAt: 0,
-      max: style.hp ?? rule.hp, speedMul: style.speed ?? 1, label: style.label ?? null, hunt: style.tag, glow,
+      max: style.hp ?? rule.hp, speedMul: style.speed ?? 1, damageMul: style.damage ?? 1, label: style.label ?? null, hunt: style.tag, glow,
     };
     f.hp = f.max;
     if (f.tag) f.tag.hp = -1;
@@ -351,7 +355,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     turn(f, dx, dz, dt, 3);
     const busy = f.slamAt > 0 || f.orbAt > 0;
     if (!busy && d > 15) {
-      move(f, dx, dz, approach(d, 15, f.rule.speed, dt), dt);
+      move(f, dx, dz, approach(d, 15, f.rule.speed * f.speedMul, dt), dt);
       f.gait = 'Walking';
       f.p.robot.play('Walking', 0.4);
     } else if (!busy) {
@@ -396,7 +400,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
       const count = foes.filter((x) => x.kind === 'zombie' && x.state !== 'dead').length;
       for (let k = 0; k < MINIONS && count + k < MINION_CAP; k++) {
         const at = hooks.spot(f.x, f.z, 6, 16);
-        if (at) spawnAt('zombie', at.x, at.z);
+        if (at) spawnAt('zombie', at.x, at.z, giant);
       }
     }
   }
@@ -413,15 +417,16 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     get elites() { return foes.filter((f) => f.kind === 'elite' && f.state !== 'dead').length; },
     get boss() {
       const f = foes.find((x) => x.kind === 'boss');
-      return f ? { hp: f.hp, max: f.rule.hp, forming: f.growFor > 0, alive: f.state !== 'dead', x: f.x, z: f.z } : null;
+      return f ? { hp: f.hp, max: f.max, forming: f.growFor > 0, alive: f.state !== 'dead', x: f.x, z: f.z } : null;
     },
     warm(count) {
-      for (let k = all.length + loading; k < count; k++) load();
+      for (let k = all.length + loading; k < Math.min(count, POOL); k++) load();
     },
     spawn: spawnAt,
-    formBoss(x, z, duration) {
-      const f = acquire('boss', x, z);
+    formBoss(x, z, duration, style = {}) {
+      const f = acquire('boss', x, z, style);
       if (!f) return false;
+      giant = { hp: FOES.zombie.hp * (f.max / FOES.boss.hp), speed: f.speedMul, damage: f.damageMul };
       f.growFor = duration;
       f.state = 'live';
       f.heading = 0;
@@ -479,7 +484,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
           f.engaged = sees && within(f.engaged, d, reach + 0.8, reach + 1.5);
           if (f.pendingHit > 0) {
             f.pendingHit -= dt;
-            if (f.pendingHit <= 0 && canHit && d < reach + 1.7) hooks.onPlayerHit(f.rule.damage, f.x, f.z, f.kind === 'elite' ? 12 : 6);
+            if (f.pendingHit <= 0 && canHit && d < reach + 1.7) hooks.onPlayerHit(f.rule.damage * f.damageMul, f.x, f.z, f.kind === 'elite' ? 12 : 6);
           }
           if (f.engaged) {
             turn(f, dx, dz, dt, 10);
@@ -522,7 +527,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
         const d = Math.hypot(player.x - w.x, player.z - w.z);
         if (!w.hit && canHit && Math.abs(d - w.r) < 1.6 && player.y < 0.6) {
           w.hit = true;
-          hooks.onPlayerHit(FOES.boss.damage, w.x, w.z, 14);
+          hooks.onPlayerHit(FOES.boss.damage * (giant.damage ?? 1), w.x, w.z, 14);
         }
         if (w.r >= SLAM_RADIUS) w.on = false;
       });
@@ -534,7 +539,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
         o.mesh.position.set(o.x, o.y, o.z);
         o.mesh.rotation.y = time * 6;
         if (canHit && Math.hypot(o.x - player.x, o.y - (player.y + 1.1), o.z - player.z) < 1.3) {
-          hooks.onPlayerHit(ORB_DAMAGE, o.x - o.vx, o.z - o.vz, 8);
+          hooks.onPlayerHit(ORB_DAMAGE * (giant.damage ?? 1), o.x - o.vx, o.z - o.vz, 8);
           o.life = 0;
         }
         if (o.y < 0.2 || o.life <= 0) {
