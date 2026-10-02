@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
-import { clampToRoof, climbPath, gableLift, overRoof, streetExit } from '../../src/features/walk/walkRoof';
+import { rocketDir } from '../../src/features/walk/walkArsenal';
+import { clampToRoof, climbPath, deckUnder, gableLift, overRoof, streetExit } from '../../src/features/walk/walkRoof';
 
 const roof = { x: 10, z: -4, w: 8, d: 6 };
 
@@ -49,4 +50,25 @@ test('coming down crosses past the edge first, then drops to the street', () => 
   expect(climbPath(0.4, from, to, false)).toEqual({ x: 0, z: 9, y: 20 });
   expect(climbPath(0.2, from, to, false).y).toBe(20);
   expect(climbPath(1, from, to, false)).toEqual(to);
+});
+
+test('a fall comes down on the highest deck under the feet: a tower terrace, then the street beside it', () => {
+  const terrace = { x: 0, z: 0, w: 20, d: 20, top: 12 }, tier = { x: 0, z: -2, w: 12, d: 12, top: 30 };
+  const top = (d: { top: number }) => d.top;
+  expect(deckUnder([terrace, tier], 8, 8, 25, top)).toEqual({ deck: terrace, top: 12 });
+  expect(deckUnder([terrace, tier], 0, 0, 30, top)).toEqual({ deck: tier, top: 30 });
+  expect(deckUnder([terrace, tier], 0, 0, 20, top)).toBeNull();
+  expect(deckUnder([terrace, tier], 11, 0, 25, top)).toBeNull();
+  expect(deckUnder([], 0, 0, 25, top)).toBeNull();
+});
+
+test('a rocket from a roof dives at a target below; from the street it flies level', () => {
+  const level = rocketDir(0, { x: 0, y: 1.3, z: 0 }, { x: 0, y: 1, z: 10 });
+  expect(level).toEqual({ dx: 0, dy: 0, dz: 1 });
+  expect(rocketDir(Math.PI / 2, { x: 0, y: 20, z: 0 }, null)).toEqual({ dx: 1, dy: 0, dz: expect.closeTo(0) });
+  const dive = rocketDir(0, { x: 0, y: 21, z: 0 }, { x: 0, y: 1, z: 20 });
+  expect(dive.dx).toBeCloseTo(0);
+  expect(dive.dy).toBeCloseTo(-Math.SQRT1_2);
+  expect(dive.dz).toBeCloseTo(Math.SQRT1_2);
+  expect(Math.hypot(dive.dx, dive.dy, dive.dz)).toBeCloseTo(1);
 });
