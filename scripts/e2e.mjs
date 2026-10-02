@@ -77,7 +77,11 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
-const shot = (page, name) => page.screenshot({ path: resolve(OUT, name) });
+const shot = async (page, name) => {
+  // A city rises for about a second and a half after it mounts; shoot it built.
+  await page.waitForFunction(() => { const c = document.querySelector('.cc-city'); return !c || c.dataset.revealDone === '1'; }, null, { timeout: 10_000 }).catch(() => {});
+  return page.screenshot({ path: resolve(OUT, name) });
+};
 
 /** Records loading-screen sightings and CSP violations on window, for every document load. */
 function initScript() {
