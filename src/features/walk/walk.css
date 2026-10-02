@@ -179,6 +179,11 @@
 .wk-walk .wk-tank .hh-slot i b { display: block; height: 100%; width: 100%; background: #ffa53b; }
 .wk-walk .wk-tank .th-keys { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .wk-walk .wk-tank .th-keys b { color: #ffd27a; }
+.wk-walk .wk-tank .th-armor { display: flex; flex-direction: column; gap: 4px; width: 92px; font-size: 11px; color: var(--muted); }
+.wk-walk .wk-tank .th-armor b { color: var(--text); font-variant-numeric: tabular-nums; }
+.wk-walk .wk-tank .th-armor i { display: block; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+.wk-walk .wk-tank .th-armor i b { display: block; height: 100%; width: 100%; background: #7ddc5a; transition: width .2s ease; }
+.wk-walk .wk-tank.low .th-armor i b { background: #ff5a4a; }
 .wk-walk .wk-help { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; padding: 16px 18px; z-index: 5; }
 .wk-walk .wk-help .h-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 15px; }
 .wk-walk .wk-help .h-head span { display: flex; gap: 6px; }
