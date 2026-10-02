@@ -75,7 +75,10 @@
 .ca-shell input:focus-visible { outline: 2px solid var(--ca-accent); outline-offset: 2px; }
 
 .ca-shell-view { position: absolute; inset: var(--ca-top) 0 0 0; overflow: hidden; }
-.ca-shell-mount { position: absolute; inset: 0; overflow: auto; }
+.ca-shell-mount { position: absolute; inset: 0; overflow: auto; animation: ca-shell-fade 220ms ease-out; }
+/* opacity only: a transform would become the containing block for fixed-position view overlays */
+@keyframes ca-shell-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ca-shell-mount { animation: none; } }
 .ca-shell-note {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
     max-width: min(440px, calc(100% - 32px)); padding: 16px 20px; text-align: center;

@@ -229,7 +229,7 @@ export function ViewerShell({ arch, readSource, allowSource, canReconnect, onRec
         </div>
       </header>
       <main className="ca-shell-view">
-        <div ref={viewRef} className="ca-shell-mount" />
+        <div key={`${tab}:${mountKey}`} ref={viewRef} className="ca-shell-mount" />
         {status === 'loading' && <div className="ca-shell-note">불러오는 중…</div>}
         {status === 'error' && <div className="ca-shell-note">화면을 불러오지 못했어요. 새로고침해 주세요.</div>}
         {needs3d && (
