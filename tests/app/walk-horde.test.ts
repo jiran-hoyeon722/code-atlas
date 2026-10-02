@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import {
   COLLAPSE_TIME, DIFFICULTIES, DIFFICULTY, FORM_TIME, TIME_LIMIT, INFECTED_AT, createSiege, createVirus, isDifficulty, isInfected, pickSpawnSite, storedDifficulty, type SiegeWorld, type VirusSite,
 } from '../../src/features/walk/walkVirus';
-import { FOES, RECALL, approach, seesPlayer, shamble, steer, straggler } from '../../src/features/walk/walkHorde';
+import { FOES, RECALL, approach, recallNow, seesPlayer, shamble, steer, straggler } from '../../src/features/walk/walkHorde';
 import { alongPath } from '../../src/features/walk/walkFx';
 
 const calm: SiegeWorld = { allInfected: false, bossDown: false, zombies: 0, elites: 0 };
@@ -211,6 +211,15 @@ test('below hard, foes only react in sight and far zombies wander off; chasers s
   expect(straggler('zombie', RECALL + 1, true)).toBe('recall');
   expect(straggler('elite', RECALL + 1, true)).toBe('recall');
   expect(straggler('boss', 500, true)).toBe('keep');
+});
+
+test('a wedged chaser is recalled too, but never while the player flies or before its wait is up', () => {
+  expect(straggler('zombie', 30, true, true)).toBe('recall');
+  expect(straggler('zombie', 30, false, true)).toBe('keep');
+  expect(straggler('boss', 30, true, true)).toBe('keep');
+  expect(recallNow(0, false)).toBe(true);
+  expect(recallNow(0, true)).toBe(false);
+  expect(recallNow(3, false)).toBe(false);
 });
 
 test('a blocked chaser turns 45° then 90°, its own side first, and gives up only when boxed in', () => {

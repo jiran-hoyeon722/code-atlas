@@ -27,7 +27,7 @@ import { RARITY_COLOR, autoWeapon, createInventory, createLootField, lootCount, 
 import { createPickups, createShots } from './walkArsenal';
 import { DIFFICULTIES, DIFFICULTY, FORM_TIME, MAX_ORIGINS, createSiege, createVirus, isDifficulty, isInfected, pickOrigins, pickSpawnSite, storedDifficulty, type Difficulty } from './walkVirus';
 import { FOES, createHorde } from './walkHorde';
-import { decay, follow, shakeOffset, turnToward } from './walkMotion';
+import { decay, follow, reachAlong as reachAlongLine, shakeOffset, turnToward } from './walkMotion';
 import { SHELL, TANK, createTank, createTankQuest, tankQuestText } from './walkTank';
 import { QUEST, QUEST_KEY, createQuest, type QuestId } from './walkQuest';
 import { SOUND_KEY, createSound } from './walkSound';
@@ -542,12 +542,13 @@ const mount: MountViewer = (root, arch, env) => {
         if (propGrid.get(key(gx, gz))?.some((p) => Math.hypot(p.x - x, p.z - z) < p.r + r)) return true;
     return false;
   };
+  const wallAt = (x: number, z: number) => {
+    for (const b of nearby(x, z, 0.5)) if (b !== roof && gap(b, x, z) < 0.05) return true;
+    return false;
+  };
   const clearLine = (ax: number, az: number, bx: number, bz: number) => {
     const steps = Math.ceil(Math.hypot(bx - ax, bz - az) / 0.8);
-    for (let k = 1; k < steps; k++) {
-      const x = ax + ((bx - ax) * k) / steps, z = az + ((bz - az) * k) / steps;
-      for (const b of nearby(x, z, 0.5)) if (b !== roof && gap(b, x, z) < 0.05) return false;
-    }
+    for (let k = 1; k < steps; k++) if (wallAt(ax + ((bx - ax) * k) / steps, az + ((bz - az) * k) / steps)) return false;
     return true;
   };
   const blocked = (x: number, z: number, r = RADIUS) => {
@@ -1246,8 +1247,7 @@ const mount: MountViewer = (root, arch, env) => {
   const shots = createShots(scene, {
     surfaceAt,
     blocked: (x, z) => blocked(x, z, 0.15),
-    touches: (x, y, z) => y < 3 && (horde.positions().some((f) => Math.hypot(f.x - x, f.z - z) < FOES[f.kind].radius + 0.4)
-      || battle.positions().some((r) => !r.down && Math.hypot(r.x - x, r.z - z) < 0.8)),
+    touches: (x, y, z) => y < 3 && (horde.touches(x, z, 0.4) || battle.touches(x, z, 0.8)),
     explode: (p, radius, damage) => heliArms.explode(p, radius, damage, 1),
     sparks,
     smoke: puffs,
@@ -1256,8 +1256,7 @@ const mount: MountViewer = (root, arch, env) => {
   // The beam stops at the first wall; foes and rivals anywhere along it are hit.
   const reachAlong = (heading: number, range: number) => {
     const dx = Math.sin(heading), dz = Math.cos(heading);
-    for (let t = 0.75; t <= range; t += 0.75) if (!clearLine(pos.x, pos.z, pos.x + dx * t, pos.z + dz * t)) return t;
-    return range;
+    return reachAlongLine(range, (d) => wallAt(pos.x + dx * d, pos.z + dz * d));
   };
 
   function fire(w: Weapon, aimHeading: number) {
@@ -2444,7 +2443,7 @@ const mount: MountViewer = (root, arch, env) => {
       infectAttr.needsUpdate = true;
       tintInfected(virus.levels);
     }
-    horde.update(dt, time, { x: pos.x, z: pos.z, y: flying ? heli.root.position.y : footY }, alive && onFoot && !detailOpen && !entering);
+    horde.update(dt, time, { x: pos.x, z: pos.z, y: flying ? heli.root.position.y : footY, flying }, alive && onFoot && !detailOpen && !entering);
     const allInfected = virus.infected === layout.buildings.length && virus.levels.every((l) => l >= 1);
     const events = virus.state === 'spreading' ? siege.update(dt, { allInfected, bossDown, zombies: horde.zombies, elites: horde.elites }) : [];
     spawnFoes(events);

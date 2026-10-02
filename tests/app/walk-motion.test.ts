@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { GAIT, decay, follow, nextGait, separation, shakeOffset, turnToward, within, wrapAngle, type Gait } from '../../src/features/walk/walkMotion';
+import { GAIT, apart, decay, follow, nextGait, reachAlong, separation, separationInto, shakeOffset, turnToward, within, wrapAngle, type Gait } from '../../src/features/walk/walkMotion';
 
 test('a speed hovering around a threshold keeps the same gait', () => {
   let gait: Gait = 'Idle';
@@ -58,6 +58,36 @@ test('separation pushes overlapping bodies apart to the minimum gap', () => {
   const [fx, fz] = separation(0, 0, 0, 0, 1.1, Math.PI / 2);
   expect(Math.hypot(fx, fz)).toBeCloseTo(1.1);
   expect(fx).toBeCloseTo(1.1);
+});
+
+test('separation into a reused pair matches the allocating one, and the cheap reject never skips an overlap', () => {
+  const out: [number, number] = [9, 9];
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 4 - 2;
+  for (let k = 0; k < 2000; k++) {
+    const ax = rand(), az = rand(), bx = rand(), bz = rand(), min = Math.abs(rand()) + 0.1;
+    const want = separation(ax, az, bx, bz, min, k);
+    expect(separationInto(out, ax, az, bx, bz, min, k)).toBe(out);
+    expect(out).toEqual(want);
+    if (apart(ax, az, bx, bz, min)) expect(want).toEqual([0, 0]);
+  }
+  expect(apart(1.1, 0, 0, 0, 1.1)).toBe(false);
+});
+
+test('reachAlong in one pass stops where re-walking the line from the origin each step did', () => {
+  const old = (range: number, solid: (d: number) => boolean) => {
+    for (let t = 0.75; t <= range; t += 0.75) {
+      const steps = Math.ceil(t / 0.8);
+      for (let k = 1; k < steps; k++) if (solid((t * k) / steps)) return t;
+    }
+    return range;
+  };
+  for (let a = 0; a < 40; a += 0.07)
+    for (const w of [1, 3, 12]) {
+      const solid = (d: number) => d >= a && d <= a + w;
+      expect(reachAlong(30, solid)).toBe(old(30, solid));
+    }
+  expect(reachAlong(30, () => false)).toBe(30);
 });
 
 test('follow closes the same share of the gap over one second at any frame rate', () => {

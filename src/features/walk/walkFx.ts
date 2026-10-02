@@ -258,7 +258,9 @@ export function createBeacon(scene: THREE.Scene, vert: string, frag: string): Be
         const t = (seeds[k] + time * (0.08 + seeds[k] * 0.05)) % 1;
         const a = seeds[k] * 40 + time * 0.7;
         const r = 1 + t * 5 * seeds[(k + 7) % COLUMN];
-        pos.set([Math.cos(a) * r, top + t * 60, Math.sin(a) * r], k * 3);
+        pos[k * 3] = Math.cos(a) * r;
+        pos[k * 3 + 1] = top + t * 60;
+        pos[k * 3 + 2] = Math.sin(a) * r;
       }
       geo.attributes.position.needsUpdate = true;
     },
