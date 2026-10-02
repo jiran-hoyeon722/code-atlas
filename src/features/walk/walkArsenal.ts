@@ -191,18 +191,31 @@ export interface Pickups {
   dispose(): void;
 }
 
-// Floating weapon models over a rarity-coloured ring and a faint light column; no real lights, so the shader count never changes.
+const BEAM_HEIGHT = 12;
+const BEAM_PULSE: Record<Rarity, { base: number; amp: number; rate: number }> = {
+  common: { base: 0.45, amp: 0.1, rate: 2 },
+  uncommon: { base: 0.5, amp: 0.12, rate: 2 },
+  rare: { base: 0.55, amp: 0.15, rate: 2.4 },
+  legendary: { base: 0.8, amp: 0.2, rate: 3.2 },
+};
+
+// Floating weapon models over a rarity-coloured ring and a tall light beam seen from afar; no real lights, so the shader count never changes.
 export function createPickups(scene: THREE.Scene, kit: WeaponKit, drops: readonly LootDrop[]): Pickups {
   const owned: { dispose(): void }[] = [];
   const keep = <T extends { dispose(): void }>(x: T) => (owned.push(x), x);
   const ringGeo = keep(new THREE.RingGeometry(0.55, 0.78, 32).rotateX(-Math.PI / 2));
-  const columnGeo = keep(new THREE.CylinderGeometry(0.45, 0.6, 2.6, 16, 1, true).translate(0, 1.3, 0));
-  const mats = new Map<Rarity, { ring: THREE.Material; column: THREE.Material }>();
+  const beamGeo = keep(new THREE.CylinderGeometry(0.3, 0.55, BEAM_HEIGHT, 16, 6, true).translate(0, BEAM_HEIGHT / 2, 0));
+  // Additive blending turns black into nothing, so vertex colours fading to black give the beam a soft top without a texture.
+  const beamPos = beamGeo.getAttribute('position');
+  const fade = new Float32Array(beamPos.count * 3);
+  for (let k = 0; k < beamPos.count; k++) fade.fill((1 - beamPos.getY(k) / BEAM_HEIGHT) ** 1.6, k * 3, k * 3 + 3);
+  beamGeo.setAttribute('color', new THREE.BufferAttribute(fade, 3));
+  const mats = new Map<Rarity, { ring: THREE.Material; beam: THREE.MeshBasicMaterial }>();
   (Object.keys(RARITY_COLOR) as Rarity[]).forEach((r) => {
     const c = new THREE.Color(RARITY_COLOR[r]);
     mats.set(r, {
       ring: keep(new THREE.MeshBasicMaterial({ color: c.clone().multiplyScalar(2.2), transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending })),
-      column: keep(new THREE.MeshBasicMaterial({ color: c.clone().multiplyScalar(0.9), transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })),
+      beam: keep(new THREE.MeshBasicMaterial({ color: c.clone().multiplyScalar(r === 'legendary' ? 2 : 1.4), vertexColors: true, transparent: true, opacity: BEAM_PULSE[r].base, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })),
     });
   });
   const box = new THREE.Box3();
@@ -211,12 +224,12 @@ export function createPickups(scene: THREE.Scene, kit: WeaponKit, drops: readonl
     const root = new THREE.Group();
     const ring = new THREE.Mesh(ringGeo);
     ring.position.y = 0.2;
-    const column = new THREE.Mesh(columnGeo);
+    const beam = new THREE.Mesh(beamGeo);
     const holder = new THREE.Group();
-    root.add(ring, column, holder);
+    root.add(ring, beam, holder);
     root.visible = false;
     scene.add(root);
-    return { root, ring, column, holder, id: null as WeaponId | null };
+    return { root, ring, beam, holder, id: null as WeaponId | null };
   });
   const self: Pickups = {
     sync(k, drop) {
@@ -229,19 +242,20 @@ export function createPickups(scene: THREE.Scene, kit: WeaponKit, drops: readonl
       it.id = drop.id;
       const m = mats.get(rarityOf(drop.id))!;
       it.ring.material = m.ring;
-      it.column.material = m.column;
+      it.beam.material = m.beam;
       it.holder.clear();
       const model = kit.model(drop.id);
-      const s = drop.id === 'grenade' ? 4 : drop.id === 'pistol' ? 2.8 : 2.1;
+      const s = (drop.id === 'grenade' ? 4 : drop.id === 'pistol' ? 2.8 : 2.1) * 1.5;
       model.scale.setScalar(s);
       box.setFromObject(model).getCenter(center);
       model.position.sub(center);
       it.holder.add(model);
     },
     update(time) {
+      mats.forEach((m, r) => { const p = BEAM_PULSE[r]; m.beam.opacity = p.base + Math.sin(time * p.rate) * p.amp; });
       items.forEach((it, k) => {
         if (!it.root.visible) return;
-        it.holder.position.y = 1 + Math.sin(time * 2 + k) * 0.15;
+        it.holder.position.y = 1.2 + Math.sin(time * 2 + k) * 0.15;
         it.holder.rotation.y = time * 1.4 + k;
         it.ring.rotation.y = -time * 0.8;
       });

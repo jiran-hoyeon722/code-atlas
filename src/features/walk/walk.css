@@ -197,6 +197,10 @@
 .wk-walk .wk-prompt { position: absolute; left: 50%; bottom: 100px; transform: translate(-50%, 8px); padding: 8px 16px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
 .wk-walk .wk-prompt.open { opacity: 1; transform: translate(-50%, 0); }
 .wk-walk .wk-prompt b { display: inline-block; min-width: 18px; padding: 0 6px; margin-right: 6px; border-radius: 5px; background: var(--accent); color: #0b0d12; text-align: center; }
+.wk-walk .wk-finder { position: absolute; left: 50%; bottom: 146px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 8px; border-radius: 999px; font-size: 13px; font-weight: 600; pointer-events: none; }
+.wk-walk .wk-finder[hidden] { display: none; }
+.wk-walk .wk-finder i { display: inline-block; width: 18px; font-style: normal; font-size: 16px; line-height: 18px; text-align: center; color: var(--c, var(--text)); }
+.wk-walk.picking .wk-finder, .wk-walk.entering .wk-finder { display: none; }
 .wk-walk .wk-detail { position: absolute; top: 14px; right: 14px; bottom: 14px; width: min(760px, max(320px, calc(100% - 380px))); display: flex; flex-direction: column; overflow: hidden; opacity: 0; transform: translateX(40px) scale(.98); pointer-events: none; transition: opacity .35s ease, transform .45s cubic-bezier(.2, .8, .2, 1); }
 .wk-walk .wk-detail.open { opacity: 1; transform: none; pointer-events: auto; }
 .wk-walk .wk-fade { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 40% 50%, transparent 30%, #05060a 100%); opacity: 0; }
