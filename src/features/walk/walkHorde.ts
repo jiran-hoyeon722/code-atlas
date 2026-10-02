@@ -30,6 +30,8 @@ const ROBOT_H = 1.75;
 const RISE = 1.1;
 const GONE = 2.6;
 const DESPAWN = 110;
+/** A chaser left this far behind is brought back near the player instead of trudging across the city. */
+export const RECALL = 140;
 const SLAM_EVERY = 6.5;
 const SLAM_RADIUS = 22;
 const SLAM_SPEED = 20;
@@ -46,6 +48,29 @@ export const HELI_BOSS_BONUS = 2.5;
 
 /** Walking speed that closes the gap to `stop` without overshooting it in one frame, so a foe settles instead of jittering on the spot. */
 export const approach = (distance: number, stop: number, speed: number, dt: number) => Math.min(speed, Math.max(0, distance - stop) / Math.max(dt, 1e-3));
+
+/** Whether a foe goes for the player; a chaser always does, whatever the distance. */
+export const seesPlayer = (kind: FoeKind, d: number, chase: boolean) => (chase && kind !== 'boss') || d < FOES[kind].sight;
+
+/** What happens to a far-off foe: zombies wander off and vanish, unless chasing, when stragglers are recalled near the player. */
+export function straggler(kind: FoeKind, d: number, chase: boolean): 'keep' | 'release' | 'recall' {
+  if (kind === 'boss') return 'keep';
+  if (chase) return d > RECALL ? 'recall' : 'keep';
+  return kind === 'zombie' && d > DESPAWN ? 'release' : 'keep';
+}
+
+const STEER = [0, 1, -1, 2, -2].map((k) => (k * Math.PI) / 4);
+
+/** The first heading off (dx, dz) — straight, then ±45°, then ±90°, `side` first — whose step `free` allows, as a unit vector, or null. */
+export function steer(dx: number, dz: number, side: 1 | -1, free: (ux: number, uz: number) => boolean): [number, number] | null {
+  const base = Math.atan2(dx, dz);
+  for (const a of STEER) {
+    const h = base + a * side;
+    const ux = Math.sin(h), uz = Math.cos(h);
+    if (free(ux, uz)) return [ux, uz];
+  }
+  return null;
+}
 
 /** Shamblers never break into a run, whatever speed they end up at. */
 export const shamble = (prev: Gait, speed: number): Gait => (nextGait(prev, speed) === 'Idle' ? 'Idle' : 'Walking');
@@ -87,6 +112,8 @@ export interface Horde {
   /** Pulls the giant together at (x, z) over `duration` seconds; it cannot be hurt until it has formed. */
   formBoss(x: number, z: number, duration: number, style?: FoeStyle): boolean;
   update(dt: number, time: number, player: HordePlayer, canHit: boolean): void;
+  /** Virus foes hunt the player from anywhere on the map and steer round buildings; tagged hunt monsters are left alone. */
+  setChase(on: boolean): void;
   strike(at: THREE.Vector3, heading: number, weapon: Weapon): boolean;
   /** Where a shot along `heading` would land on a foe, or null. */
   aimTarget(at: THREE.Vector3, heading: number, weapon: Weapon): { x: number; z: number; d: number; r: number } | null;
@@ -113,7 +140,7 @@ type Foe = {
   x: number; z: number; heading: number; hp: number; state: 'rise' | 'live' | 'dead'; t: number;
   gait: Gait; engaged: boolean; cooldown: number; pendingHit: number; stun: number; vx: number; vz: number; flash: number;
   tag: Tag | null; growFor: number; slam: number; orb: number; minion: number; slamAt: number; orbAt: number;
-  max: number; speedMul: number; damageMul: number; label: string | null; hunt?: string; glow: THREE.Color;
+  max: number; speedMul: number; damageMul: number; label: string | null; hunt?: string; glow: THREE.Color; side: 1 | -1;
 };
 type Wave = { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; x: number; z: number; r: number; hit: boolean; on: boolean };
 type Orb = { mesh: THREE.Mesh; x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number };
@@ -134,6 +161,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
   let loading = 0;
   const foes: Foe[] = [];
   let giant: FoeStyle = {};
+  let chase = false;
   const eyeGeo = keep(new THREE.SphereGeometry(0.045, 8, 6));
   const eyeMat = keep(new THREE.MeshBasicMaterial({ color: new THREE.Color('#b6ff4a').multiplyScalar(4) }));
   const v = new THREE.Vector3();
@@ -271,7 +299,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
       kind, rule, p, root, x, z, heading: Math.random() * Math.PI * 2, hp: rule.hp, state: 'rise', t: 0,
       gait: 'Idle', engaged: false, cooldown: 0.6, pendingHit: 0, stun: 0, vx: 0, vz: 0, flash: 0,
       tag: kind === 'elite' || style.label ? tags.pop() ?? makeTag() : null, growFor: 0, slam: SLAM_EVERY * 0.5, orb: ORB_EVERY, minion: MINION_EVERY * 0.6, slamAt: 0, orbAt: 0,
-      max: style.hp ?? rule.hp, speedMul: style.speed ?? 1, damageMul: style.damage ?? 1, label: style.label ?? null, hunt: style.tag, glow,
+      max: style.hp ?? rule.hp, speedMul: style.speed ?? 1, damageMul: style.damage ?? 1, label: style.label ?? null, hunt: style.tag, glow, side: Math.random() < 0.5 ? 1 : -1,
     };
     f.hp = f.max;
     if (f.tag) f.tag.hp = -1;
@@ -300,10 +328,15 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     if (f.hp <= 0) kill(f);
     else if (f.kind === 'zombie') f.p.robot.play('No', 0.08, true);
   };
-  const move = (f: Foe, dx: number, dz: number, speed: number, dt: number) => {
+  const move = (f: Foe, dx: number, dz: number, speed: number, dt: number, around = false) => {
     const len = Math.hypot(dx, dz) || 1;
-    const sx = (dx / len) * speed * dt, sz = (dz / len) * speed * dt;
+    let sx = (dx / len) * speed * dt, sz = (dz / len) * speed * dt;
     const r = Math.min(2, f.rule.radius);
+    if (around && hooks.blocked(f.x + sx, f.z + sz, r)) {
+      const step = speed * dt;
+      const dir = steer(dx, dz, f.side, (ux, uz) => !hooks.blocked(f.x + ux * step, f.z + uz * step, r));
+      if (dir) { sx = dir[0] * step; sz = dir[1] * step; }
+    }
     if (!hooks.blocked(f.x + sx, f.z, r)) f.x += sx;
     if (!hooks.blocked(f.x, f.z + sz, r)) f.z += sz;
   };
@@ -425,6 +458,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
       for (let k = all.length + loading; k < Math.min(count, POOL); k++) load();
     },
     spawn: spawnAt,
+    setChase(on) { chase = on; },
     formBoss(x, z, duration, style = {}) {
       const f = acquire('boss', x, z, style);
       if (!f) return false;
@@ -460,6 +494,8 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
         }
         const dx = player.x - f.x, dz = player.z - f.z;
         const d = Math.hypot(dx, dz);
+        const hunting = chase && !f.hunt;
+        const far = straggler(f.kind, d, hunting);
         if (f.kind === 'boss' && f.growFor > 0) {
           f.t += dt;
           f.root.scale.setScalar(f.rule.scale * bossGrow(f));
@@ -468,9 +504,15 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
         } else if (f.state === 'rise') {
           f.t += dt;
           if (f.t >= RISE) { f.state = 'live'; f.t = 0; }
-        } else if (f.kind === 'zombie' && d > DESPAWN) {
+        } else if (far === 'release') {
           release(f);
           return;
+        } else if (far === 'recall') {
+          const at = hooks.spot(player.x, player.z, 40, 60);
+          if (at) {
+            Object.assign(f, { x: at.x, z: at.z, state: 'rise', t: 0, engaged: false, pendingHit: 0 });
+            motes.burst(at.x, 0.2, at.z, f.kind === 'elite' ? 30 : 12, f.kind === 'elite' ? 5 : 2.5, 2, 0.9);
+          }
         } else if (f.stun > 0) {
           f.stun -= dt;
           nudge(f, f.vx * dt, f.vz * dt);
@@ -481,7 +523,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
           bossUpdate(f, dt, player);
         } else {
           const reach = f.rule.radius + f.rule.reach;
-          const sees = d < f.rule.sight;
+          const sees = seesPlayer(f.kind, d, hunting);
           // A crowd keeps the back row from reaching the player, so the swing starts a step early instead of shoving forever.
           f.engaged = sees && within(f.engaged, d, reach + 0.8, reach + 1.5);
           if (f.pendingHit > 0) {
@@ -499,7 +541,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
             } else if (robot.current !== robot.actions.Punch || !robot.current.isRunning()) robot.play('Idle', 0.25);
           } else if (sees) {
             const speed = approach(d, reach, f.rule.speed * f.speedMul, dt);
-            move(f, dx, dz, speed, dt);
+            move(f, dx, dz, speed, dt, hunting);
             turn(f, dx, dz, dt, 6);
             f.gait = shamble(f.gait, speed);
             robot.play(f.gait, 0.3);

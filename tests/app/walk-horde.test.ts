@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import {
   COLLAPSE_TIME, DIFFICULTIES, DIFFICULTY, FORM_TIME, TIME_LIMIT, INFECTED_AT, createSiege, createVirus, isDifficulty, isInfected, pickSpawnSite, storedDifficulty, type SiegeWorld, type VirusSite,
 } from '../../src/features/walk/walkVirus';
-import { FOES, approach, shamble } from '../../src/features/walk/walkHorde';
+import { FOES, RECALL, approach, seesPlayer, shamble, steer, straggler } from '../../src/features/walk/walkHorde';
 import { alongPath } from '../../src/features/walk/walkFx';
 
 const calm: SiegeWorld = { allInfected: false, bossDown: false, zombies: 0, elites: 0 };
@@ -197,4 +197,29 @@ test('guide arrows are laid evenly along the route and face along it', () => {
   expect(spots[4].angle).toBeCloseTo(Math.PI / 2);
   expect(alongPath([[0, 0]], 0, 1, 5)).toEqual([]);
   expect(alongPath(pts, 0, 3, 2)).toHaveLength(2);
+});
+
+test('below hard, foes only react in sight and far zombies wander off; chasers see the player from anywhere', () => {
+  expect(seesPlayer('zombie', FOES.zombie.sight + 1, false)).toBe(false);
+  expect(seesPlayer('elite', FOES.elite.sight - 1, false)).toBe(true);
+  expect(seesPlayer('zombie', 500, true)).toBe(true);
+  expect(seesPlayer('elite', 500, true)).toBe(true);
+  expect(seesPlayer('boss', 500, false)).toBe(true);
+  expect(straggler('zombie', 111, false)).toBe('release');
+  expect(straggler('elite', 500, false)).toBe('keep');
+  expect(straggler('zombie', 120, true)).toBe('keep');
+  expect(straggler('zombie', RECALL + 1, true)).toBe('recall');
+  expect(straggler('elite', RECALL + 1, true)).toBe('recall');
+  expect(straggler('boss', 500, true)).toBe('keep');
+});
+
+test('a blocked chaser turns 45° then 90°, its own side first, and gives up only when boxed in', () => {
+  const near = (v: [number, number] | null, x: number, z: number) => { expect(v).not.toBeNull(); expect(v![0]).toBeCloseTo(x); expect(v![1]).toBeCloseTo(z); };
+  near(steer(0, 5, 1, () => true), 0, 1);
+  const wallAhead = (_ux: number, uz: number) => uz < 0.9;
+  near(steer(0, 5, 1, wallAhead), Math.SQRT1_2, Math.SQRT1_2);
+  near(steer(0, 5, -1, wallAhead), -Math.SQRT1_2, Math.SQRT1_2);
+  const wide = (ux: number, uz: number) => uz < 0.1 && ux < 0;
+  near(steer(0, 5, 1, wide), -1, 0);
+  expect(steer(0, 5, 1, () => false)).toBeNull();
 });
