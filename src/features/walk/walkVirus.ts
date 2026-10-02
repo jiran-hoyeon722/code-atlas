@@ -190,7 +190,7 @@ export interface DifficultyRule {
 }
 
 /** Seconds the whole mode may take, from the outbreak to the giant's death, before the repo collapses. */
-export const TIME_LIMIT = 600;
+export const TIME_LIMIT = 1800;
 /** However late the giant forms, the player gets at least this long to fight it. */
 export const BOSS_MIN_TIME = 180;
 

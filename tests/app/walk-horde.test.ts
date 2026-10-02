@@ -122,7 +122,7 @@ test('running out of time collapses the repo exactly once, and nothing stops it'
   expect(run(siege, 5, world)).toEqual([]);
 });
 
-test('the 10-minute clock collapses the repo whatever phase it runs out in', () => {
+test('the 30-minute clock collapses the repo whatever phase it runs out in', () => {
   const outbreak = createSiege();
   outbreak.start(DIFFICULTY.god);
   const capped = { ...calm, zombies: 999, elites: 999 };
