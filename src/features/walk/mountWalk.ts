@@ -36,7 +36,7 @@ import { openPicker } from './walkPicker';
 import type { RideCar } from './walkTraffic';
 import { GUIDE, GUIDE_KEY, guideHtml } from './walkGuide';
 import { SIGNS as WARNINGS, createAtlas, createPilot, packOf, readRepo, tagOf, type PilotCommand, type Point, type Stop } from './walkAuto';
-import { clampToRoof, climbPath, gableLift, overRoof, streetExit, type RoofRect } from './walkRoof';
+import { clampToRoof, climbPath, deckUnder, gableLift, overRoof, streetExit, type RoofRect } from './walkRoof';
 import robotUrl from './assets/RobotExpressive.glb?url';
 
 const WALK = 4.2;
@@ -71,7 +71,7 @@ const GUN_ICON = icon('<path d="M2 10h14l2-2h3v3h-2l-1 1H9l-1 4H5l1-4H2z" fill="
 const BOMB_ICON = icon('<circle cx="10.5" cy="14" r="6.5" fill="currentColor"/><path d="M15 9.5l2.5-2.5M18 4.5v2M20.5 7h-2M19.8 4.2l-1.4 1.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>');
 const TANK_ICON = icon('<path d="M3 15h18l-2 4H5z" fill="currentColor"/><rect x="5" y="11" width="12" height="4" rx="1" fill="currentColor"/><rect x="8" y="8" width="6" height="3.5" rx="1" fill="currentColor"/><path d="M14 9.5h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>');
 const AUTO_ICON = icon('<circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 8.5v7l6-3.5z" fill="currentColor"/>');
-const TAKEOVER = /^(Key[WASDEFGH]|Arrow\w+|Space|Digit[0-9])$/;
+const TAKEOVER = /^(Key[WASDEFGHR]|Arrow\w+|Space|Digit[0-9])$/;
 const LOCK_ICON = icon('<rect x="6" y="11" width="12" height="9" rx="2" fill="currentColor"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3" fill="none" stroke="currentColor" stroke-width="1.8"/>');
 const VIRUS_ICON = icon('<circle cx="12" cy="12" r="5" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.8 2.8M16.2 16.2L19 19M5 19l2.8-2.8M16.2 7.8L19 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>');
 const HELP = [
@@ -521,9 +521,11 @@ const mount: MountViewer = (root, arch, env) => {
       for (let gz = Math.floor((z - r) / GRID); gz <= Math.floor((z + r) / GRID); gz++) grid.get(key(gx, gz))?.forEach((b) => out.add(b));
     return out;
   };
-  const gap = (b: WalkBuilding, x: number, z: number) => Math.hypot(Math.max(0, Math.abs(x - b.x) - b.w / 2), Math.max(0, Math.abs(z - b.z) - b.d / 2));
+  const gap = (b: RoofRect, x: number, z: number) => Math.hypot(Math.max(0, Math.abs(x - b.x) - b.w / 2), Math.max(0, Math.abs(z - b.z) - b.d / 2));
   // The building whose roof the player stands on; it never blocks a line of fire from up there.
   let roof: WalkBuilding | null = null;
+  // The part of `roof` underfoot: a tower's top tier after a climb, or whichever tier a fall landed on.
+  let deck: RoofRect | null = null;
   let climb: { t0: number; dur: number; b: WalkBuilding; up: boolean; from: { x: number; z: number; y: number }; to: { x: number; z: number; y: number } } | null = null;
   const insideBuilding = (p: THREE.Vector3) => {
     for (const b of nearby(p.x, p.z, 1)) if (gap(b, p.x, p.z) < 0.4 && p.y < b.h + 0.5) return true;
@@ -832,7 +834,7 @@ const mount: MountViewer = (root, arch, env) => {
     (e.target as HTMLElement).closest('button')?.blur();
   });
   const attack = () => {
-    if (punchCooldown > 0 || !alive || mode !== 'walk' || detailOpen || entering) return;
+    if (punchCooldown > 0 || !alive || mode !== 'walk' || detailOpen || entering || climb) return;
     if (!inventory.spend(weapon.id)) { selectWeapon(weaponById('fist'), true); return; }
     punchCooldown = weapon.cooldown;
     heroHeld.kick();
@@ -1164,12 +1166,15 @@ const mount: MountViewer = (root, arch, env) => {
     if (b.kind !== 'house') return top;
     return top + gableLift(ridge(b), b.d + 0.8, z - b.z) - (virus.levels[indexOf.get(b) ?? -1] ?? 0) * 0.06 * b.h;
   };
-  const roofTop = (b: WalkBuilding) => 0.16 + b.h + ridge(b);
-  // While dropping off a roof, only walls that still reach above the feet can stop the player.
-  const blockedAbove = (x: number, z: number, y: number, r = RADIUS) => {
-    for (const b of nearby(x, z, r + 1)) if (gap(b, x, z) < r && roofTop(b) > y) return true;
+  const deckFloor = (b: WalkBuilding, d: RoofRect, z: number) => (d === roofRect(b) ? roofFloor(b, z) : 0.16 + (d as Part).base + (d as Part).h);
+  // Up in the air only walls (each tower tier on its own) that still reach above the feet can stop the player; `skip` is the deck being stood on.
+  const blockedAbove = (x: number, z: number, y: number, r = RADIUS, skip: RoofRect | null = null) => {
+    for (const b of nearby(x, z, r + 1))
+      for (const p of partsOf.get(b) ?? [])
+        if (p !== skip && gap(p, x, z) < r && deckFloor(b, p, z) > y) return true;
     return x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ;
   };
+  const PROP_TOP = 5.2;
   const CLIMB_MS = 600;
   function climbUp(b: WalkBuilding) {
     const spot = clampToRoof(roofRect(b), pos.x, pos.z, 1);
@@ -1187,6 +1192,7 @@ const mount: MountViewer = (root, arch, env) => {
   function landOnRoof(b: WalkBuilding, at: { x: number; z: number; y: number }) {
     climb = null;
     roof = b;
+    deck = roofRect(b);
     pos.x = at.x;
     pos.z = at.z;
     footY = at.y;
@@ -1245,7 +1251,7 @@ const mount: MountViewer = (root, arch, env) => {
   const flames = createMotes(scene, 500, new THREE.Color('#ff7a1f').multiplyScalar(2.6), 0.55, true);
   const shots = createShots(scene, {
     surfaceAt,
-    blocked: (x, z) => blocked(x, z, 0.15),
+    blocked: (x, y, z) => (y < PROP_TOP && propHit(x, z, 0.15)) || blockedAbove(x, z, y, 0.15),
     touches: (x, y, z) => y < 3 && (horde.positions().some((f) => Math.hypot(f.x - x, f.z - z) < FOES[f.kind].radius + 0.4)
       || battle.positions().some((r) => !r.down && Math.hypot(r.x - x, r.z - z) < 0.8)),
     explode: (p, radius, damage) => heliArms.explode(p, radius, damage),
@@ -1264,7 +1270,8 @@ const mount: MountViewer = (root, arch, env) => {
     heroHeld.tip(muzzle);
     const foe = horde.aimTarget(pos, aimHeading, w);
     const rival = rivalAt(battle.aimTarget(pos, aimHeading, w));
-    const targetD = foe && (!rival || foe.d < Math.hypot(rival.x - pos.x, rival.z - pos.z)) ? foe.d : rival ? Math.hypot(rival.x - pos.x, rival.z - pos.z) : null;
+    const target = foe && (!rival || foe.d < Math.hypot(rival.x - pos.x, rival.z - pos.z)) ? foe : rival ?? null;
+    const targetD = foe && target === foe ? foe.d : target ? Math.hypot(target.x - pos.x, target.z - pos.z) : null;
     if (w.kind === 'throw') {
       sound.play('throw');
       shots.grenade(muzzle, aimHeading, Math.max(3, Math.min(w.range, targetD ?? w.range)), w.blast ?? 5, w.damage);
@@ -1272,7 +1279,7 @@ const mount: MountViewer = (root, arch, env) => {
     }
     if (w.shot === 'rocket') {
       sound.play('rocket');
-      shots.rocket(muzzle, aimHeading, w.range, w.blast ?? 6, w.damage);
+      shots.rocket(muzzle, aimHeading, w.range, w.blast ?? 6, w.damage, undefined, target && { x: target.x, y: 1, z: target.z });
       puffs.burst(muzzle.x, muzzle.y, muzzle.z, 8, 2, 0.6, 0.6);
       shake = Math.max(shake, 0.25);
       return;
@@ -2268,13 +2275,18 @@ const mount: MountViewer = (root, arch, env) => {
       if (t === 1) { if (c.up) landOnRoof(c.b, c.to); else reachStreet(c.b, c.to); }
     } else {
       if (roof) {
-        const r = roofRect(roof);
+        const r = deck ?? roofRect(roof);
+        // A tower's higher tier or a taller neighbour is a wall; once already inside one any step is allowed, so it never traps.
+        const wall = (x: number, z: number) => blockedAbove(x, z, footY + 0.05, RADIUS, r);
+        const stuck = wall(pos.x, pos.z);
         if (vy > 0 || footY > floorY + 0.3) {
-          pos.x += stepX;
-          pos.z += stepZ;
+          if (stuck || !wall(pos.x + stepX, pos.z)) pos.x += stepX; else { vel.x = 0; knock.x = 0; }
+          if (stuck || !wall(pos.x, pos.z + stepZ)) pos.z += stepZ; else { vel.z = 0; knock.z = 0; }
           if (!overRoof(r, pos.x, pos.z)) { roof = null; updatePrompt(); }
         } else {
           const c = clampToRoof(r, pos.x + stepX, pos.z + stepZ, 0.5);
+          if (!stuck && wall(c.x, pos.z)) c.x = pos.x;
+          if (!stuck && wall(c.x, c.z)) c.z = pos.z;
           if (c.x !== pos.x + stepX) { vel.x = 0; knock.x = 0; }
           if (c.z !== pos.z + stepZ) { vel.z = 0; knock.z = 0; }
           pos.x = c.x;
@@ -2285,15 +2297,22 @@ const mount: MountViewer = (root, arch, env) => {
         if (!solid(pos.x + stepX, pos.z)) pos.x += stepX; else { vel.x = 0; knock.x = 0; }
         if (!solid(pos.x, pos.z + stepZ)) pos.z += stepZ; else { vel.z = 0; knock.z = 0; }
       }
-      floorY = roof ? roofFloor(roof, pos.z) : 0;
+      // Off a roof the floor is whatever terrace or lower roof is below; a sinking city has none.
+      const under = !roof && footY > 1 && siege.phase !== 'collapsing' && siege.phase !== 'over'
+        ? deckUnder([...nearby(pos.x, pos.z, 0.5)].flatMap((b) => partsOf.get(b) ?? []), pos.x, pos.z, footY, (p) => deckFloor(p.b, p, pos.z))
+        : null;
+      floorY = roof ? deckFloor(roof, deck ?? roofRect(roof), pos.z) : under?.top ?? 0;
       vy -= GRAVITY * dt;
       footY = Math.max(floorY, footY + vy * dt);
       landing = footY === floorY && vy < 0 ? -vy : 0;
       if (footY === floorY && vy < 0) vy = 0;
+      if (under && landing > 0) { roof = under.deck.b; deck = under.deck; updatePrompt(); }
       // A drop off a roof can end inside a lower building's footprint; step out to its nearest street side.
-      if (!roof && landing > 0)
+      else if (!roof && landing > 0) {
         for (const b of nearby(pos.x, pos.z, RADIUS + 1))
           if (gap(b, pos.x, pos.z) < RADIUS) { const out = streetExit(b, pos.x, pos.z, RADIUS + 0.2); pos.x = out.x; pos.z = out.z; }
+        if (blockedWalker(pos.x, pos.z)) pos.copy(freeSpotNear(pos.x, pos.z, 0, 10));
+      }
     }
     const speed = Math.hypot(vel.x, vel.z);
     const prev = heading;
@@ -2682,7 +2701,7 @@ const mount: MountViewer = (root, arch, env) => {
     tracers.update(dt);
     shots.update(dt);
     flames.update(dt);
-    const grab = onFoot && alive ? loot.update(dt, pos.x, pos.z) : loot.update(dt, Infinity, Infinity);
+    const grab = onFoot && alive && footY < 1 ? loot.update(dt, pos.x, pos.z) : loot.update(dt, Infinity, Infinity);
     grab.picked.forEach((d) => {
       const w = weaponById(d.id);
       const { fresh, left } = inventory.pickup(d.id);

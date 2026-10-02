@@ -33,3 +33,14 @@ export function climbPath(t: number, from: { x: number; z: number; y: number }, 
   const a = ease(across), v = ease(vertical);
   return { x: from.x + (to.x - from.x) * a, z: from.z + (to.z - from.z) * a, y: from.y + (to.y - from.y) * v };
 }
+
+/** The deck the feet come down on at (x, z): the highest one under that point, or null (the street) if the feet are already below it. */
+export function deckUnder<T extends RoofRect>(decks: Iterable<T>, x: number, z: number, footY: number, topOf: (d: T) => number, tol = 0.3) {
+  let best: T | null = null, top = -Infinity;
+  for (const d of decks) {
+    if (!overRoof(d, x, z)) continue;
+    const t = topOf(d);
+    if (t > top) { best = d; top = t; }
+  }
+  return best && top <= footY + tol ? { deck: best, top } : null;
+}

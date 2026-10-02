@@ -15,8 +15,8 @@ const BEAM_LIFE = 0.2;
 
 export interface ShotHooks {
   surfaceAt: Surface;
-  /** Walls and props at ground level. */
-  blocked(x: number, z: number): boolean;
+  /** Walls that reach above height `y`, props, and the city edge. */
+  blocked(x: number, y: number, z: number): boolean;
   /** A foe or rival close enough at (x, z) for a direct hit. */
   touches(x: number, y: number, z: number): boolean;
   explode(p: Impact, radius: number, damage: number): void;
@@ -26,13 +26,27 @@ export interface ShotHooks {
 }
 
 export interface Shots {
-  rocket(from: THREE.Vector3, heading: number, range: number, radius: number, damage: number, speed?: number): void;
+  /** With a `target` well below the muzzle (fired from a roof) the rocket dives at it; otherwise it flies level. */
+  rocket(from: THREE.Vector3, heading: number, range: number, radius: number, damage: number, speed?: number, target?: Point3 | null): void;
   /** Lobs a grenade so it lands about `distance` ahead; it goes off on impact or when the fuse burns down. */
   grenade(from: THREE.Vector3, heading: number, distance: number, radius: number, damage: number): void;
   beam(from: THREE.Vector3, to: THREE.Vector3, color: string, width: number): void;
   flame(from: THREE.Vector3, heading: number, length: number): void;
   update(dt: number): void;
   dispose(): void;
+}
+
+type Point3 = { x: number; y: number; z: number };
+const DIVE_MIN = 1.5;
+
+/** Unit flight direction along `heading`, tilted down onto `target` when it sits at least DIVE_MIN below `from`. */
+export function rocketDir(heading: number, from: Point3, target?: Point3 | null) {
+  const dx = Math.sin(heading), dz = Math.cos(heading);
+  const fall = target ? from.y - target.y : 0;
+  if (!target || fall < DIVE_MIN) return { dx, dy: 0, dz };
+  const run = Math.max(0.5, Math.hypot(target.x - from.x, target.z - from.z));
+  const len = Math.hypot(run, fall);
+  return { dx: (dx * run) / len, dy: -fall / len, dz: (dz * run) / len };
 }
 
 export function createShots(scene: THREE.Scene, hooks: ShotHooks): Shots {
@@ -51,7 +65,7 @@ export function createShots(scene: THREE.Scene, hooks: ShotHooks): Shots {
     mesh.add(new THREE.Mesh(bodyGeo, bodyMat), new THREE.Mesh(tipGeo, tipMat), new THREE.Mesh(jetGeo, jetMat));
     mesh.visible = false;
     scene.add(mesh);
-    return { mesh, live: false, x: 0, y: 0, z: 0, dx: 0, dz: 0, left: 0, radius: 0, damage: 0, speed: ROCKET_SPEED };
+    return { mesh, live: false, x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 0, left: 0, radius: 0, damage: 0, speed: ROCKET_SPEED };
   });
 
   const nadeGeo = keep(new THREE.SphereGeometry(0.13, 10, 8));
@@ -83,12 +97,13 @@ export function createShots(scene: THREE.Scene, hooks: ShotHooks): Shots {
   }
 
   return {
-    rocket(from, heading, range, radius, damage, speed = ROCKET_SPEED) {
+    rocket(from, heading, range, radius, damage, speed = ROCKET_SPEED, target) {
       const r = rockets.find((o) => !o.live) ?? rockets[0];
-      Object.assign(r, { live: true, x: from.x, y: Math.max(0.6, from.y), z: from.z, dx: Math.sin(heading), dz: Math.cos(heading), left: range, radius, damage, speed });
+      const y = Math.max(0.6, from.y);
+      Object.assign(r, { live: true, x: from.x, y, z: from.z, ...rocketDir(heading, { x: from.x, y, z: from.z }, target), left: range, radius, damage, speed });
       r.mesh.visible = true;
       r.mesh.position.set(r.x, r.y, r.z);
-      r.mesh.lookAt(v.set(r.x + r.dx, r.y, r.z + r.dz));
+      r.mesh.lookAt(v.set(r.x + r.dx, r.y + r.dy, r.z + r.dz));
     },
     grenade(from, heading, distance, radius, damage) {
       const g = grenades.find((o) => !o.live) ?? grenades[0];
@@ -126,17 +141,18 @@ export function createShots(scene: THREE.Scene, hooks: ShotHooks): Shots {
         const n = Math.max(1, Math.ceil(step / 0.5));
         for (let k = 0; k < n; k++) {
           r.x += (r.dx * step) / n;
+          r.y += (r.dy * step) / n;
           r.z += (r.dz * step) / n;
           r.left -= step / n;
-          if (r.left <= 0 || hooks.blocked(r.x, r.z) || hooks.surfaceAt(r.x, r.z) > r.y || hooks.touches(r.x, r.y, r.z)) {
+          if (r.left <= 0 || hooks.blocked(r.x, r.y, r.z) || hooks.surfaceAt(r.x, r.z) > r.y || hooks.touches(r.x, r.y, r.z)) {
             r.live = false;
             r.mesh.visible = false;
-            explode({ x: r.x - r.dx * 0.3, y: Math.max(0, r.y - 1), z: r.z - r.dz * 0.3 }, r.radius, r.damage);
+            explode({ x: r.x - r.dx * 0.3, y: Math.max(0, r.y - r.dy * 0.3 - 1), z: r.z - r.dz * 0.3 }, r.radius, r.damage);
             return;
           }
         }
         r.mesh.position.set(r.x, r.y, r.z);
-        hooks.smoke.burst(r.x - r.dx * 0.4, r.y, r.z - r.dz * 0.4, 2, 0.4, 0.4, 0.6);
+        hooks.smoke.burst(r.x - r.dx * 0.4, r.y - r.dy * 0.4, r.z - r.dz * 0.4, 2, 0.4, 0.4, 0.6);
       });
       grenades.forEach((g) => {
         if (!g.live) return;
@@ -145,7 +161,7 @@ export function createShots(scene: THREE.Scene, hooks: ShotHooks): Shots {
         const b = g.b;
         g.mesh.position.set(b.x, b.y, b.z);
         g.mesh.rotation.x += dt * 12;
-        if (!hit && g.fuse > 0 && !hooks.blocked(b.x, b.z) && !hooks.touches(b.x, b.y, b.z)) return;
+        if (!hit && g.fuse > 0 && !hooks.blocked(b.x, b.y, b.z) && !hooks.touches(b.x, b.y, b.z)) return;
         g.live = false;
         g.mesh.visible = false;
         explode(hit ?? { x: b.x, y: Math.max(0, b.y - 1), z: b.z }, g.radius, g.damage);
