@@ -446,19 +446,25 @@ export const mountCity: MountViewer = (root, arch, env) => {
     out: flowingDash('#ffa94d', 0.9),
     up: flowingDash('#ff5c5c', 1),
   };
+  const ARC_POINTS = 49;
+  // Arcs draw themselves along the reference direction, so the first glance already says who uses whom.
+  let arcGrow: number | null = null;
   function drawArcs(n: CityNode | null) {
     arcs.children.forEach((line) => (line as THREE.Line).geometry.dispose());
     arcs.clear();
+    arcGrow = null;
     if (!n) return;
+    if (!reduceMotion()) arcGrow = performance.now();
     const add = (from: CityNode, to: CityNode, material: THREE.Material) => {
       if (state.hidden.has(from.role) || state.hidden.has(to.role)) return;
       const a = new THREE.Vector3(from.cx, from.h + 0.6, from.cz);
       const b = new THREE.Vector3(to.cx, to.h + 0.6, to.cz);
       const lift = Math.max(a.y, b.y) + 12 + a.distanceTo(b) * 0.28;
       const mid = a.clone().lerp(b, 0.5).setY(lift);
-      const geometry = new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(a, mid, b).getPoints(48));
+      const geometry = new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(a, mid, b).getPoints(ARC_POINTS - 1));
       const line = new THREE.Line(geometry, material);
       line.computeLineDistances();
+      if (arcGrow !== null) geometry.setDrawRange(0, 0);
       arcs.add(line);
     };
     n.incoming.forEach((e) => add(nodes[e.f], n, e.strong ? arcMaterials.up : arcMaterials.in));
@@ -927,6 +933,15 @@ export const mountCity: MountViewer = (root, arch, env) => {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     dashOffset.value += dt * 7;
+    if (arcGrow !== null) {
+      const t = now - arcGrow;
+      const lines = arcs.children as THREE.Line[];
+      lines.forEach((line, k) => {
+        const p = Math.max(0, Math.min(1, (t - (k / Math.max(1, lines.length)) * 150) / 420));
+        line.geometry.setDrawRange(0, Math.ceil(ARC_POINTS * (1 - (1 - p) ** 3)));
+      });
+      if (t > 600) arcGrow = null;
+    }
     if (flight) {
       const t = Math.min(1, (now - flight.start) / flight.duration);
       const k = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
