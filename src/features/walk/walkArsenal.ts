@@ -26,7 +26,7 @@ export interface ShotHooks {
 }
 
 export interface Shots {
-  rocket(from: THREE.Vector3, heading: number, range: number, radius: number, damage: number): void;
+  rocket(from: THREE.Vector3, heading: number, range: number, radius: number, damage: number, speed?: number): void;
   /** Lobs a grenade so it lands about `distance` ahead; it goes off on impact or when the fuse burns down. */
   grenade(from: THREE.Vector3, heading: number, distance: number, radius: number, damage: number): void;
   beam(from: THREE.Vector3, to: THREE.Vector3, color: string, width: number): void;
@@ -51,7 +51,7 @@ export function createShots(scene: THREE.Scene, hooks: ShotHooks): Shots {
     mesh.add(new THREE.Mesh(bodyGeo, bodyMat), new THREE.Mesh(tipGeo, tipMat), new THREE.Mesh(jetGeo, jetMat));
     mesh.visible = false;
     scene.add(mesh);
-    return { mesh, live: false, x: 0, y: 0, z: 0, dx: 0, dz: 0, left: 0, radius: 0, damage: 0 };
+    return { mesh, live: false, x: 0, y: 0, z: 0, dx: 0, dz: 0, left: 0, radius: 0, damage: 0, speed: ROCKET_SPEED };
   });
 
   const nadeGeo = keep(new THREE.SphereGeometry(0.13, 10, 8));
@@ -83,9 +83,9 @@ export function createShots(scene: THREE.Scene, hooks: ShotHooks): Shots {
   }
 
   return {
-    rocket(from, heading, range, radius, damage) {
+    rocket(from, heading, range, radius, damage, speed = ROCKET_SPEED) {
       const r = rockets.find((o) => !o.live) ?? rockets[0];
-      Object.assign(r, { live: true, x: from.x, y: Math.max(0.6, from.y), z: from.z, dx: Math.sin(heading), dz: Math.cos(heading), left: range, radius, damage });
+      Object.assign(r, { live: true, x: from.x, y: Math.max(0.6, from.y), z: from.z, dx: Math.sin(heading), dz: Math.cos(heading), left: range, radius, damage, speed });
       r.mesh.visible = true;
       r.mesh.position.set(r.x, r.y, r.z);
       r.mesh.lookAt(v.set(r.x + r.dx, r.y, r.z + r.dz));
@@ -122,7 +122,7 @@ export function createShots(scene: THREE.Scene, hooks: ShotHooks): Shots {
     update(dt) {
       rockets.forEach((r) => {
         if (!r.live) return;
-        const step = ROCKET_SPEED * dt;
+        const step = r.speed * dt;
         const n = Math.max(1, Math.ceil(step / 0.5));
         for (let k = 0; k < n; k++) {
           r.x += (r.dx * step) / n;

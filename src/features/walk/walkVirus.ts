@@ -184,8 +184,9 @@ export interface DifficultyRule {
   guide: boolean;
   /** Reserved for a later task: zombies hunt the player across the city instead of waiting until they see them. */
   chase: boolean;
-  /** Reserved for a later task: armoured tank foes join the outbreak. */
+  /** A tank quest runs: kill `tankKills` viruses and a drivable tank rolls in. */
   tank: boolean;
+  tankKills: number;
 }
 
 /** Seconds the whole mode may take, from the outbreak to the giant's death, before the repo collapses. */
@@ -193,11 +194,11 @@ export const TIME_LIMIT = 600;
 
 export const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard', 'hell', 'god'];
 export const DIFFICULTY: Record<Difficulty, DifficultyRule> = {
-  easy: { label: '쉬움', origins: 1, spread: 420, zombieEvery: 2.4, zombieCap: 24, eliteEvery: 40, eliteCap: 3, foe: { hp: 1, damage: 1, speed: 1 }, guide: true, chase: false, tank: false },
-  normal: { label: '보통', origins: 2, spread: 300, zombieEvery: 1.6, zombieCap: 32, eliteEvery: 30, eliteCap: 4, foe: { hp: 1.2, damage: 1.1, speed: 1.05 }, guide: false, chase: false, tank: false },
-  hard: { label: '어려움', origins: 3, spread: 210, zombieEvery: 1, zombieCap: 45, eliteEvery: 22, eliteCap: 6, foe: { hp: 1.5, damage: 1.3, speed: 1.1 }, guide: false, chase: true, tank: false },
-  hell: { label: '지옥', origins: 4, spread: 150, zombieEvery: 0.65, zombieCap: 60, eliteEvery: 15, eliteCap: 8, foe: { hp: 2, damage: 1.6, speed: 1.2 }, guide: false, chase: true, tank: true },
-  god: { label: '신', origins: 5, spread: 100, zombieEvery: 0.4, zombieCap: 80, eliteEvery: 10, eliteCap: 12, foe: { hp: 2.6, damage: 2, speed: 1.3 }, guide: false, chase: true, tank: true },
+  easy: { label: '쉬움', origins: 1, spread: 420, zombieEvery: 2.4, zombieCap: 24, eliteEvery: 40, eliteCap: 3, foe: { hp: 1, damage: 1, speed: 1 }, guide: true, chase: false, tank: false, tankKills: 0 },
+  normal: { label: '보통', origins: 2, spread: 300, zombieEvery: 1.6, zombieCap: 32, eliteEvery: 30, eliteCap: 4, foe: { hp: 1.2, damage: 1.1, speed: 1.05 }, guide: false, chase: false, tank: false, tankKills: 0 },
+  hard: { label: '어려움', origins: 3, spread: 210, zombieEvery: 1, zombieCap: 45, eliteEvery: 22, eliteCap: 6, foe: { hp: 1.5, damage: 1.3, speed: 1.1 }, guide: false, chase: true, tank: false, tankKills: 0 },
+  hell: { label: '지옥', origins: 4, spread: 150, zombieEvery: 0.65, zombieCap: 60, eliteEvery: 15, eliteCap: 8, foe: { hp: 2, damage: 1.6, speed: 1.2 }, guide: false, chase: true, tank: true, tankKills: 40 },
+  god: { label: '신', origins: 5, spread: 100, zombieEvery: 0.4, zombieCap: 80, eliteEvery: 10, eliteCap: 12, foe: { hp: 2.6, damage: 2, speed: 1.3 }, guide: false, chase: true, tank: true, tankKills: 60 },
 };
 export const MAX_ORIGINS = Math.max(...DIFFICULTIES.map((d) => DIFFICULTY[d].origins));
 export const isDifficulty = (v: unknown): v is Difficulty => DIFFICULTIES.includes(v as Difficulty);
