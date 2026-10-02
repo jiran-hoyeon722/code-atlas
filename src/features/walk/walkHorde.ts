@@ -479,7 +479,8 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
           f.engaged = sees && within(f.engaged, d, reach + 0.8, reach + 1.5);
           if (f.pendingHit > 0) {
             f.pendingHit -= dt;
-            if (f.pendingHit <= 0 && canHit && d < reach + 1.7) hooks.onPlayerHit(f.rule.damage, f.x, f.z, f.kind === 'elite' ? 12 : 6);
+            // Nothing on the street can climb, so a swing never reaches a player up on a roof.
+            if (f.pendingHit <= 0 && canHit && d < reach + 1.7 && player.y < 2) hooks.onPlayerHit(f.rule.damage, f.x, f.z, f.kind === 'elite' ? 12 : 6);
           }
           if (f.engaged) {
             turn(f, dx, dz, dt, 10);
