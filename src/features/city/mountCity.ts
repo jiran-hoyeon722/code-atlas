@@ -14,6 +14,7 @@ import { createSelectionReporter } from './selection';
 import { MAX_HEIGHT, SMALL_CITY, homeView } from './homeView';
 import { type BlastResult, blastPercent, blastRadius } from './blast';
 import { TOUR_KEY, cityTour, type TourStep } from './cityTour';
+import { REVEAL_GROW, revealDelay, revealGrowth } from './reveal';
 
 const KIND_LABEL: Record<string, string> = {
   inject: '생성자 주입', type: '타입 힌트', 'static-call': '정적 호출', new: 'new 생성', const: '상수·enum',
@@ -916,6 +917,11 @@ export const mountCity: MountViewer = (root, arch, env) => {
     if (!seen) showTour(0);
   }
 
+  // The city rises row by row on first view; reduced motion shows it built.
+  let reveal: { start: number; delays: number[] } | null = reduceMotion() ? null
+    : { start: performance.now(), delays: nodes.map((n) => revealDelay(n.layer, n.cx, layout.bounds.w)) };
+  if (!reveal) root.dataset.revealDone = '1';
+
   let last = performance.now();
   renderer.setAnimationLoop((now) => {
     const dt = Math.min(0.05, (now - last) / 1000);
@@ -946,6 +952,21 @@ export const mountCity: MountViewer = (root, arch, env) => {
         (ring.material as THREE.MeshBasicMaterial).opacity = 0.6 * (1 - t);
       }
     }
+    if (reveal) {
+      const t = now - reveal.start;
+      let rising = false;
+      nodes.forEach((n, k) => {
+        const p = (t - reveal!.delays[k]) / REVEAL_GROW;
+        if (p < 1) rising = true;
+        placeBuilding(n, revealGrowth(p));
+      });
+      buildings.instanceMatrix.needsUpdate = true;
+      if (!rising) {
+        reveal = null;
+        buildings.computeBoundingSphere();
+        root.dataset.revealDone = '1';
+      }
+    }
     controls.update();
     if (labelsDirty) declutter();
     renderer.render(scene, camera);
@@ -974,6 +995,7 @@ export const mountCity: MountViewer = (root, arch, env) => {
     renderer.forceContextLoss();
     root.innerHTML = '';
     delete root.dataset.blastDone;
+    delete root.dataset.revealDone;
     root.classList.remove('cc-city');
   };
 };
