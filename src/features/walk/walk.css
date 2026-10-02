@@ -131,11 +131,19 @@
 .wk-walk .wk-virus p b { color: var(--text); }
 @keyframes wk-spin { to { transform: rotate(360deg); } }
 .wk-walk .wk-weapons { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 4px; padding: 5px; }
-.wk-walk .wk-weapons button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 68px; padding: 7px 0 5px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
+.wk-walk .wk-weapons button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 62px; padding: 7px 0 5px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
 .wk-walk .wk-weapons button svg { width: 24px; height: 24px; }
 .wk-walk .wk-weapons button:hover { color: var(--text); background: rgba(255, 255, 255, .05); }
 .wk-walk .wk-weapons button.on { color: var(--text); border-color: var(--accent); background: rgba(124, 147, 245, .18); }
 .wk-walk .wk-weapons button kbd { position: absolute; top: 3px; left: 4px; min-width: 0; padding: 0 3px; border: 0; background: none; font-size: 9px; line-height: 12px; }
+.wk-walk .wk-weapons button small { position: absolute; top: 3px; right: 5px; font: 700 9px/12px ui-monospace, Menlo, monospace; color: var(--r); }
+.wk-walk .wk-weapons button .lock { display: none; position: absolute; top: 4px; right: 4px; width: 11px; height: 11px; color: var(--faint); }
+.wk-walk .wk-weapons button .lock svg { width: 11px; height: 11px; }
+.wk-walk .wk-weapons button.locked { cursor: not-allowed; }
+.wk-walk .wk-weapons button.locked > svg, .wk-walk .wk-weapons button.locked > span { opacity: .28; }
+.wk-walk .wk-weapons button.locked .lock { display: block; }
+.wk-walk .wk-weapons button.empty > svg, .wk-walk .wk-weapons button.empty > span { opacity: .45; }
+.wk-walk .wk-weapons button.empty small { color: #ff6b6b; }
 .wk-walk .wk-heli { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: none; align-items: center; gap: 4px; padding: 5px 10px 5px 5px; }
 .wk-walk.flying .wk-heli { display: flex; }
 .wk-walk.flying .wk-weapons { display: none; }

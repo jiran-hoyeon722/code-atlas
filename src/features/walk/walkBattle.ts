@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { spawnRobot, type Robot } from './walkRobot';
 import type { Character } from './walkCharacters';
 import { decay, separation, turnToward, within } from './walkMotion';
-import { RIVAL_HP, damageAt, dealWeapons, splash, type HeldWeapon, type Weapon, type WeaponKit } from './walkWeapons';
+import { RIVAL_HP, damageAt, dealWeapons, segmentGap, splash, type HeldWeapon, type Weapon, type WeaponKit } from './walkWeapons';
 
 export const RIVALS = ['김준석', '유남균', '김명제', '박호연'];
 const UNDRESSED = '#9aa0ad';
@@ -34,6 +34,8 @@ export interface Battle {
   ram(x: number, z: number, r: number, dx: number, dz: number, speed: number): number;
   /** Hurts every rival within `radius` of (x, z), fading towards the edge, and knocks them away from (fromX, fromZ); returns how many it hit. */
   damageArea(x: number, z: number, radius: number, damage: number, fromX: number, fromZ: number): number;
+  /** Hurts every rival within `width` of the segment (ax, az)–(bx, bz); returns how many. */
+  beam(ax: number, az: number, bx: number, bz: number, width: number, damage: number): number;
   /** Rivals stay hidden until each is handed a character, in RIVALS order. */
   dress(looks: Character[]): void;
   /** Who holds what, available before the models finish loading. */
@@ -232,6 +234,15 @@ export function createBattle(scene: THREE.Scene, url: string, spawn: THREE.Vecto
         if (!amount) return;
         count++;
         hurt(r, amount, r.x - fromX, r.z - fromZ, 2 + amount * 1.4, 0.25 + amount * 0.06);
+      });
+      return count;
+    },
+    beam(ax, az, bx, bz, width, damage) {
+      let count = 0;
+      rivals.forEach((r) => {
+        if (!r.robot || r.down || segmentGap(r.x, r.z, ax, az, bx, bz) > width + 0.45) return;
+        count++;
+        hurt(r, damage, bx - ax, bz - az, 2, 0.25);
       });
       return count;
     },

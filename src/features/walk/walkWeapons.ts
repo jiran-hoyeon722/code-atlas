@@ -1,11 +1,17 @@
 import * as THREE from 'three';
 
-export type WeaponId = 'fist' | 'bat' | 'pipe' | 'pistol' | 'smg' | 'shotgun';
+export type WeaponId = 'fist' | 'bat' | 'pipe' | 'pistol' | 'smg' | 'shotgun' | 'flamer' | 'laser' | 'grenade' | 'rocket';
 
 export interface Weapon {
   id: WeaponId;
   name: string;
-  kind: 'melee' | 'gun';
+  kind: 'melee' | 'gun' | 'throw';
+  /** How a gun's shot travels; plain bullets when left out. */
+  shot?: 'rocket' | 'laser' | 'flame';
+  /** Rounds that come with one pickup; melee weapons never run out. */
+  ammo?: number;
+  /** Splash radius of a rocket or grenade. */
+  blast?: number;
   /** Damage to a rival, whose health is RIVAL_HP. */
   damage: number;
   /** Damage a rival holding it deals to the player, whose health is 100. */
@@ -33,12 +39,23 @@ export const WEAPONS: Weapon[] = [
     icon: svg('<path d="M2 8h18v3.5h-6.5L12 13v5H9v-4.5H6.5L5 17H2.5L4 11.5H2z" fill="currentColor"/><path d="M20 9h2" stroke="currentColor" stroke-width="1.4"/>') },
   { id: 'shotgun', name: '샷건', kind: 'gun', damage: 6, rivalDamage: 16, range: 13, cooldown: 1,
     icon: svg('<path d="M1.5 9h15v2.5h-15z" fill="currentColor"/><path d="M16.5 8.5h3l3 5.5-2.2 1.2-3.3-3.7h-.5z" fill="currentColor"/><path d="M8 11.5h5v2H8z" fill="currentColor"/>') },
+  { id: 'flamer', name: '화염방사기', kind: 'gun', shot: 'flame', damage: 1, rivalDamage: 4, range: 7, cooldown: 0.12, auto: true, ammo: 80,
+    icon: svg('<rect x="2" y="9" width="5" height="9" rx="2" fill="currentColor"/><path d="M7 12h8v3H7z" fill="currentColor"/><path d="M15 13.5c2-3 3.5-1 4.5-3.5 1 2.5 2.5 2 2.5 4s-2 4-4 4c-1.5 0-2.5-1.2-3-2.5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>') },
+  { id: 'laser', name: '레이저건', kind: 'gun', shot: 'laser', damage: 3, rivalDamage: 6, range: 40, cooldown: 0.5, ammo: 12,
+    icon: svg('<path d="M2 9h11l2 2v3H8l-1 4H4l1-4H2z" fill="currentColor"/><path d="M15 12.5h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="2 1.5"/>') },
+  { id: 'grenade', name: '수류탄', kind: 'throw', damage: 10, rivalDamage: 10, range: 16, cooldown: 0.9, ammo: 4, blast: 5,
+    icon: svg('<circle cx="11" cy="14.5" r="6" fill="currentColor"/><path d="M9 8.5h4V7H9zM13 7.5l4-3M14 7h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>') },
+  { id: 'rocket', name: '로켓런처', kind: 'gun', shot: 'rocket', damage: 12, rivalDamage: 12, range: 60, cooldown: 1.2, ammo: 3, blast: 6,
+    icon: svg('<path d="M2 10h15v4H2z" fill="currentColor"/><path d="M17 9.5l4 2.5-4 2.5z" fill="currentColor"/><path d="M7 14v3.5h2.5V14" stroke="currentColor" stroke-width="1.4" fill="none"/>') },
 ];
 export const weaponById = (id: WeaponId) => WEAPONS.find((w) => w.id === id) ?? WEAPONS[0];
 
+/** What rivals may carry: the street weapons, never fists or the heavy loot. */
+export const RIVAL_WEAPONS: readonly WeaponId[] = ['bat', 'pipe', 'pistol', 'smg', 'shotgun'];
+
 /** Hands every rival a different weapon, never bare fists. */
 export function dealWeapons(count: number, random: () => number): Weapon[] {
-  const pool = WEAPONS.filter((w) => w.id !== 'fist');
+  const pool = WEAPONS.filter((w) => RIVAL_WEAPONS.includes(w.id));
   for (let k = pool.length - 1; k > 0; k--) {
     const j = Math.floor(random() * (k + 1));
     [pool[k], pool[j]] = [pool[j], pool[k]];
@@ -54,6 +71,13 @@ export const damageAt = (w: Weapon, distance: number) =>
 export const splash = (damage: number, distance: number, radius: number) =>
   distance > radius ? 0 : Math.max(1, Math.round(damage * Math.min(1, (1 - distance / radius) / 0.6)));
 
+/** Distance from (x, z) to the segment (ax, az)–(bx, bz). */
+export function segmentGap(x: number, z: number, ax: number, az: number, bx: number, bz: number) {
+  const ux = bx - ax, uz = bz - az;
+  const t = Math.max(0, Math.min(1, ((x - ax) * ux + (z - az) * uz) / (ux * ux + uz * uz || 1)));
+  return Math.hypot(x - ax - ux * t, z - az - uz * t);
+}
+
 export interface HeldWeapon {
   readonly id: WeaponId;
   set(id: WeaponId): void;
@@ -67,6 +91,8 @@ export interface HeldWeapon {
 
 export interface WeaponKit {
   hold(scene: THREE.Scene, id: WeaponId): HeldWeapon;
+  /** A loose copy of the weapon's model, e.g. for a pickup lying in the street. */
+  model(id: WeaponId): THREE.Group;
   dispose(): void;
 }
 
@@ -110,6 +136,11 @@ export function createWeaponKit(): WeaponKit {
   const grip = mat('#1f1f24', { roughness: 0.9 });
   const steel = mat('#8f96a3', { metalness: 0.8, roughness: 0.35 });
   const gunmetal = mat('#2b2e35', { metalness: 0.6, roughness: 0.45 });
+  const olive = mat('#4f5a2e', { roughness: 0.7 });
+  const glowMat = (color: string) => keep(new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(2.5) }));
+  const laserGlow = glowMat('#ff4df0');
+  const rocketTip = mat('#c92a2a', { roughness: 0.5 });
+  const flameGlow = glowMat('#ff8a2a');
   const flashMat = keep(new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd27a').multiplyScalar(4), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
   const geos = {
     bat: keep(new THREE.CylinderGeometry(0.055, 0.022, 0.9, 10).rotateX(Math.PI / 2).translate(0, 0, 0.38)),
@@ -119,6 +150,8 @@ export function createWeaponKit(): WeaponKit {
     flash: keep(new THREE.SphereGeometry(0.09, 8, 6)),
     box: keep(new THREE.BoxGeometry(1, 1, 1)),
     barrel: keep(new THREE.CylinderGeometry(1, 1, 1, 10).rotateX(Math.PI / 2)),
+    ball: keep(new THREE.SphereGeometry(1, 12, 8)),
+    cone: keep(new THREE.ConeGeometry(1, 1, 10).rotateX(Math.PI / 2)),
   };
   const part = (parent: THREE.Object3D, geo: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1) => {
     const mesh = new THREE.Mesh(geo, m);
@@ -157,6 +190,29 @@ export function createWeaponKit(): WeaponKit {
         part(g, geos.box, wood, 0, 0.0, -0.14, 0.06, 0.12, 0.3);
         part(g, geos.box, grip, 0, -0.03, 0.02, 0.04, 0.1, 0.04);
         return { group: g, tip: 0.7 };
+      case 'flamer':
+        part(g, geos.barrel, steel, -0.09, 0.0, -0.05, 0.06, 0.06, 0.3);
+        part(g, geos.box, gunmetal, 0, 0.06, 0.15, 0.06, 0.08, 0.4);
+        part(g, geos.barrel, gunmetal, 0, 0.07, 0.42, 0.03, 0.03, 0.16);
+        part(g, geos.ball, flameGlow, 0, 0.07, 0.5, 0.022, 0.022, 0.022);
+        part(g, geos.box, grip, 0, -0.03, 0.02, 0.04, 0.12, 0.05);
+        return { group: g, tip: 0.52 };
+      case 'laser':
+        part(g, geos.box, gunmetal, 0, 0.07, 0.12, 0.07, 0.09, 0.34);
+        part(g, geos.box, laserGlow, 0, 0.1, 0.12, 0.072, 0.015, 0.3);
+        part(g, geos.barrel, laserGlow, 0, 0.07, 0.31, 0.02, 0.02, 0.06);
+        part(g, geos.box, grip, 0, -0.03, 0.02, 0.045, 0.13, 0.055);
+        return { group: g, tip: 0.36 };
+      case 'grenade':
+        part(g, geos.ball, olive, 0, 0.02, 0.04, 0.07, 0.085, 0.07);
+        part(g, geos.box, steel, 0, 0.11, 0.04, 0.03, 0.04, 0.03);
+        return { group: g, tip: 0.06 };
+      case 'rocket':
+        part(g, geos.barrel, olive, 0, 0.1, 0.1, 0.07, 0.07, 1.0);
+        part(g, geos.cone, rocketTip, 0, 0.1, 0.66, 0.06, 0.06, 0.14);
+        part(g, geos.box, grip, 0, 0.0, 0.0, 0.04, 0.14, 0.05);
+        part(g, geos.box, grip, 0, 0.0, 0.22, 0.04, 0.12, 0.05);
+        return { group: g, tip: 0.66 };
     }
   }
 
@@ -215,6 +271,7 @@ export function createWeaponKit(): WeaponKit {
       };
       return self;
     },
+    model: (id) => build(id).group,
     dispose() {
       owned.forEach((o) => o.dispose());
     },

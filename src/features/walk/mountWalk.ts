@@ -23,8 +23,10 @@ import { createVehicles, type Vehicle } from './walkVehicles';
 import { THEMES, type Theme } from './walkThemes';
 import { createBeacon, createGuide, createMarkers, createMotes, createSparks, type PathPoint } from './walkFx';
 import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type WeaponId } from './walkWeapons';
+import { RARITY_COLOR, createInventory, createLootField, lootCount, placeLoot, rarityOf, type Point as LootPoint } from './walkLoot';
+import { createPickups, createShots } from './walkArsenal';
 import { DIFFICULTIES, DIFFICULTY, FORM_TIME, createSiege, createVirus, isDifficulty, isInfected, pickOrigin, pickSpawnSite, type Difficulty } from './walkVirus';
-import { HELI_BOSS_BONUS, createHorde } from './walkHorde';
+import { FOES, HELI_BOSS_BONUS, createHorde } from './walkHorde';
 import { decay, follow, shakeOffset, turnToward } from './walkMotion';
 import { QUEST, QUEST_KEY, createQuest, type QuestId } from './walkQuest';
 import { SOUND_KEY, createSound } from './walkSound';
@@ -63,11 +65,12 @@ const WEATHER_ICONS: Record<string, string> = {
 const GUN_ICON = icon('<path d="M2 10h14l2-2h3v3h-2l-1 1H9l-1 4H5l1-4H2z" fill="currentColor"/><path d="M18 13h4M18 15.5h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>');
 const BOMB_ICON = icon('<circle cx="10.5" cy="14" r="6.5" fill="currentColor"/><path d="M15 9.5l2.5-2.5M18 4.5v2M20.5 7h-2M19.8 4.2l-1.4 1.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>');
 const AUTO_ICON = icon('<circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 8.5v7l6-3.5z" fill="currentColor"/>');
-const TAKEOVER = /^(Key[WASDEFGH]|Arrow\w+|Space|Digit[1-9])$/;
+const TAKEOVER = /^(Key[WASDEFGH]|Arrow\w+|Space|Digit[0-9])$/;
+const LOCK_ICON = icon('<rect x="6" y="11" width="12" height="9" rx="2" fill="currentColor"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3" fill="none" stroke="currentColor" stroke-width="1.8"/>');
 const VIRUS_ICON = icon('<circle cx="12" cy="12" r="5" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.8 2.8M16.2 16.2L19 19M5 19l2.8-2.8M16.2 7.8L19 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>');
 const HELP = [
   ['이동', [['W A S D', '걷기'], ['Shift', '달리기'], ['Space', '점프'], ['클릭', '마우스로 시점 돌리기 (Esc 로 풀기)'], ['휠', '카메라 거리']]],
-  ['전투', [['1 ~ 6', '무기 고르기'], ['F · 클릭', '공격 (기관단총은 누르고 있기)'], ['G', '감정 표현']]],
+  ['전투', [['1 ~ 9 · 0', '무기 고르기 (가진 무기만)'], ['F · 클릭', '공격 (기관단총 · 화염방사기는 누르고 있기)'], ['무기 줍기', '처음엔 주먹뿐 — 무기는 도시에서 주워요. 길가와 건물 문 앞의 빛나는 무기 위를 지나가면 돼요'], ['탄약', '같은 무기를 또 주우면 채워져요. 다 쓰면 주먹으로 돌아가요'], ['G', '감정 표현']]],
   ['행동', [['E', '건물 들어가기 · 차 타기 · 바이러스 치료'], ['H', '헬기 타기 (라이벌 4명을 다 잡으면)']]],
   ['바이러스', [['V', '바이러스 모드 시작 · 그만두기 (괴물이 나타나면 못 그만둬요)'], ['하 · 중 · 상', '난이도 — 하는 바닥 화살표 안내, 상은 빠른 확산과 좀비 떼'], ['E (근원지 앞)', '백신 주입 — 도시가 다 감염되기 전에'], ['괴물', '다 감염되면 나타나요. 시간 안에 못 잡으면 레포가 무너지고 분석 기록이 지워져요']]],
   ['헬기', [['W S', '앞으로 · 뒤로'], ['A D · 마우스', '방향 돌리기'], ['Q E', '옆으로 이동'], ['Space · C (Ctrl · X)', '올라가기 · 내려가기'], ['Shift', '가속'], ['F · 클릭', '기관총 (누르고 있기)'], ['G · 우클릭', '폭탄 떨어뜨리기'], ['마우스 위아래', '조준점 가깝게 · 멀리'], ['H', '천천히 내려가 착륙 (Space 로 취소)']]],
@@ -95,7 +98,7 @@ const MARKUP = `
         <div class="q-head"><b>첫 걸음</b><span data-el="quest-count"></span><button data-el="quest-close" aria-label="첫 걸음 닫기" title="닫기">×</button></div>
         <ul data-el="quest-list"></ul>
     </section>
-    <div class="tips"><b>WASD</b> 이동 · <b>클릭</b> 시점 · <b>F</b> 공격 · <b>E</b> 행동 · <b>1~6</b> 무기 · <b>?</b> 전체 조작법</div>
+    <div class="tips"><b>WASD</b> 이동 · <b>클릭</b> 시점 · <b>F</b> 공격 · <b>E</b> 행동 · <b>1~0</b> 무기 (주워서 모아요) · <b>?</b> 전체 조작법</div>
 </div>
 <div class="wk-virus glass" data-el="virus" hidden>
     <div class="v-head">${VIRUS_ICON}<b data-el="v-title">바이러스 확산 중</b><span data-el="v-time">00:00</span></div>
@@ -756,9 +759,11 @@ const mount: MountViewer = (root, arch, env) => {
   });
   cleanups.push(closePicker);
 
-  // ---- weapons: the hero may pick any of them, rivals were dealt one each ----
+  // ---- weapons: the hero starts with fists and loots the rest in the street; rivals were dealt one each ----
   const heroHeld = kit.hold(scene, 'fist');
+  const inventory = createInventory();
   let weapon: Weapon = weaponById('fist');
+  let shotWeapon: Weapon = weapon;
   let triggerHeld = false;
   let aimHold = 0;
   let pendingShot = false;
@@ -769,16 +774,33 @@ const mount: MountViewer = (root, arch, env) => {
   const reticle = new THREE.Mesh(keep(new THREE.RingGeometry(0.75, 0.95, 32).rotateX(-Math.PI / 2)), keep(new THREE.MeshBasicMaterial({ color: new THREE.Color('#ff4d4d').multiplyScalar(2), transparent: true, opacity: 0.85, depthWrite: false })));
   reticle.visible = false;
   scene.add(reticle);
+  const slotKey = (k: number) => String((k + 1) % 10);
   const weaponsBar = $('weapons');
-  weaponsBar.innerHTML = WEAPONS.map((w, k) => `<button data-weapon="${esc(w.id)}" title="${esc(w.name)} (${k + 1})" aria-pressed="false">${w.icon}<span>${esc(w.name)}</span><kbd>${k + 1}</kbd></button>`).join('');
-  function selectWeapon(w: Weapon) {
+  weaponsBar.innerHTML = WEAPONS.map((w, k) => `<button data-weapon="${esc(w.id)}" style="--r:${esc(RARITY_COLOR[rarityOf(w.id)])}" aria-pressed="false">${w.icon}<span>${esc(w.name)}</span><kbd>${slotKey(k)}</kbd><small></small><i class="lock">${LOCK_ICON}</i></button>`).join('');
+  function renderWeapons() {
+    weaponsBar.querySelectorAll<HTMLElement>('[data-weapon]').forEach((b, k) => {
+      const w = WEAPONS[k];
+      const on = w.id === weapon.id;
+      const owns = inventory.owns(w.id);
+      const left = inventory.left(w.id);
+      b.classList.toggle('on', on);
+      b.classList.toggle('locked', !owns);
+      b.classList.toggle('empty', owns && left <= 0);
+      b.setAttribute('aria-pressed', String(on));
+      b.setAttribute('aria-disabled', String(!inventory.usable(w.id)));
+      b.title = owns ? `${w.name} (${slotKey(k)})${Number.isFinite(left) ? ` — 탄약 ${left}` : ''}` : `${w.name} — 아직 없어요. 도시에서 주워요`;
+      b.querySelector('small')!.textContent = owns && Number.isFinite(left) ? String(left) : '';
+    });
+  }
+  function selectWeapon(w: Weapon, quiet = false) {
+    if (!inventory.usable(w.id)) {
+      if (!quiet) toast(inventory.owns(w.id) ? `${w.name} 탄약이 없어요 — 같은 무기를 주우면 채워져요` : `${w.name} — 아직 없어요. 길가나 건물 문 앞에서 주워요`);
+      return false;
+    }
     weapon = w;
     heroHeld.set(w.id);
-    weaponsBar.querySelectorAll<HTMLElement>('[data-weapon]').forEach((b) => {
-      const on = b.dataset.weapon === w.id;
-      b.classList.toggle('on', on);
-      b.setAttribute('aria-pressed', String(on));
-    });
+    renderWeapons();
+    return true;
   }
   selectWeapon(weapon);
   listen(weaponsBar, 'click', (e) => {
@@ -788,14 +810,25 @@ const mount: MountViewer = (root, arch, env) => {
   });
   const attack = () => {
     if (punchCooldown > 0 || !alive || mode !== 'walk' || detailOpen || entering) return;
+    if (!inventory.spend(weapon.id)) { selectWeapon(weaponById('fist'), true); return; }
     punchCooldown = weapon.cooldown;
     heroHeld.kick();
-    if (weapon.kind === 'melee') {
+    shotWeapon = weapon;
+    if (Number.isFinite(inventory.left(weapon.id))) {
+      renderWeapons();
+      if (inventory.left(weapon.id) <= 0) {
+        toast(`${weapon.name} 탄약을 다 썼어요 — 주먹으로 바꿨어요`);
+        selectWeapon(weaponById('fist'), true);
+        triggerHeld = false;
+      }
+    }
+    if (shotWeapon.kind === 'melee') {
       sound.play('swing');
       hero.emote('Punch');
       punchAt = 0.22;
       return;
     }
+    if (shotWeapon.kind === 'throw') hero.emote('Punch');
     aimHold = 0.7;
     pendingShot = true;
   };
@@ -1046,6 +1079,74 @@ const mount: MountViewer = (root, arch, env) => {
     sparks,
     tracers,
   });
+  const flames = createMotes(scene, 500, new THREE.Color('#ff7a1f').multiplyScalar(2.6), 0.55, true);
+  const shots = createShots(scene, {
+    surfaceAt,
+    blocked: (x, z) => blocked(x, z, 0.15),
+    touches: (x, y, z) => y < 3 && (horde.positions().some((f) => Math.hypot(f.x - x, f.z - z) < FOES[f.kind].radius + 0.4)
+      || battle.positions().some((r) => !r.down && Math.hypot(r.x - x, r.z - z) < 0.8)),
+    explode: (p, radius, damage) => heliArms.explode(p, radius, damage),
+    sparks,
+    smoke: puffs,
+    fire: flames,
+  });
+  // The beam stops at the first wall; foes and rivals anywhere along it are hit.
+  const reachAlong = (heading: number, range: number) => {
+    const dx = Math.sin(heading), dz = Math.cos(heading);
+    for (let t = 0.75; t <= range; t += 0.75) if (!clearLine(pos.x, pos.z, pos.x + dx * t, pos.z + dz * t)) return t;
+    return range;
+  };
+
+  function fire(w: Weapon, aimHeading: number) {
+    heroHeld.tip(muzzle);
+    const foe = horde.aimTarget(pos, aimHeading, w);
+    const rival = rivalAt(battle.aimTarget(pos, aimHeading, w));
+    const targetD = foe && (!rival || foe.d < Math.hypot(rival.x - pos.x, rival.z - pos.z)) ? foe.d : rival ? Math.hypot(rival.x - pos.x, rival.z - pos.z) : null;
+    if (w.kind === 'throw') {
+      sound.play('throw');
+      shots.grenade(muzzle, aimHeading, Math.max(3, Math.min(w.range, targetD ?? w.range)), w.blast ?? 5, w.damage);
+      return;
+    }
+    if (w.shot === 'rocket') {
+      sound.play('rocket');
+      shots.rocket(muzzle, aimHeading, w.range, w.blast ?? 6, w.damage);
+      puffs.burst(muzzle.x, muzzle.y, muzzle.z, 8, 2, 0.6, 0.6);
+      shake = Math.max(shake, 0.25);
+      return;
+    }
+    if (w.shot === 'laser' || w.shot === 'flame') {
+      const flame = w.shot === 'flame';
+      const reach = reachAlong(aimHeading, w.range);
+      const ex = pos.x + Math.sin(aimHeading) * reach, ez = pos.z + Math.cos(aimHeading) * reach;
+      const width = flame ? 1.2 : 0.35;
+      horde.beam(pos.x, pos.z, ex, ez, width, w.damage);
+      battle.beam(pos.x, pos.z, ex, ez, width, w.damage);
+      sound.play(flame ? 'flame' : 'laser');
+      if (flame) { shots.flame(muzzle, aimHeading, reach); return; }
+      shotEnd.set(ex, muzzle.y, ez);
+      shots.beam(muzzle, shotEnd, '#ff4df0', 0.09);
+      sparks.burst(ex, muzzle.y, ez, 10);
+      shake = Math.max(shake, 0.12);
+      return;
+    }
+    sound.play(w.id === 'shotgun' ? 'shotgun' : 'shot');
+    if (foe && (!rival || foe.d < Math.hypot(rival.x - pos.x, rival.z - pos.z))) horde.shoot(pos, aimHeading, w, shotEnd);
+    else battle.shoot(pos, aimHeading, w, shotEnd);
+    const pellets = w.id === 'shotgun' ? 6 : 1;
+    for (let k = 0; k < pellets; k++) {
+      const end = pellets > 1 ? v.copy(shotEnd).add(s.set((Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 1.6)) : shotEnd;
+      tracers.fire(muzzle, end);
+    }
+    sparks.burst(shotEnd.x, shotEnd.y, shotEnd.z, 6);
+    shake = Math.max(shake, w.id === 'shotgun' ? 0.35 : 0.08);
+  }
+
+  // ---- loot: weapons lying at doors and in the street, each coming back somewhere else a while after it is taken ----
+  const lootDoors = layout.buildings.map((b): LootPoint => { const d = frontOf(b); return [d.x, d.z]; });
+  const lootFree = (x: number, z: number) => blockedWalker(x, z, 0.7);
+  const loot = createLootField(placeLoot(lootDoors, lootCount(layout.buildings.length), random, lootFree, [[pos.x, pos.z]]), random,
+    (taken) => placeLoot(lootDoors, 1, random, lootFree, taken)[0] ?? null);
+  const pickups = createPickups(scene, kit, loot.drops);
   let aimPitch = 0.55;
   let flyYaw = 0;
   const hud = { alt: '', speed: '', hint: '', bomb: -1, gun: false, lift: 0 };
@@ -1357,7 +1458,7 @@ const mount: MountViewer = (root, arch, env) => {
       const near = layout.buildings.reduce((best, b) => (gap(b, x, z) < gap(best, x, z) ? b : best), to);
       return near === to ? [] : routeBetween(layout, near, to);
     },
-    range: (id) => weaponById(id).range,
+    range: (id) => weaponById(inventory.best(id)).range,
   });
   const dexKey = `code-atlas.walk.learned:${arch.name}`;
   const dex = new Set<string>();
@@ -1504,7 +1605,7 @@ const mount: MountViewer = (root, arch, env) => {
       foes: horde.positions().filter((f): f is typeof f & { tag: string } => !!f.tag),
     });
     const cmd = autoCmd;
-    if (cmd.weapon && cmd.weapon !== weapon.id) selectWeapon(weaponById(cmd.weapon));
+    if (cmd.weapon && inventory.best(cmd.weapon) !== weapon.id) selectWeapon(weaponById(inventory.best(cmd.weapon)), true);
     if (cmd.spawn) spawnPack(cmd.spawn);
     if (cmd.teleport) {
       teleport(new THREE.Vector3(cmd.teleport[0], 0, cmd.teleport[1]));
@@ -1563,8 +1664,8 @@ const mount: MountViewer = (root, arch, env) => {
       if (e.code === 'Space') e.preventDefault();
       return;
     }
-    const slot = /^Digit([1-9])$/.exec(e.code);
-    if (slot && WEAPONS[Number(slot[1]) - 1]) { selectWeapon(WEAPONS[Number(slot[1]) - 1]); return; }
+    const slot = /^Digit([0-9])$/.exec(e.code);
+    if (slot) { const w = WEAPONS[(Number(slot[1]) + 9) % 10]; if (w) selectWeapon(w); return; }
     if (!alive) return;
     if (e.code === 'KeyF') { if (!e.repeat) { triggerHeld = true; attack(); } return; }
     if (e.key === '/') { e.preventDefault(); $('q').focus(); return; }
@@ -1734,6 +1835,12 @@ const mount: MountViewer = (root, arch, env) => {
         mapCtx.stroke();
       }
     }
+    loot.drops.forEach((d) => {
+      if (!d.live) return;
+      const [x, y] = toMap(d.x, d.z);
+      mapCtx.fillStyle = RARITY_COLOR[rarityOf(d.id)];
+      mapCtx.fillRect(x - 1.5, y - 1.5, 3, 3);
+    });
     battle.positions().forEach((r) => {
       const [x, y] = toMap(r.x, r.z);
       mapCtx.fillStyle = r.down ? '#5c6270' : r.tint;
@@ -1926,21 +2033,9 @@ const mount: MountViewer = (root, arch, env) => {
     heroHeld.follow(hero.rig, gun && (aimHold > 0 || triggerHeld) ? aimVec.set(Math.sin(aimHold > 0 ? aimHeading : heading), 0, Math.cos(aimHold > 0 ? aimHeading : heading)) : null, hero.root.visible && onFoot && alive);
     if (pendingShot) {
       pendingShot = false;
-      sound.play(weapon.id === 'shotgun' ? 'shotgun' : 'shot');
-      heroHeld.tip(muzzle);
-      const foe = horde.aimTarget(pos, aimHeading, weapon);
-      const rival = rivalAt(battle.aimTarget(pos, aimHeading, weapon));
-      if (foe && (!rival || foe.d < Math.hypot(rival.x - pos.x, rival.z - pos.z))) horde.shoot(pos, aimHeading, weapon, shotEnd);
-      else battle.shoot(pos, aimHeading, weapon, shotEnd);
-      const pellets = weapon.id === 'shotgun' ? 6 : 1;
-      for (let k = 0; k < pellets; k++) {
-        const end = pellets > 1 ? v.copy(shotEnd).add(s.set((Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 1.6)) : shotEnd;
-        tracers.fire(muzzle, end);
-      }
-      sparks.burst(shotEnd.x, shotEnd.y, shotEnd.z, 6);
-      shake = Math.max(shake, weapon.id === 'shotgun' ? 0.35 : 0.08);
+      fire(shotWeapon, aimHeading);
     }
-    const aiming = gun && onFoot && alive;
+    const aiming = weapon.kind !== 'melee' && onFoot && alive;
     const rivalAim = aiming ? rivalAt(battle.aimTarget(pos, yaw + Math.PI, weapon)) : undefined;
     const foeAim = aiming ? horde.aimTarget(pos, yaw + Math.PI, weapon) : null;
     const target = foeAim && (!rivalAim || foeAim.d < Math.hypot(rivalAim.x - pos.x, rivalAim.z - pos.z)) ? foeAim : rivalAim;
@@ -2219,6 +2314,20 @@ const mount: MountViewer = (root, arch, env) => {
     markers.update(time, onFoot && alive ? (nearVehicle ?? nearCar) : null, nearVehicle ? '운전' : '탑승');
     sparks.update(dt);
     tracers.update(dt);
+    shots.update(dt);
+    flames.update(dt);
+    const grab = onFoot && alive ? loot.update(dt, pos.x, pos.z) : loot.update(dt, Infinity, Infinity);
+    grab.picked.forEach((d) => {
+      const w = weaponById(d.id);
+      const { fresh, left } = inventory.pickup(d.id);
+      const slot = slotKey(WEAPONS.indexOf(w));
+      sound.play('pickup');
+      sparks.burst(d.x, 1, d.z, 16);
+      toast(fresh ? `${w.name} 획득! (${slot})` : `${w.name} 탄약 보충 — ${left}발`);
+      if (fresh && weapon.id === 'fist') selectWeapon(w, true); else renderWeapons();
+    });
+    if (grab.picked.length || grab.back.length) loot.drops.forEach((d, k) => pickups.sync(k, d));
+    pickups.update(time);
     rain.update(time, camera.position);
     clearView(camera.position, v.set(pos.x, 1.4 + footY, pos.z));
     composer.render();
@@ -2242,6 +2351,9 @@ const mount: MountViewer = (root, arch, env) => {
     heroHeld.dispose();
     kit.dispose();
     tracers.dispose();
+    shots.dispose();
+    flames.dispose();
+    pickups.dispose();
     coreLight.dispose();
     vehicles.dispose();
     sparks.dispose();

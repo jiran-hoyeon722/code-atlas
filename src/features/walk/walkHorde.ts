@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { spawnRobot, type Robot } from './walkRobot';
 import { decay, nextGait, separation, turnToward, within, type Gait } from './walkMotion';
-import { damageAt, splash, type Weapon } from './walkWeapons';
+import { damageAt, segmentGap, splash, type Weapon } from './walkWeapons';
 import type { Motes } from './walkFx';
 
 export type FoeKind = 'zombie' | 'elite' | 'boss';
@@ -92,6 +92,8 @@ export interface Horde {
   ram(x: number, z: number, r: number, dx: number, dz: number, speed: number): number;
   /** Area damage from a hit at height `y`; `bossBonus` multiplies what the giant takes. */
   damageArea(x: number, y: number, z: number, radius: number, damage: number, fromX: number, fromZ: number, bossBonus?: number): number;
+  /** Hurts every foe the segment (ax, az)–(bx, bz) passes within `width` of, e.g. a laser that goes through a crowd; returns how many. */
+  beam(ax: number, az: number, bx: number, bz: number, width: number, damage: number): number;
   /** Every zombie and elite drops dead (cure) or vanishes in a puff (the giant forming). */
   clear(how: 'die' | 'poof'): void;
   positions(): { kind: FoeKind; x: number; z: number; tag?: string }[];
@@ -590,6 +592,15 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
         if (!amount) return;
         count++;
         hurt(f, f.kind === 'boss' ? amount * bossBonus : amount, f.x - fromX, f.z - fromZ, 2 + amount * 1.4, 0.25 + amount * 0.06);
+      });
+      return count;
+    },
+    beam(ax, az, bx, bz, width, damage) {
+      let count = 0;
+      foes.forEach((f) => {
+        if (!live(f) || segmentGap(f.x, f.z, ax, az, bx, bz) > width + f.rule.radius) return;
+        count++;
+        hurt(f, damage, bx - ax, bz - az, 2, 0.25);
       });
       return count;
     },

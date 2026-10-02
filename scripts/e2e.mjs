@@ -323,8 +323,11 @@ async function main() {
 
     await step('codecity GTA: weapons, virus outbreak, help', async () => {
       await page.waitForTimeout(800);
-      await page.keyboard.press('4');
-      await page.waitForSelector('.wk-weapons [data-weapon=pistol].on', { timeout: 5_000 });
+      const held = await page.locator('.wk-weapons button.on').getAttribute('data-weapon');
+      const lockedKey = await page.locator('.wk-weapons button.locked kbd').first().textContent();
+      await page.keyboard.press(lockedKey);
+      await page.waitForTimeout(200);
+      assert(await page.locator('.wk-weapons button.on').getAttribute('data-weapon') === held, `${lockedKey} picked a weapon the player has not looted yet`);
       await page.keyboard.press('f');
       await page.keyboard.press('v');
       await page.waitForSelector('.wk-virus:not([hidden])', { timeout: 5_000 });

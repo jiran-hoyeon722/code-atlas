@@ -95,6 +95,8 @@ export interface HeliArms {
   /** 0 right after a drop, 1 when the next bomb is ready. */
   readonly bombCharge: number;
   bomb(): boolean;
+  /** A blast with the bomb's flash, smoke and shake; the hero's rockets and grenades go off through here too. */
+  explode(p: Impact, radius?: number, damage?: number): void;
   update(dt: number, time: number, input: HeliArmsInput): void;
   dispose(): void;
 }
@@ -153,7 +155,7 @@ export function createHeliArms(scene: THREE.Scene, heli: Heli, hooks: HeliArmsHo
     const ring = new THREE.Mesh(ringGeo, additive('#ffd9a0', 2.4));
     flash.visible = smoke.visible = ring.visible = false;
     scene.add(smoke, flash, ring);
-    return { flash, smoke, ring, age: BLAST_LIFE };
+    return { flash, smoke, ring, age: BLAST_LIFE, radius: BOMB_RADIUS };
   });
   // One light that is always in the scene, so a blast never changes the light count and forces shaders to recompile.
   const blastLight = new THREE.PointLight('#ffb35c', 0, 60, 1.6);
@@ -217,9 +219,10 @@ export function createHeliArms(scene: THREE.Scene, heli: Heli, hooks: HeliArmsHo
     hooks.hit(end.x, end.y, end.z, GUN_RADIUS, GUN_DAMAGE, heli.root.position.x, heli.root.position.z);
   }
 
-  function explode(p: Impact) {
+  function explode(p: Impact, radius = BOMB_RADIUS, damage = BOMB_DAMAGE) {
     const blast = blasts.reduce((a, c) => (c.age > a.age ? c : a), blasts[0]);
     blast.age = 0;
+    blast.radius = radius;
     blast.flash.position.set(p.x, p.y + 1, p.z);
     blast.smoke.position.set(p.x, p.y + 1.5, p.z);
     blast.ring.position.set(p.x, p.y + 0.25, p.z);
@@ -227,8 +230,8 @@ export function createHeliArms(scene: THREE.Scene, heli: Heli, hooks: HeliArmsHo
     blastLight.position.set(p.x, p.y + 4, p.z);
     lightFor = 0.5;
     hooks.sparks.burst(p.x, p.y + 0.5, p.z, 60);
-    spawnPuffs(p.x, p.y, p.z, 16, 1.6, 7);
-    hooks.hit(p.x, p.y, p.z, BOMB_RADIUS, BOMB_DAMAGE, p.x, p.z);
+    spawnPuffs(p.x, p.y, p.z, Math.round(radius * 1.6), 1.6 * Math.min(1, radius / 7), radius * 0.7);
+    hooks.hit(p.x, p.y, p.z, radius, damage, p.x, p.z);
     hooks.blast(p.x, p.y, p.z);
   }
 
@@ -236,6 +239,7 @@ export function createHeliArms(scene: THREE.Scene, heli: Heli, hooks: HeliArmsHo
     aim,
     get firing() { return firing; },
     get bombCharge() { return 1 - Math.max(0, bombCool) / BOMB_COOLDOWN; },
+    explode,
     bomb() {
       if (bombCool > 0 || heli.state !== 'flying') return false;
       const slot = bombs.find((b) => !b.live);
@@ -296,7 +300,7 @@ export function createHeliArms(scene: THREE.Scene, heli: Heli, hooks: HeliArmsHo
         bl.smoke.position.y += dt * 2.5;
         const r = Math.min(1, a / 0.6);
         (bl.ring.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - r);
-        bl.ring.scale.setScalar(1 + (1 - (1 - r) ** 2) * BOMB_RADIUS * 1.4);
+        bl.ring.scale.setScalar(1 + (1 - (1 - r) ** 2) * bl.radius * 1.4);
         if (a >= BLAST_LIFE) bl.flash.visible = bl.smoke.visible = bl.ring.visible = false;
       });
       lightFor = Math.max(0, lightFor - dt);
