@@ -312,7 +312,7 @@ export const mountExplorer: MountViewer = (root, arch, env) => {
       const self = roleEdges.get(`${i}>${i}`)?.pairs ?? 0;
       const narrow = p.w < 96;
       html += `<g class="role-box" data-role="${i}">
-            <rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="12" stroke-width="1.5" style="fill:color-mix(in srgb, ${layerColor(r.layer)} 16%, var(--surface));stroke:${layerColor(r.layer)}"/>
+            <rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="12" stroke-width="1.5" style="fill:color-mix(in srgb, ${layerColor(r.layer)} 16%, #16181e);stroke:${layerColor(r.layer)}"/>
             <text class="role-name" x="${p.cx}" y="${p.y + 23}" text-anchor="middle">${esc(r.name)}</text>
             <text class="role-count" x="${p.cx}" y="${p.y + 41}" text-anchor="middle">${fmt(roleStats[i].files)}개${self && !narrow ? ` · 내부 ${fmt(self)}` : ''}</text>
         </g>`;

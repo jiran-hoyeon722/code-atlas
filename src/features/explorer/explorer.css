@@ -1,21 +1,21 @@
 .cc-explorer {
-    --bg: #f6f6f3;
-    --surface: #ffffff;
-    --surface-2: #f0efea;
-    --text: #1d1d1b;
-    --muted: #6c6b66;
-    --faint: #a3a29c;
-    --border: #e2e1da;
-    --accent: #3b5bdb;
-    --danger: #e03131;
-    --warn: #e8890c;
-    --l0: #3b5bdb;
-    --l1: #0c8599;
-    --l2: #7048e8;
-    --l3: #5c940d;
-    --edge: #6c6b66;
-    --shadow: 0 12px 40px rgba(20, 20, 18, .14);
-    color-scheme: light;
+    --bg: #0e1015;
+    --surface: rgba(22, 24, 30, .86);
+    --surface-2: rgba(255, 255, 255, .06);
+    --text: #eceef3;
+    --muted: #9aa0ad;
+    --faint: #868c99;
+    --border: rgba(255, 255, 255, .09);
+    --accent: #7c93f5;
+    --danger: #ff6b6b;
+    --warn: #f5a524;
+    --l0: #7c93f5;
+    --l1: #3bc9db;
+    --l2: #a78bfa;
+    --l3: #94d82d;
+    --edge: #9aa0ad;
+    --shadow: 0 12px 40px rgba(0, 0, 0, .5);
+    color-scheme: dark;
     background: var(--bg);
     color: var(--text);
     font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Segoe UI", sans-serif;
@@ -53,7 +53,7 @@
 .cc-explorer .search input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent); border-color: transparent; }
 .cc-explorer .results {
     position: absolute; top: calc(100% + 6px); left: 0; right: 0;
-    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    background: #16181e; border: 1px solid var(--border); border-radius: 12px;
     box-shadow: var(--shadow); overflow: hidden; display: none;
 }
 .cc-explorer .results.open { display: block; }
@@ -83,7 +83,7 @@
 .cc-explorer .controls select,
 .cc-explorer .controls input[type=checkbox] { accent-color: var(--accent); }
 .cc-explorer select {
-    font: inherit; color: var(--text); background: var(--surface);
+    font: inherit; color: var(--text); background: #16181e;
     border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px;
 }
 .cc-explorer .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 10px; }
@@ -101,7 +101,7 @@
 .cc-explorer .role-name { font-size: 13px; font-weight: 600; fill: var(--text); }
 .cc-explorer .role-count { font-size: 11px; fill: var(--muted); }
 .cc-explorer .redge { fill: none; stroke-linecap: round; cursor: pointer; transition: opacity .15s, stroke-opacity .15s; }
-.cc-explorer .redge-label { font-size: 11px; font-weight: 600; fill: var(--text); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; pointer-events: none; }
+.cc-explorer .redge-label { font-size: 11px; font-weight: 600; fill: var(--text); paint-order: stroke; stroke: #16181e; stroke-width: 4px; pointer-events: none; }
 .cc-explorer svg.focus .redge { opacity: .05; }
 .cc-explorer svg.focus .redge.on { opacity: 1; stroke-opacity: .85; }
 .cc-explorer svg.focus .role-box.dim rect { opacity: .35; }
@@ -129,7 +129,7 @@
     border: 1px solid var(--border); background: var(--surface); border-radius: 999px;
     padding: 6px 14px; cursor: pointer; font-size: 13px;
 }
-.cc-explorer .tabs button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.cc-explorer .tabs button.on { background: var(--accent); color: #0e1015; border-color: var(--accent); }
 .cc-explorer .tab-lead { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
 .cc-explorer table.rank { width: 100%; border-collapse: collapse; }
 .cc-explorer table.rank th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--border); }
@@ -155,7 +155,7 @@
 
 .cc-explorer .drawer {
     position: fixed; top: 0; right: 0; bottom: 0; z-index: 40;
-    width: min(520px, 100vw); background: var(--surface);
+    width: min(520px, 100vw); background: #16181e;
     border-left: 1px solid var(--border); box-shadow: var(--shadow);
     display: flex; flex-direction: column;
     transform: translateX(105%); transition: transform .22s ease;
@@ -214,7 +214,7 @@
 
 .cc-explorer .tip {
     position: fixed; z-index: 50; pointer-events: none; display: none;
-    background: var(--text); color: var(--bg); font-size: 12px; padding: 6px 10px; border-radius: 8px; max-width: 320px;
+    background: #262a33; color: var(--text); border: 1px solid var(--border); font-size: 12px; padding: 6px 10px; border-radius: 8px; max-width: 320px;
 }
 .cc-explorer .error { padding: 40px; text-align: center; color: var(--danger); }
 
