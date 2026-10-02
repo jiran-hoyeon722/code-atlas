@@ -129,6 +129,10 @@
 .wk-walk .wk-virus .signal i { width: 5px; border-radius: 1px; background: rgba(255, 255, 255, .15); }
 .wk-walk .wk-virus .signal i:nth-child(1) { height: 20%; } .wk-walk .wk-virus .signal i:nth-child(2) { height: 40%; } .wk-walk .wk-virus .signal i:nth-child(3) { height: 60%; } .wk-walk .wk-virus .signal i:nth-child(4) { height: 80%; } .wk-walk .wk-virus .signal i:nth-child(5) { height: 100%; }
 .wk-walk .wk-virus .signal i.on { background: #39ff7a; }
+.wk-walk .wk-virus .v-tank { display: flex; flex-direction: column; gap: 5px; padding: 7px 9px; border-radius: 8px; border: 1px solid rgba(255, 179, 71, .35); background: rgba(255, 179, 71, .08); font-size: 12px; color: #ffd8a0; }
+.wk-walk .wk-virus .v-tank[hidden] { display: none; }
+.wk-walk .wk-virus .v-tank .v-bar i { background: linear-gradient(90deg, #ff9f43, #ffd27a); }
+.wk-walk .wk-virus .v-tank.done { border-color: #ffb347; box-shadow: 0 0 14px rgba(255, 179, 71, .25); color: #ffe3b8; }
 .wk-walk .wk-virus p { margin: 0; color: var(--muted); font-size: 11px; }
 .wk-walk .wk-virus p b { color: var(--text); }
 @keyframes wk-spin { to { transform: rotate(360deg); } }
@@ -164,6 +168,17 @@
 .wk-walk .wk-heli .hh-meter b { font: 700 18px ui-monospace, Menlo, monospace; }
 .wk-walk .wk-heli .hh-meter small { color: var(--faint); font-size: 10px; }
 .wk-walk .wk-heli .hh-hint { min-width: 150px; padding-left: 8px; border-left: 1px solid var(--border); color: var(--muted); font-size: 12px; white-space: nowrap; }
+.wk-walk .wk-tank { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: none; align-items: center; gap: 10px; padding: 5px 12px 5px 5px; border-color: rgba(255, 179, 71, .4); }
+.wk-walk.tanking .wk-tank { display: flex; }
+.wk-walk.tanking .wk-weapons { display: none; }
+.wk-walk .wk-tank .hh-slot { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 68px; padding: 7px 0; border-radius: 10px; border: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+.wk-walk .wk-tank .hh-slot svg { width: 24px; height: 24px; }
+.wk-walk .wk-tank .hh-slot kbd { position: absolute; top: 3px; left: 4px; min-width: 0; padding: 0 3px; border: 0; background: none; font-size: 9px; line-height: 12px; }
+.wk-walk .wk-tank .hh-slot.ready { color: var(--text); border-color: #ffa53b; }
+.wk-walk .wk-tank .hh-slot i { position: absolute; left: 8px; right: 8px; bottom: 3px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+.wk-walk .wk-tank .hh-slot i b { display: block; height: 100%; width: 100%; background: #ffa53b; }
+.wk-walk .wk-tank .th-keys { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.wk-walk .wk-tank .th-keys b { color: #ffd27a; }
 .wk-walk .wk-help { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; padding: 16px 18px; z-index: 5; }
 .wk-walk .wk-help .h-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 15px; }
 .wk-walk .wk-help .h-head span { display: flex; gap: 6px; }
@@ -180,7 +195,7 @@
 .wk-walk .wk-detail { position: absolute; top: 14px; right: 14px; bottom: 14px; width: min(760px, max(320px, calc(100% - 380px))); display: flex; flex-direction: column; overflow: hidden; opacity: 0; transform: translateX(40px) scale(.98); pointer-events: none; transition: opacity .35s ease, transform .45s cubic-bezier(.2, .8, .2, 1); }
 .wk-walk .wk-detail.open { opacity: 1; transform: none; pointer-events: auto; }
 .wk-walk .wk-fade { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 40% 50%, transparent 30%, #05060a 100%); opacity: 0; }
-.wk-walk .wk-hud, .wk-walk .wk-map, .wk-walk .wk-virus, .wk-walk .wk-weapons, .wk-walk .wk-heli, .wk-walk .wk-battle { transition: opacity .4s ease; }
+.wk-walk .wk-hud, .wk-walk .wk-map, .wk-walk .wk-virus, .wk-walk .wk-weapons, .wk-walk .wk-heli, .wk-walk .wk-tank, .wk-walk .wk-battle { transition: opacity .4s ease; }
 .wk-walk.entering .wk-hud, .wk-walk.entering .wk-map { opacity: .25; }
 @media (prefers-reduced-motion: reduce) { .wk-walk .wk-detail { transition: none; } }
 .wk-walk .wk-detail .head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }

@@ -1,4 +1,4 @@
-export type Cue = 'step' | 'land' | 'swing' | 'shot' | 'shotgun' | 'rocket' | 'laser' | 'flame' | 'throw' | 'pickup' | 'hurt' | 'boom' | 'enter' | 'ding';
+export type Cue = 'step' | 'land' | 'swing' | 'shot' | 'shotgun' | 'rocket' | 'laser' | 'flame' | 'throw' | 'pickup' | 'hurt' | 'boom' | 'cannon' | 'enter' | 'ding';
 
 export const SOUND_KEY = 'code-atlas.walk.sound';
 
@@ -82,6 +82,7 @@ export function createSound(stored: string | null, Audio: Ctx | undefined = glob
         case 'pickup': tone('triangle', 520, 520, t, 0.12, 0.16 * l); tone('triangle', 780, 780, t + 0.07, 0.14, 0.14 * l); tone('triangle', 1040, 1040, t + 0.14, 0.2, 0.12 * l); break;
         case 'hurt': tone('sawtooth', 220, 90, t, 0.16, 0.15 * l); break;
         case 'boom': hiss('lowpass', 300, t, 0.9, 0.9 * l); tone('sine', 70, 28, t, 0.7, 0.7 * l); break;
+        case 'cannon': hiss('lowpass', 700, t, 1.1, 1 * l); tone('sine', 95, 30, t, 0.65, 0.9 * l); tone('square', 240, 60, t, 0.08, 0.3 * l); break;
         case 'enter': tone('sine', 660, 660, t, 0.18, 0.15 * l); tone('sine', 990, 990, t + 0.09, 0.22, 0.12 * l); break;
         case 'ding': tone('triangle', 880, 880, t, 0.25, 0.18 * l); tone('triangle', 1320, 1320, t + 0.1, 0.35, 0.15 * l); break;
       }

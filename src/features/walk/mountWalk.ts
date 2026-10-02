@@ -28,6 +28,7 @@ import { createPickups, createShots } from './walkArsenal';
 import { DIFFICULTIES, DIFFICULTY, FORM_TIME, MAX_ORIGINS, createSiege, createVirus, isDifficulty, isInfected, pickOrigins, pickSpawnSite, storedDifficulty, type Difficulty } from './walkVirus';
 import { FOES, HELI_BOSS_BONUS, createHorde } from './walkHorde';
 import { decay, follow, shakeOffset, turnToward } from './walkMotion';
+import { SHELL, TANK, createTank, createTankQuest, tankQuestText } from './walkTank';
 import { QUEST, QUEST_KEY, createQuest, type QuestId } from './walkQuest';
 import { SOUND_KEY, createSound } from './walkSound';
 import { characterById, dealCharacters, type Character } from './walkCharacters';
@@ -68,6 +69,7 @@ const WEATHER_ICONS: Record<string, string> = {
 };
 const GUN_ICON = icon('<path d="M2 10h14l2-2h3v3h-2l-1 1H9l-1 4H5l1-4H2z" fill="currentColor"/><path d="M18 13h4M18 15.5h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>');
 const BOMB_ICON = icon('<circle cx="10.5" cy="14" r="6.5" fill="currentColor"/><path d="M15 9.5l2.5-2.5M18 4.5v2M20.5 7h-2M19.8 4.2l-1.4 1.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>');
+const TANK_ICON = icon('<path d="M3 15h18l-2 4H5z" fill="currentColor"/><rect x="5" y="11" width="12" height="4" rx="1" fill="currentColor"/><rect x="8" y="8" width="6" height="3.5" rx="1" fill="currentColor"/><path d="M14 9.5h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>');
 const AUTO_ICON = icon('<circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 8.5v7l6-3.5z" fill="currentColor"/>');
 const TAKEOVER = /^(Key[WASDEFGH]|Arrow\w+|Space|Digit[0-9])$/;
 const LOCK_ICON = icon('<rect x="6" y="11" width="12" height="9" rx="2" fill="currentColor"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3" fill="none" stroke="currentColor" stroke-width="1.8"/>');
@@ -75,9 +77,10 @@ const VIRUS_ICON = icon('<circle cx="12" cy="12" r="5" fill="currentColor"/><pat
 const HELP = [
   ['이동', [['W A S D', '걷기'], ['Shift', '달리기'], ['Space', '점프'], ['R', '옥상 올라가기 · 내려가기'], ['클릭', '마우스로 시점 돌리기 (Esc 로 풀기)'], ['휠', '카메라 거리']]],
   ['전투', [['1 ~ 9 · 0', '무기 고르기 (가진 무기만)'], ['F · 클릭', '공격 (기관단총 · 화염방사기는 누르고 있기)'], ['무기 줍기', '처음엔 주먹뿐 — 무기는 도시에서 주워요. 길가와 건물 문 앞의 빛나는 무기 위를 지나가면 돼요'], ['탄약', '같은 무기를 또 주우면 채워져요. 다 쓰면 주먹으로 돌아가요'], ['G', '감정 표현']]],
-  ['행동', [['E', '건물 들어가기 · 차 타기 · 바이러스 치료'], ['H', '헬기 타기 (라이벌 4명을 다 잡으면)']]],
-  ['바이러스', [['V', '바이러스 모드 시작 · 그만두기 (괴물이 나타나면 못 그만둬요)'], ['쉬움 ~ 신', '난이도 — 쉬움은 근원지 1곳과 바닥 화살표, 어려울수록 근원지가 늘고(신은 5곳) 빨리 번지며 좀비가 세져요'], ['E (근원지 앞)', '백신 주입 — 근원지를 모두 치료하면 클리어'], ['괴물', '도시가 다 감염되면 나타나요. 처치하면 클리어'], ['10분', '시작부터 10분 안에 끝내지 못하면 레포가 무너지고 분석 기록이 지워져요']]],
+  ['행동', [['E', '건물 들어가기 · 차 · 탱크 타기 · 바이러스 치료'], ['H', '헬기 타기 (라이벌 4명을 다 잡으면)']]],
+  ['바이러스', [['V', '바이러스 모드 시작 · 그만두기 (괴물이 나타나면 못 그만둬요)'], ['쉬움 ~ 신', '난이도 — 쉬움은 근원지 1곳과 바닥 화살표, 어려울수록 근원지가 늘고(신은 5곳) 빨리 번지며 좀비가 세져요'], ['E (근원지 앞)', '백신 주입 — 근원지를 모두 치료하면 클리어'], ['탱크 퀘스트', '지옥 · 신에서만 — 바이러스를 지옥 40 · 신 60마리 처치하면 가까운 길에 탱크가 와요 (한 번만)'], ['괴물', '도시가 다 감염되면 나타나요. 처치하면 클리어'], ['10분', '시작부터 10분 안에 끝내지 못하면 레포가 무너지고 분석 기록이 지워져요']]],
   ['헬기', [['W S', '앞으로 · 뒤로'], ['A D · 마우스', '방향 돌리기'], ['Q E', '옆으로 이동'], ['Space · C (Ctrl · X)', '올라가기 · 내려가기'], ['Shift', '가속'], ['F · 클릭', '기관총 (누르고 있기)'], ['G · 우클릭', '폭탄 떨어뜨리기'], ['마우스 위아래', '조준점 가깝게 · 멀리'], ['H', '천천히 내려가 착륙 (Space 로 취소)']]],
+  ['탱크', [['W S', '앞으로 · 뒤로 (무거워서 천천히 붙어요)'], ['A D', '차체 돌리기'], ['마우스', '포탑 돌리기 — 보는 쪽을 조준해요'], ['F · 클릭', '포격 — 넓게 터지고 1.2초마다 장전'], ['몸통', '좀비는 깔아뭉개고 엘리트는 크게 다쳐요. 탱크 안에선 공격받지 않아요'], ['E', '타기 · 내리기 — 치료 · 건물 · 옥상은 내려서 해요']]],
   ['자동 사냥', [['O', '자동 사냥 켜기 · 끄기 — 많이 쓰이는 뿌리 파일에서 출발해, 그 파일을 쓰는 코드를 따라가며 배워요'], ['몬스터', '그 파일에 위험 신호(순환 참조 · 역방향 의존 · 복잡한 함수 등)가 있을 때만 나타나요'], ['이동 · 행동 키', '누르면 바로 직접 조종으로 돌아와요'], ['드래그 · 휠', '잠깐 시점 돌리기 (자동 사냥은 계속돼요)']]],
   ['화면', [['/', '파일 이름으로 순간 이동'], ['T', '날씨 바꾸기'], ['M', '소리 켜기 · 끄기'], ['V', '바이러스 모드'], ['O', '자동 사냥'], ['?', '이 도움말 · 게임 가이드']]],
 ] as const;
@@ -86,8 +89,8 @@ const DIFF_HINT: Record<Difficulty, string> = {
   easy: '쉬움 — 근원지 1곳, 바닥에 근원지로 가는 형광 화살표가 보여요',
   normal: '보통 — 근원지 2곳, 좀비가 조금 더 세요, 화살표 없음',
   hard: '어려움 — 근원지 3곳, 빨리 번지고 좀비 떼가 몰려와요',
-  hell: '지옥 — 근원지 4곳, 아주 빨리 번지고 좀비와 엘리트가 훨씬 세요',
-  god: '신 — 근원지 5곳, 100초 만에 도시가 다 감염돼요. 버틸 수 있다면',
+  hell: '지옥 — 근원지 4곳, 아주 빨리 번지고 좀비와 엘리트가 훨씬 세요. 40마리를 잡으면 탱크가 와요',
+  god: '신 — 근원지 5곳, 100초 만에 도시가 다 감염돼요. 60마리를 잡으면 탱크가 와요',
 };
 const VIRUS_NOTE = '하늘로 솟은 초록 빛기둥이 근원지예요. 근원지마다 건물 앞에서 <b>E</b> 로 백신을 넣어야 끝나요. <b>10분</b> 안에 못 끝내면 레포가 무너져요.';
 const GUIDE_NOTE = ' 바닥의 형광 화살표를 따라가세요.';
@@ -114,6 +117,7 @@ const MARKUP = `
     <div class="v-row"><span>근원지 신호</span><span class="signal" data-el="v-signal"><i></i><i></i><i></i><i></i><i></i></span></div>
     <div class="v-row"><span>난이도</span><b data-el="v-diff-label"></b></div>
     <div class="v-row"><span>처치한 바이러스</span><b data-el="v-kills">0</b></div>
+    <div class="v-tank" data-el="v-tank" hidden><span data-el="v-tank-text"></span><div class="v-bar"><i data-el="v-tank-bar"></i></div></div>
     <p data-el="v-note"></p>
 </div>
 <div class="wk-auto glass" data-el="auto" hidden>
@@ -145,6 +149,10 @@ const MARKUP = `
     <div class="hh-meter"><span>고도</span><b data-el="hh-alt">0</b><small>m</small></div>
     <div class="hh-meter"><span>속도</span><b data-el="hh-speed">0</b><small>km/h</small></div>
     <div class="hh-hint" data-el="hh-hint"></div>
+</div>
+<div class="wk-tank glass" data-el="tank-hud" aria-label="탱크">
+    <div class="hh-slot" data-el="th-gun">${TANK_ICON}<span>포격</span><kbd>F</kbd><i><b data-el="th-bar"></b></i></div>
+    <div class="th-keys"><b>탱크</b><span><kbd>W</kbd><kbd>S</kbd> 이동 · <kbd>A</kbd><kbd>D</kbd> 회전 · 마우스 포탑 · <kbd>F</kbd> 포격 · <kbd>E</kbd> 내리기</span></div>
 </div>
 <div class="wk-help glass" data-el="help" hidden role="dialog" aria-label="조작법">
     <div class="h-head"><b>조작법</b><span><button data-el="guide-open">게임 가이드</button><button data-el="help-close">닫기 (Esc)</button></span></div>
@@ -662,9 +670,10 @@ const mount: MountViewer = (root, arch, env) => {
   let punchAt = 0;
   let punchCooldown = 0;
   let hurt = 0;
-  let mode: 'walk' | 'fly' | 'drive' | 'ride' = 'walk';
+  let mode: 'walk' | 'fly' | 'drive' | 'ride' | 'tank' = 'walk';
   let auto = false;
   let nearVehicle: Vehicle | null = null;
+  let nearTank = false;
   let nearCar: RideCar | null = null;
   let toastTimer = 0;
   const caughtNames = new Set<string>();
@@ -688,10 +697,11 @@ const mount: MountViewer = (root, arch, env) => {
     return new THREE.Vector3(x, 0, z);
   }
   const heli = createHeli(scene, bounds);
-  const vehicles = createVehicles(scene, layout, blocked, random);
+  const tank = createTank(scene, (x, z, r) => blocked(x, z, r) || vehicles.occupied(x, z, r));
+  const vehicles = createVehicles(scene, layout, (x, z, r) => blocked(x, z, r) || tank.occupied(x, z, r), random);
   const sparks = createSparks(scene);
   const markers = createMarkers(scene);
-  const blockedWalker = (x: number, z: number, r = RADIUS) => blocked(x, z, r) || vehicles.occupied(x, z, r);
+  const blockedWalker = (x: number, z: number, r = RADIUS) => blocked(x, z, r) || vehicles.occupied(x, z, r) || tank.occupied(x, z, r);
   let soundStored: string | null = null;
   try { soundStored = localStorage.getItem(SOUND_KEY); } catch { /* storage may be blocked */ }
   const sound = createSound(soundStored);
@@ -713,7 +723,8 @@ const mount: MountViewer = (root, arch, env) => {
   listen(root, 'pointerdown', () => sound.unlock());
   let shake = 0;
   function hurtPlayer(damage: number, fx: number, fz: number, push = 7) {
-    if (!alive || auto) return;
+    // The tank is indestructible, and whoever sits in it with it.
+    if (!alive || auto || mode === 'tank') return;
     hp -= damage;
     sound.play('hurt', Math.min(1, 0.4 + damage / 30));
     hurt = 1;
@@ -859,6 +870,7 @@ const mount: MountViewer = (root, arch, env) => {
   let nearOrigin = -1;
   let curingAt = -1;
   let kills = 0;
+  const tankQuest = createTankQuest();
   let bossDown = false;
   let bossFormed = false;
   let collapsed = false;
@@ -909,7 +921,11 @@ const mount: MountViewer = (root, arch, env) => {
     clear: clearLine,
     spot: (x, z, min, max) => openSpot(x, z, min, max, 0.6),
     onPlayerHit: (damage, fx, fz, push) => hurtPlayer(damage, fx, fz, push),
-    onKill: (_kind, tag) => { if (tag) pilot.onKill(tag); else kills++; },
+    onKill: (kind, tag) => {
+      if (tag) { pilot.onKill(tag); return; }
+      kills++;
+      if (kind !== 'boss' && tankQuest.kill()) tankArrives();
+    },
     onBossDown: () => { bossDown = true; },
     onQuake: (x, z) => { shake = Math.max(shake, Math.max(0.25, 1 - Math.hypot(x - pos.x, z - pos.z) / 60)); },
   });
@@ -936,6 +952,7 @@ const mount: MountViewer = (root, arch, env) => {
     virus.start(origins, r.spread);
     siege.start(r);
     kills = 0;
+    tankQuest.start(r);
     bossDown = false;
     bossFormed = false;
     horde.warm(r.zombieCap + r.eliteCap + 1);
@@ -980,6 +997,8 @@ const mount: MountViewer = (root, arch, env) => {
     const seconds = virus.elapsed;
     const saved = virus.infected;
     const last = sources.find((x) => x.site === nearOrigin)?.core.position.clone() ?? coreLight.position.clone();
+    tankQuest.stop();
+    removeTank();
     virus.cure();
     siege.stop();
     horde.clear('die');
@@ -1046,6 +1065,12 @@ const mount: MountViewer = (root, arch, env) => {
     $('v-bar').style.width = `${(virus.infected / Math.max(1, total)) * 100}%`;
     $('v-diff-label').textContent = rule().label;
     $('v-kills').textContent = fmt(kills);
+    $('v-tank').hidden = !tankQuest.active;
+    if (tankQuest.active) {
+      $('v-tank-text').textContent = tankQuestText(tankQuest);
+      $('v-tank-bar').style.width = `${(tankQuest.count / tankQuest.goal) * 100}%`;
+      $('v-tank').classList.toggle('done', tankQuest.done);
+    }
     const note = VIRUS_NOTE + (rule().guide ? GUIDE_NOTE : '');
     if ($('v-note').dataset.note !== note) { $('v-note').dataset.note = note; $('v-note').innerHTML = note; }
     const b = nearestOrigin();
@@ -1374,6 +1399,7 @@ const mount: MountViewer = (root, arch, env) => {
     const name = (i: number) => esc(arch.nodes[i].name);
     if (auto) html = '';
     else if (mode === 'drive') html = '<b>E</b> 내리기';
+    else if (mode === 'tank') html = '<b>F</b> 포격 · <b>E</b> 내리기';
     else if (mode === 'ride' && traffic.riding) html = `<b>E</b> 먼저 내리기 — ${name(traffic.riding.t)}(으)로 가는 중`;
     else if (mode === 'walk' && climb) html = '';
     else if (mode === 'walk' && roof) html = alive ? `<b>R</b> 내려가기 — ${name(roof.i)} 옥상` : '';
@@ -1382,6 +1408,7 @@ const mount: MountViewer = (root, arch, env) => {
       if (curing > 0) html = `백신 주입 중… ${Math.round((curing / CURE_TIME) * 100)}% — 자리를 지키세요`;
       else if (nearOrigin >= 0) html = '<b>E</b> 백신 주입 — 바이러스 근원지를 찾았어요!';
       else if (heli.state === 'parked' && Math.hypot(hpos.x - pos.x, hpos.z - pos.z) < 7) html = '<b>H</b> 헬기 타기';
+      else if (nearTank) html = '<b>E</b> 탑승 — 탱크';
       else if (nearVehicle) html = `<b>E</b> 운전 — ${nearVehicle.kind === 'car' ? '자동차' : '오토바이'}`;
       else if (nearCar) html = `<b>E</b> 탑승 — ${name(nearCar.f)} → ${name(nearCar.t)}`;
       else if (focus && buildingInfected(focus)) html = `바이러스에 잠식된 건물이에요 — ${name(focus.i)} 코드를 볼 수 없어요 · <b>R</b> 옥상으로`;
@@ -1413,6 +1440,72 @@ const mount: MountViewer = (root, arch, env) => {
     }
     vel.set(0, 0, 0);
     updatePrompt();
+  }
+  // ---- tank: the 지옥 · 신 quest reward, one per outbreak, gone when the outbreak ends ----
+  function tankSpot() {
+    for (let r = 10; r <= 46; r += 2)
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 10) {
+        const x = pos.x + Math.cos(a) * r, z = pos.z + Math.sin(a) * r;
+        if (x < bounds.minX + 4 || x > bounds.maxX - 4 || z < bounds.minZ + 4 || z > bounds.maxZ - 4) continue;
+        for (const h of [Math.PI / 2, 0]) if (tank.fits(x, z, h) && !vehicles.occupied(x, z, TANK.half + TANK.radius)) return { x, z, h };
+      }
+    return null;
+  }
+  function tankArrives() {
+    const at = tankSpot() ?? (() => { const p = freeSpotNear(pos.x, pos.z, 10, 40); return { x: p.x, z: p.z, h: 0 }; })();
+    tank.spawn(at.x, at.z, at.h);
+    sound.play('ding');
+    toast('탱크가 도착했어요! 표시된 곳에서 E 로 탑승', 5000);
+  }
+  function boardTank() {
+    tank.board();
+    mode = 'tank';
+    keys.clear();
+    triggerHeld = false;
+    setFocus(null);
+    showHero(false);
+    reticle.visible = false;
+    root.classList.add('tanking');
+    yaw = tank.heading + Math.PI;
+    sound.play('enter');
+    toast('탱크 — W/S 이동 · A/D 회전 · 마우스로 포탑 · F/클릭 포격 · E 내리기', 4500);
+    updatePrompt();
+  }
+  function leaveTank() {
+    tank.exit();
+    mode = 'walk';
+    keys.clear();
+    triggerHeld = false;
+    root.classList.remove('tanking');
+    showHero(true);
+    pos.copy(freeSpotNear(tank.x + Math.cos(tank.heading) * 3.6, tank.z - Math.sin(tank.heading) * 3.6, 0, 12));
+    heading = tank.heading;
+    yaw = heading + Math.PI;
+    vel.set(0, 0, 0);
+    updatePrompt();
+  }
+  function removeTank() {
+    if (mode === 'tank') leaveTank();
+    tank.hide();
+    nearTank = false;
+  }
+  const tankFront = new THREE.Vector3();
+  let crushCool = 0;
+  function fireTank() {
+    if (!tank.fire(muzzle)) return;
+    shots.rocket(muzzle, tank.turretYaw, TANK.shellRange, SHELL.radius, SHELL.damage, TANK.shellSpeed);
+    sound.play('cannon');
+    shake = Math.max(shake, 0.45);
+    sparks.burst(muzzle.x, muzzle.y, muzzle.z, 24);
+    puffs.burst(muzzle.x, muzzle.y, muzzle.z, 16, 3, 0.8, 0.9);
+  }
+  const tankHud = { bar: -1 };
+  function renderTankHud() {
+    const bar = Math.round(tank.charge * 100);
+    if (bar === tankHud.bar) return;
+    tankHud.bar = bar;
+    $('th-bar').style.width = `${bar}%`;
+    $('th-gun').classList.toggle('ready', bar === 100);
   }
   function hitch(car: RideCar) {
     traffic.board(car, (c) => {
@@ -1446,6 +1539,7 @@ const mount: MountViewer = (root, arch, env) => {
   }
   function interact() {
     if (nearOrigin >= 0) { if (curing <= 0) { curing = 0.001; curingAt = nearOrigin; } updatePrompt(); }
+    else if (nearTank) boardTank();
     else if (nearVehicle) driveVehicle(nearVehicle);
     else if (nearCar) hitch(nearCar);
     else if (focus && buildingInfected(focus)) toast('바이러스에 잠식된 건물은 코드를 볼 수 없어요 — 근원지를 치료하면 다시 열려요');
@@ -1645,7 +1739,7 @@ const mount: MountViewer = (root, arch, env) => {
       endVirus(false);
     }
     if (mode === 'fly') { toast('헬기에서 내린 뒤 자동 사냥을 켤 수 있어요'); return; }
-    if (mode === 'drive') leaveVehicle(); else if (mode === 'ride') hopOff();
+    if (mode === 'drive') leaveVehicle(); else if (mode === 'ride') hopOff(); else if (mode === 'tank') leaveTank();
     leaveRoof();
     if (detailOpen || entering) leave();
     if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
@@ -1791,6 +1885,13 @@ const mount: MountViewer = (root, arch, env) => {
     if (e.code === 'KeyT') { applyTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]); return; }
     if (e.code === 'KeyV') { toggleVirus(); return; }
     if (e.code === 'KeyH' && alive && (mode === 'walk' || mode === 'fly')) { toggleHeli(); return; }
+    if (mode === 'tank') {
+      if (isE) { leaveTank(); return; }
+      if (e.code === 'KeyF') { triggerHeld = true; return; }
+      keys.add(e.code);
+      if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+      return;
+    }
     if (mode === 'drive' || mode === 'ride') {
       if (isE) { if (mode === 'drive') leaveVehicle(); else hopOff(); return; }
       if (mode === 'drive') {
@@ -1996,6 +2097,25 @@ const mount: MountViewer = (root, arch, env) => {
       mapCtx.arc(x, y, 3.4, 0, Math.PI * 2);
       mapCtx.fill();
     });
+    if (tank.present && mode !== 'tank') {
+      const [tx, ty] = toMap(tank.x, tank.z);
+      mapCtx.save();
+      mapCtx.translate(tx, ty);
+      mapCtx.strokeStyle = `rgba(255, 179, 71, ${1 - ((performance.now() / 1000) % 1)})`;
+      mapCtx.lineWidth = 2;
+      mapCtx.beginPath();
+      mapCtx.arc(0, 0, 6 + ((performance.now() / 1000) % 1) * 8, 0, Math.PI * 2);
+      mapCtx.stroke();
+      mapCtx.rotate(Math.PI - tank.turretYaw);
+      mapCtx.fillStyle = '#ffb347';
+      mapCtx.strokeStyle = '#0b0d12';
+      mapCtx.lineWidth = 1.2;
+      mapCtx.fillRect(-4.5, -5, 9, 10);
+      mapCtx.strokeRect(-4.5, -5, 9, 10);
+      mapCtx.fillStyle = '#0b0d12';
+      mapCtx.fillRect(-1, -10, 2, 7);
+      mapCtx.restore();
+    }
     if (heli.state !== 'hidden' && mode === 'walk') {
       const [x, y] = toMap(heli.root.position.x, heli.root.position.z);
       mapCtx.fillStyle = '#ffd43b';
@@ -2268,6 +2388,36 @@ const mount: MountViewer = (root, arch, env) => {
         hero.root.rotation.set(0, drivenNow.heading, drivenNow.lean);
       }
     }
+    const wasDropping = tank.dropping;
+    const tankBump = tank.update(dt, time, mode === 'tank' ? { throttle: fz, turn: -fx, aim: yaw + Math.PI } : null);
+    if (wasDropping && !tank.dropping) {
+      shake = Math.max(shake, shakeAt(Math.hypot(tank.x - pos.x, tank.z - pos.z), 60));
+      sound.play('land', 1);
+      puffs.burst(tank.x, 0.3, tank.z, 30, 5, 0.6, 1);
+    }
+    crushCool = Math.max(0, crushCool - dt);
+    if (mode === 'tank') {
+      pos.set(tank.x, 0, tank.z);
+      heading = tank.heading;
+      if (triggerHeld) fireTank();
+      const spd = Math.abs(tank.speed);
+      if (spd > 0.6) {
+        const dirx = Math.sin(tank.heading) * Math.sign(tank.speed), dirz = Math.cos(tank.heading) * Math.sign(tank.speed);
+        tank.front(tankFront);
+        const heavy = crushCool > 0 ? 0 : TANK.crushElite;
+        const hit = horde.crush(tankFront.x, tankFront.z, TANK.radius + 0.3, heavy, dirx, dirz) + horde.crush(tank.x, tank.z, TANK.radius, heavy, dirx, dirz);
+        if (hit) {
+          if (heavy) crushCool = TANK.crushEvery;
+          shake = Math.max(shake, 0.12);
+        }
+      }
+      if (tankBump > 2.5) {
+        shake = Math.max(shake, Math.min(0.6, tankBump / 14));
+        tank.front(tankFront);
+        sparks.burst(tankFront.x, 0.8, tankFront.z, 12);
+      }
+      renderTankHud();
+    }
     const ridden = traffic.riding;
     if (mode === 'ride' && ridden) pos.set(ridden.x, 0, ridden.z);
     if (!alive && now >= respawnAt) {
@@ -2305,6 +2455,8 @@ const mount: MountViewer = (root, arch, env) => {
     if (events.includes('boss')) toast(`초대형 바이러스 등장! 남은 ${clock(Math.ceil(siege.timeLeft))} 안에 처치하지 않으면 레포가 붕괴돼요`, 5000);
     if (events.includes('won')) endVirus(true, true);
     if (events.includes('collapse')) {
+      tankQuest.stop();
+      removeTank();
       horde.clear('poof');
       curing = 0;
       guide.setPath(null);
@@ -2371,6 +2523,18 @@ const mount: MountViewer = (root, arch, env) => {
       camera.lookAt(lookAt);
       $('fade').style.opacity = String(Math.max(0, (t - 0.55) / 0.45) * 0.55);
       if (t === 1 && !detailOpen) void openDetail(b);
+    } else if (mode === 'tank') {
+      $('fade').style.opacity = '0';
+      // The camera is free: wherever it looks is where the turret swings, so it sits higher and further back than a car's.
+      const elev = 0.3 + Math.max(0, pitch) * 0.3;
+      let reach = 13 + Math.abs(tank.speed) * 0.1;
+      do {
+        camPos.set(Math.sin(yaw) * Math.cos(elev), Math.sin(elev), Math.cos(yaw) * Math.cos(elev)).multiplyScalar(reach).add(v.set(pos.x, 2.6, pos.z));
+        reach -= 0.5;
+      } while (reach > 3 && insideBuilding(camPos));
+      camera.position.lerp(camPos, follow(7, dt));
+      lookAt.lerp(v.set(pos.x, 2.4, pos.z).addScaledVector(forward, 6), follow(10, dt));
+      camera.lookAt(lookAt);
     } else if ((mode === 'drive' && drivenNow) || (mode === 'ride' && ridden)) {
       $('fade').style.opacity = '0';
       const h = drivenNow && mode === 'drive' ? drivenNow.heading : Math.atan2(ridden!.dx, ridden!.dz);
@@ -2444,7 +2608,7 @@ const mount: MountViewer = (root, arch, env) => {
       camera.rotateZ(s.roll);
     }
     shake = Math.max(0, shake - frame * 1.6);
-    const targetFov = flying ? 62 + (heli.speed / 52) * 14 : mode === 'drive' && drivenNow ? 60 + (Math.abs(drivenNow.speed) / 40) * 14 : 58 + run * 10;
+    const targetFov = flying ? 62 + (heli.speed / 52) * 14 : mode === 'tank' ? 62 : mode === 'drive' && drivenNow ? 60 + (Math.abs(drivenNow.speed) / 40) * 14 : 58 + run * 10;
     if (Math.abs(targetFov - fov) > 0.01) {
       fov += (targetFov - fov) * follow(4, dt);
       camera.fov = fov;
@@ -2467,7 +2631,8 @@ const mount: MountViewer = (root, arch, env) => {
       if (onFoot) for (const b of nearby(pos.x, pos.z, 21)) { const g = gap(b, pos.x, pos.z); if (g < nearGap) { nearGap = g; near = b; } }
       if (mode !== 'ride') traffic.setFocus(near ? near.i : null, pos);
       const street = onFoot && !roof && !climb;
-      nearVehicle = street && alive ? vehicles.nearest(pos.x, pos.z) : null;
+      nearTank = street && alive && tank.present && !tank.driven && !tank.dropping && Math.hypot(tank.x - pos.x, tank.z - pos.z) < TANK.reach;
+      nearVehicle = street && alive && !nearTank ? vehicles.nearest(pos.x, pos.z) : null;
       nearCar = street && alive && !nearVehicle ? traffic.nearest(pos.x, pos.z, 6.5) : null;
       const ob = virus.state === 'spreading' && siege.phase === 'outbreak' && street && alive ? nearestOrigin() : null;
       nearOrigin = ob && gap(ob, pos.x, pos.z) < REACH + 0.5 ? indexOf.get(ob) ?? -1 : -1;
@@ -2510,7 +2675,7 @@ const mount: MountViewer = (root, arch, env) => {
       vy = 4.5;
       toast('차에 치였어요!', 1600);
     }
-    markers.update(time, onFoot && alive ? (nearVehicle ?? nearCar) : null, nearVehicle ? '운전' : '탑승');
+    markers.update(time, onFoot && alive ? (nearTank ? tank : nearVehicle ?? nearCar) : null, nearVehicle && !nearTank ? '운전' : '탑승');
     sparks.update(dt);
     tracers.update(dt);
     shots.update(dt);
@@ -2559,6 +2724,7 @@ const mount: MountViewer = (root, arch, env) => {
     markers.dispose();
     heliArms.dispose();
     heli.dispose();
+    tank.dispose();
     window.clearTimeout(toastTimer);
     traffic.dispose();
     rain.dispose();
@@ -2571,6 +2737,6 @@ const mount: MountViewer = (root, arch, env) => {
     renderer.dispose();
     renderer.forceContextLoss();
     root.innerHTML = '';
-    root.classList.remove('wk-walk', 'entering', 'flying', 'picking');
+    root.classList.remove('wk-walk', 'entering', 'flying', 'picking', 'tanking');
   };
 };

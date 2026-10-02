@@ -93,6 +93,8 @@ export interface Horde {
   /** Fires at the best foe in the cone; returns true and the hit point in `out` when it hits. */
   shoot(at: THREE.Vector3, heading: number, weapon: Weapon, out: THREE.Vector3): boolean;
   ram(x: number, z: number, r: number, dx: number, dz: number, speed: number): number;
+  /** Run over by something heavy: zombies within `r` die outright, elites lose `heavy` hp, the giant is not hurt. */
+  crush(x: number, z: number, r: number, heavy: number, dx: number, dz: number): number;
   /** Area damage from a hit at height `y`; `bossBonus` multiplies what the giant takes. */
   damageArea(x: number, y: number, z: number, radius: number, damage: number, fromX: number, fromZ: number, bossBonus?: number): number;
   /** Hurts every foe the segment (ax, az)–(bx, bz) passes within `width` of, e.g. a laser that goes through a crowd; returns how many. */
@@ -587,6 +589,17 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
         count++;
         const damage = f.kind === 'boss' ? 3 : speed > 14 ? 8 : speed > 8 ? 6 : 4;
         hurt(f, damage, dx, dz, speed * 0.7, 1.2);
+      });
+      return count;
+    },
+    crush(x, z, r, heavy, dx, dz) {
+      let count = 0;
+      foes.forEach((f) => {
+        if (!live(f) || f.kind === 'boss' || Math.hypot(f.x - x, f.z - z) > r + f.rule.radius) return;
+        const damage = f.kind === 'zombie' ? f.hp : heavy;
+        if (damage <= 0) return;
+        count++;
+        hurt(f, damage, dx, dz, 9, 1.4);
       });
       return count;
     },
