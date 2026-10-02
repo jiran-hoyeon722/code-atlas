@@ -718,7 +718,7 @@ const mount: MountViewer = (root, arch, env) => {
   }
   const kit = createWeaponKit();
   const tracers = createTracers(scene);
-  const battle = createBattle(scene, robotUrl, pos, kit, {
+  const battle = createBattle(scene, robotUrl, kit, {
     blocked: blockedWalker,
     clear: clearLine,
     random,
@@ -734,7 +734,7 @@ const mount: MountViewer = (root, arch, env) => {
       const spot = freeSpotNear(pos.x, pos.z, 9, 30);
       heli.arrive(spot.x, spot.z, Math.atan2((bounds.minX + bounds.maxX) / 2 - spot.x, (bounds.minZ + bounds.maxZ) / 2 - spot.z));
     },
-  });
+  }, bounds);
   renderBattle();
 
   // ---- character pick: the hero wears the chosen design, the four rivals wear the rest ----
