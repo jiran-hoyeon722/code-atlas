@@ -65,6 +65,8 @@ export interface Virus {
   readonly elapsed: number;
   /** Per site, 0 = clean, 1 = fully broken. */
   readonly levels: Float32Array;
+  /** Per site, 1 while the player holds it with a vaccine; its level stays 0 and the front passes it by. */
+  readonly vaccinated: Uint8Array;
   readonly infected: number;
   /** Starts an outbreak at one or more origins that together take about `duration` seconds to reach every site. */
   start(origin: number | readonly number[], duration?: number): void;
@@ -72,12 +74,17 @@ export interface Virus {
   cureOrigin(site: number): boolean;
   /** Vaccinates every origin at once. */
   cure(): void;
+  /** Takes a non-origin building for the player during an outbreak; false when it cannot be taken. */
+  vaccinate(site: number): boolean;
+  /** The virus wins a vaccinated building back: it starts breaking again at once. */
+  reinfect(site: number): void;
   /** Advances the clock; returns true when any level changed. */
   update(dt: number): boolean;
 }
 
 export function createVirus(sites: VirusSite[], duration: number, random: () => number): Virus {
   const levels = new Float32Array(sites.length);
+  const vaccinated = new Uint8Array(sites.length);
   let infectAt: Float32Array = new Float32Array(sites.length);
   let healAt: Float32Array = new Float32Array(sites.length);
   let peak: Float32Array = new Float32Array(sites.length);
@@ -106,6 +113,7 @@ export function createVirus(sites: VirusSite[], duration: number, random: () => 
     get elapsed() { return clock; },
     get infected() { return infected; },
     levels,
+    vaccinated,
     start(o, spread = duration) {
       const list = [...new Set(asList(o))].filter((k) => k >= 0 && k < sites.length);
       if (!list.length) return;
@@ -115,6 +123,7 @@ export function createVirus(sites: VirusSite[], duration: number, random: () => 
       clock = 0;
       infected = 0;
       levels.fill(0);
+      vaccinated.fill(0);
       jitter = jitterOf(sites, random);
       const dist = nearestOf(sites, list);
       perMetre = spread / Math.max(1, ...dist);
@@ -135,13 +144,24 @@ export function createVirus(sites: VirusSite[], duration: number, random: () => 
       if (state !== 'spreading') return;
       heal();
     },
+    vaccinate(site) {
+      if (state !== 'spreading' || site < 0 || site >= sites.length || vaccinated[site] || origins.includes(site)) return false;
+      vaccinated[site] = 1;
+      levels[site] = 0;
+      return true;
+    },
+    reinfect(site) {
+      if (state !== 'spreading' || !vaccinated[site]) return;
+      vaccinated[site] = 0;
+      infectAt[site] = Math.min(infectAt[site], clock);
+    },
     update(dt) {
       if (state === 'off') return false;
       if (state === 'spreading') {
         clock += dt;
         let count = 0;
         for (let k = 0; k < sites.length; k++) {
-          levels[k] = Math.min(1, Math.max(0, (clock - infectAt[k]) / RAMP));
+          levels[k] = vaccinated[k] ? 0 : Math.min(1, Math.max(0, (clock - infectAt[k]) / RAMP));
           if (levels[k] > 0) count++;
         }
         infected = count;
@@ -154,7 +174,7 @@ export function createVirus(sites: VirusSite[], duration: number, random: () => 
         if (levels[k] > 0) left++;
       }
       infected = left;
-      if (!left) { state = 'off'; origins = []; }
+      if (!left) { state = 'off'; origins = []; vaccinated.fill(0); }
       return true;
     },
   };
@@ -187,6 +207,12 @@ export interface DifficultyRule {
   /** A tank quest runs: kill `tankKills` viruses and a drivable tank rolls in. */
   tank: boolean;
   tankKills: number;
+  /** Land grab: the player vaccinates infected buildings, vaccine soldiers hold them, and holding TERRITORY.goal of the city wins. */
+  territory: boolean;
+  /** Viruses to kill for each extra vaccine. */
+  vaccineEvery: number;
+  /** Seconds between raids on the player's vaccinated buildings. */
+  raidEvery: number;
 }
 
 /** Seconds the whole mode may take, from the outbreak to the giant's death, before the repo collapses. */
@@ -196,11 +222,11 @@ export const BOSS_MIN_TIME = 180;
 
 export const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard', 'hell', 'god'];
 export const DIFFICULTY: Record<Difficulty, DifficultyRule> = {
-  easy: { label: '쉬움', origins: 1, spread: 420, zombieEvery: 2.4, zombieCap: 24, eliteEvery: 40, eliteCap: 3, foe: { hp: 1, damage: 1, speed: 1 }, guide: true, chase: false, tank: false, tankKills: 0 },
-  normal: { label: '보통', origins: 2, spread: 300, zombieEvery: 1.6, zombieCap: 32, eliteEvery: 30, eliteCap: 4, foe: { hp: 1.2, damage: 1.1, speed: 1.05 }, guide: false, chase: false, tank: false, tankKills: 0 },
-  hard: { label: '어려움', origins: 3, spread: 210, zombieEvery: 1, zombieCap: 45, eliteEvery: 22, eliteCap: 6, foe: { hp: 1.5, damage: 1.3, speed: 1.1 }, guide: false, chase: true, tank: false, tankKills: 0 },
-  hell: { label: '지옥', origins: 4, spread: 150, zombieEvery: 0.65, zombieCap: 60, eliteEvery: 15, eliteCap: 8, foe: { hp: 2, damage: 1.6, speed: 1.2 }, guide: false, chase: true, tank: true, tankKills: 40 },
-  god: { label: '신', origins: 5, spread: 100, zombieEvery: 0.4, zombieCap: 80, eliteEvery: 10, eliteCap: 12, foe: { hp: 2.6, damage: 2, speed: 1.3 }, guide: false, chase: true, tank: true, tankKills: 60 },
+  easy: { label: '쉬움', origins: 1, spread: 420, zombieEvery: 2.4, zombieCap: 24, eliteEvery: 40, eliteCap: 3, foe: { hp: 1, damage: 1, speed: 1 }, guide: true, chase: false, tank: false, tankKills: 0, territory: false, vaccineEvery: 0, raidEvery: 0 },
+  normal: { label: '보통', origins: 2, spread: 300, zombieEvery: 1.6, zombieCap: 32, eliteEvery: 30, eliteCap: 4, foe: { hp: 1.2, damage: 1.1, speed: 1.05 }, guide: false, chase: false, tank: false, tankKills: 0, territory: false, vaccineEvery: 0, raidEvery: 0 },
+  hard: { label: '어려움', origins: 3, spread: 210, zombieEvery: 1, zombieCap: 45, eliteEvery: 22, eliteCap: 6, foe: { hp: 1.5, damage: 1.3, speed: 1.1 }, guide: false, chase: true, tank: false, tankKills: 0, territory: false, vaccineEvery: 0, raidEvery: 0 },
+  hell: { label: '지옥', origins: 4, spread: 150, zombieEvery: 0.65, zombieCap: 60, eliteEvery: 15, eliteCap: 8, foe: { hp: 2, damage: 1.6, speed: 1.2 }, guide: false, chase: true, tank: true, tankKills: 40, territory: true, vaccineEvery: 8, raidEvery: 28 },
+  god: { label: '신', origins: 5, spread: 100, zombieEvery: 0.4, zombieCap: 80, eliteEvery: 10, eliteCap: 12, foe: { hp: 2.6, damage: 2, speed: 1.3 }, guide: false, chase: true, tank: true, tankKills: 60, territory: true, vaccineEvery: 10, raidEvery: 18 },
 };
 export const MAX_ORIGINS = Math.max(...DIFFICULTIES.map((d) => DIFFICULTY[d].origins));
 export const isDifficulty = (v: unknown): v is Difficulty => DIFFICULTIES.includes(v as Difficulty);

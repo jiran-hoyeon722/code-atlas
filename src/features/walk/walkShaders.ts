@@ -19,8 +19,10 @@ void main() {
   // A broken building loses a jagged chunk of its roof and leans a little; only the top part moves so tiers stay stacked.
   float corner = vhash(vec2(aSeed, position.x * 3.1 + position.z * 7.7));
   float top = step(0.5, position.y) * aCap;
-  p.y -= top * aInfect * (0.06 + 0.2 * corner);
-  p.x += aInfect * position.y * (vhash(vec2(aSeed, 1.7)) - 0.5) * 0.05;
+  // A vaccinated building arrives as a negative level: it stands straight and the fragment shader paints it blue.
+  float sick = max(aInfect, 0.0);
+  p.y -= top * sick * (0.06 + 0.2 * corner);
+  p.x += sick * position.y * (vhash(vec2(aSeed, 1.7)) - 0.5) * 0.05;
   vLocal = p; vSize = aSize; vColor = aColor; vSeed = aSeed; vFace = aFace; vBase = aBase; vInfect = aInfect; vKind = aKind;
   vec4 w = modelMatrix * instanceMatrix * vec4(p, 1.0);
   // Collapse: the whole building shudders and sinks under the ground plane, which hides what has gone below.
@@ -83,7 +85,8 @@ void main() {
   col = mix(col, col * 1.45 + 0.03, apt * step(g.y, 0.07) * step(3.4, y) * side);
   float epoch = floor(uTime * 0.07 + hash(cell + vSeed) * 9.0);
   float lit = step(1.0 - uLit, hash(cell + vec2(vSeed * 13.1 + epoch * 0.37, 0.0)));
-  float inf = vInfect;
+  float inf = max(vInfect, 0.0);
+  float vax = max(-vInfect, 0.0);
   // Infected windows are smashed: most go dark, a few flicker the virus green.
   float smashed = step(hash(cell + vSeed * 5.3), inf * 0.85);
   float glitch = step(0.6, hash(cell + vec2(floor(uTime * 9.0), vSeed)));
@@ -145,6 +148,18 @@ void main() {
     col += vec3(0.1, 0.6, 0.22) * crack * inf * 0.35 * step(0.55, hash(vec2(floor(uTime * 2.0), floor(cv.z * 50.0)))) * side;
     float band = step(0.99, hash(vec2(floor(y * 1.5), floor(uTime * 7.0) + vSeed))) * inf;
     col = mix(col, vec3(0.4, 1.1, 0.5), band * 0.3 * side);
+  }
+  if (vax > 0.001) {
+    // Held by the vaccine: walls wash to a clean ice blue, windows glow cyan, a band of light sweeps up and the base and roof edge shine.
+    vec3 ice = vec3(0.62, 0.84, 1.0) * mix(0.55, 1.0, uDay);
+    col = mix(col, ice * (0.6 + 0.4 * dot(col, vec3(0.33))), 0.55 * vax * side);
+    col = mix(col, vec3(0.35, 0.9, 1.6), win * side * 0.55 * vax);
+    float sweep = fract(uTime * 0.25 + vSeed * 0.37);
+    float band = smoothstep(0.05, 0.0, abs((y - vBase) / max(vSize.y, 1.0) - sweep)) * side;
+    col += vec3(0.25, 0.8, 1.5) * band * 0.8 * vax;
+    float rim = max(step(y - vBase, 0.35), step(vSize.y - 0.3, y - vBase)) * side;
+    col = mix(col, vec3(0.35, 0.95, 1.7), rim * vax);
+    if (n.y > 0.9) col = mix(col, vec3(0.3, 0.75, 1.2), 0.5 * vax);
   }
   float origin = 0.0;
   for (int k = 0; k < ${MAX_ORIGINS}; k++) origin = max(origin, 1.0 - step(0.5, abs(vSeed - uOrigins[k])));
