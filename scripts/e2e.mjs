@@ -331,6 +331,10 @@ async function main() {
       await page.waitForFunction(() => !/^0 \//.test(document.querySelector('[data-el=v-count]')?.textContent ?? '0 /'), null, { timeout: 15_000 });
       await page.waitForTimeout(8000);
       await shot(page, 'walk-virus.png');
+      await page.keyboard.press('m');
+      assert(await page.locator('[data-el=sound-btn]').getAttribute('aria-pressed') === 'false', 'M did not mute the sound');
+      await page.keyboard.press('m');
+      assert(await page.locator('[data-el=sound-btn]').getAttribute('aria-pressed') === 'true', 'M did not turn the sound back on');
       await page.keyboard.press('?');
       await page.waitForSelector('.wk-help:not([hidden])', { timeout: 5_000 });
       await shot(page, 'walk-help.png');
