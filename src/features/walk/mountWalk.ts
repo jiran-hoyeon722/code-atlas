@@ -23,10 +23,10 @@ import { createVehicles, type Vehicle } from './walkVehicles';
 import { THEMES, type Theme } from './walkThemes';
 import { createBeacon, createGuide, createMarkers, createMotes, createSparks, type PathPoint } from './walkFx';
 import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type WeaponId } from './walkWeapons';
-import { RARITY_COLOR, createInventory, createLootField, lootCount, placeLoot, rarityOf, type Point as LootPoint } from './walkLoot';
+import { RARITY_COLOR, autoWeapon, createInventory, createLootField, lootCount, placeLoot, rarityOf, type Point as LootPoint } from './walkLoot';
 import { createPickups, createShots } from './walkArsenal';
 import { DIFFICULTIES, DIFFICULTY, FORM_TIME, MAX_ORIGINS, createSiege, createVirus, isDifficulty, isInfected, pickOrigins, pickSpawnSite, storedDifficulty, type Difficulty } from './walkVirus';
-import { FOES, HELI_BOSS_BONUS, createHorde } from './walkHorde';
+import { FOES, createHorde } from './walkHorde';
 import { decay, follow, shakeOffset, turnToward } from './walkMotion';
 import { SHELL, TANK, createTank, createTankQuest, tankQuestText } from './walkTank';
 import { QUEST, QUEST_KEY, createQuest, type QuestId } from './walkQuest';
@@ -1226,8 +1226,8 @@ const mount: MountViewer = (root, arch, env) => {
     climbUp(focus);
   }
   // Every heli bullet and bomb lands here, so new kinds of targets only need to be added once.
-  function heliHit(x: number, y: number, z: number, radius: number, damage: number, fromX: number, fromZ: number) {
-    const foes = horde.damageArea(x, y, z, radius, damage, fromX, fromZ, HELI_BOSS_BONUS);
+  function heliHit(x: number, y: number, z: number, radius: number, damage: number, fromX: number, fromZ: number, bossBonus: number) {
+    const foes = horde.damageArea(x, y, z, radius, damage, fromX, fromZ, bossBonus);
     if (y > radius + 1.5) return foes;
     return foes + battle.damageArea(x, z, radius, damage, fromX, fromZ);
   }
@@ -1248,7 +1248,7 @@ const mount: MountViewer = (root, arch, env) => {
     blocked: (x, z) => blocked(x, z, 0.15),
     touches: (x, y, z) => y < 3 && (horde.positions().some((f) => Math.hypot(f.x - x, f.z - z) < FOES[f.kind].radius + 0.4)
       || battle.positions().some((r) => !r.down && Math.hypot(r.x - x, r.z - z) < 0.8)),
-    explode: (p, radius, damage) => heliArms.explode(p, radius, damage),
+    explode: (p, radius, damage) => heliArms.explode(p, radius, damage, 1),
     sparks,
     smoke: puffs,
     fire: flames,
@@ -1843,7 +1843,8 @@ const mount: MountViewer = (root, arch, env) => {
       foes: horde.positions().filter((f): f is typeof f & { tag: string } => !!f.tag),
     });
     const cmd = autoCmd;
-    if (cmd.weapon && inventory.best(cmd.weapon) !== weapon.id) selectWeapon(weaponById(inventory.best(cmd.weapon)), true);
+    const held = autoWeapon(inventory, cmd.weapon, weapon.id);
+    if (held !== weapon.id) selectWeapon(weaponById(held), true);
     if (cmd.spawn) spawnPack(cmd.spawn);
     if (cmd.teleport) {
       teleport(new THREE.Vector3(cmd.teleport[0], 0, cmd.teleport[1]));
@@ -2435,7 +2436,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (punchAt > 0) {
       punchAt -= dt;
       // Fists and blades do not reach from a roof down to the street.
-      if (punchAt <= 0 && footY < MELEE_HEIGHT) { battle.strike(pos, heading, weapon); horde.strike(pos, heading, weapon); }
+      if (punchAt <= 0 && footY < MELEE_HEIGHT) { battle.strike(pos, heading, shotWeapon); horde.strike(pos, heading, shotWeapon); }
     }
     battle.update(dt, pos, alive && onFoot && !detailOpen && !entering && !auto, footY);
     if (virus.update(dt)) {
@@ -2690,7 +2691,7 @@ const mount: MountViewer = (root, arch, env) => {
       sound.play('pickup');
       sparks.burst(d.x, 1, d.z, 16);
       toast(fresh ? `${w.name} 획득! (${slot})` : `${w.name} 탄약 보충 — ${left}발`);
-      if (fresh && weapon.id === 'fist') selectWeapon(w, true); else renderWeapons();
+      if (weapon.id === 'fist') selectWeapon(w, true); else renderWeapons();
     });
     if (grab.picked.length || grab.back.length) loot.drops.forEach((d, k) => pickups.sync(k, d));
     pickups.update(time);

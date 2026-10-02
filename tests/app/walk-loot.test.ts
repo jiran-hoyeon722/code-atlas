@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
-import { RARITY, RARITY_ODDS, RESPAWN_MAX, RESPAWN_MIN, createInventory, createLootField, lootCount, placeLoot, rollLoot, type Point } from '../../src/features/walk/walkLoot';
-import { RIVAL_WEAPONS, WEAPONS, dealWeapons, segmentGap, weaponById } from '../../src/features/walk/walkWeapons';
+import { RARITY, RARITY_ODDS, RESPAWN_MAX, RESPAWN_MIN, autoWeapon, createInventory, createLootField, lootCount, placeLoot, rollLoot, type Point } from '../../src/features/walk/walkLoot';
+import { RIVAL_WEAPONS, WEAPONS, dealWeapons, inBeam, segmentGap, weaponById } from '../../src/features/walk/walkWeapons';
 
 const seeded = (seed: number) => () => {
   seed = (seed * 1664525 + 1013904223) % 4294967296;
@@ -41,6 +41,17 @@ test('auto hunt falls back to what the player owns', () => {
   inv.pickup('shotgun');
   expect(inv.best('shotgun')).toBe('shotgun');
   expect(inv.best('smg')).toBe('shotgun');
+});
+
+test('auto hunt with no rule puts explosives away for the best plain weapon', () => {
+  const inv = createInventory();
+  inv.pickup('rocket');
+  inv.pickup('pistol');
+  expect(autoWeapon(inv, null, 'rocket')).toBe('pistol');
+  expect(autoWeapon(inv, null, 'grenade')).toBe('pistol');
+  expect(autoWeapon(inv, null, 'fist')).toBe('fist');
+  expect(autoWeapon(inv, 'shotgun', 'rocket')).toBe('pistol');
+  expect(autoWeapon(inv, 'rocket', 'fist')).toBe('rocket');
 });
 
 test('melee and the pistol are common, the rocket launcher very rare', () => {
@@ -91,4 +102,12 @@ test('rivals only carry the old street weapons', () => {
 test('segment distance for beams', () => {
   expect(segmentGap(5, 1, 0, 0, 10, 0)).toBeCloseTo(1);
   expect(segmentGap(-3, 4, 0, 0, 10, 0)).toBeCloseTo(5);
+});
+
+test('a beam only catches what is ahead of the shooter', () => {
+  expect(inBeam(5, 1, 0, 0, 10, 0, 1.2)).toBe(true);
+  expect(inBeam(5, 2, 0, 0, 10, 0, 1.2)).toBe(false);
+  expect(inBeam(-0.5, 0, 0, 0, 10, 0, 1.2)).toBe(false);
+  expect(inBeam(0, 1, 0, 0, 10, 0, 1.2)).toBe(false);
+  expect(inBeam(0.3, 0.5, 0, 0, 10, 0, 1.2)).toBe(true);
 });

@@ -1,7 +1,11 @@
+import * as THREE from 'three';
 import { expect, test } from 'vitest';
-import { BOMB_GRAVITY, dropPoint, fall, rayHit, shakeAt, stepFall } from '../../src/features/walk/walkHeliArms';
+import { BOMB_GRAVITY, createHeliArms, dropPoint, fall, rayHit, shakeAt, stepFall } from '../../src/features/walk/walkHeliArms';
 import { clearance, ease } from '../../src/features/walk/walkHeli';
-import { splash } from '../../src/features/walk/walkWeapons';
+import { HELI_BOSS_BONUS } from '../../src/features/walk/walkHorde';
+import { splash, type Tracers } from '../../src/features/walk/walkWeapons';
+import type { Heli } from '../../src/features/walk/walkHeli';
+import type { Sparks } from '../../src/features/walk/walkFx';
 
 const flat = () => 0;
 // One 10-high block spanning x 20..30.
@@ -69,4 +73,19 @@ test('the heli looks ahead for tall buildings along its velocity', () => {
   expect(clearance(floorAt, 0, 0, -30, 0)).toBe(0);
   expect(ease(4, 0)).toBe(0);
   expect(ease(4, 0.1)).toBeCloseTo(1 - Math.exp(-0.4));
+});
+
+test('heli bombs hit the giant with the heli bonus, the hero\'s explosives with none', () => {
+  const bonuses: number[] = [];
+  const arms = createHeliArms(new THREE.Scene(), {} as Heli, {
+    surfaceAt: flat,
+    hit: (_x, _y, _z, _r, _d, _fx, _fz, bossBonus) => (bonuses.push(bossBonus), 0),
+    blast: () => {},
+    sparks: { burst: () => {} } as unknown as Sparks,
+    tracers: {} as Tracers,
+  });
+  arms.explode({ x: 0, y: 0, z: 0 });
+  arms.explode({ x: 0, y: 0, z: 0 }, 6, 12, 1);
+  expect(bonuses).toEqual([HELI_BOSS_BONUS, 1]);
+  arms.dispose();
 });

@@ -98,6 +98,12 @@ export function createInventory(): Inventory {
   return self;
 }
 
+/** What the auto-hunt pilot should hold: the rule's weapon (or its fallback), or with no rule the current one unless it is an explosive. */
+export function autoWeapon(inv: Inventory, want: WeaponId | null, current: WeaponId): WeaponId {
+  if (want) return inv.best(want);
+  return FALLBACK.includes(current) ? current : inv.best(FALLBACK[0]);
+}
+
 export interface LootDrop { x: number; z: number; id: WeaponId; live: boolean; wait: number }
 
 export interface LootField {

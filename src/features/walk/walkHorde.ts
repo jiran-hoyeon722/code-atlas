@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { spawnRobot, type Robot } from './walkRobot';
 import { decay, nextGait, separation, turnToward, within, type Gait } from './walkMotion';
-import { damageAt, segmentGap, splash, type Weapon } from './walkWeapons';
+import { damageAt, inBeam, splash, type Weapon } from './walkWeapons';
 import type { Motes } from './walkFx';
 
 export type FoeKind = 'zombie' | 'elite' | 'boss';
@@ -318,17 +318,18 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     hooks.onKill(f.kind, f.hunt);
     if (f.kind === 'boss') hooks.onBossDown();
   };
-  const hurt = (f: Foe, damage: number, dx: number, dz: number, push: number, stun: number) => {
+  // `interrupt` false: a flame or beam tick only flashes the foe, otherwise ticks every 0.12 s would cancel every attack.
+  const hurt = (f: Foe, damage: number, dx: number, dz: number, push: number, stun: number, interrupt = true) => {
     if (!live(f) || damage <= 0) return;
     const d = Math.hypot(dx, dz) || 1;
     f.hp = Math.max(0, f.hp - damage);
     f.flash = 0.12;
     f.vx = (dx / d) * push * f.rule.give;
     f.vz = (dz / d) * push * f.rule.give;
-    f.stun = Math.max(f.stun, stun * f.rule.give);
-    if (f.rule.give > 0.5) f.pendingHit = 0;
+    if (interrupt) f.stun = Math.max(f.stun, stun * f.rule.give);
+    if (interrupt && f.rule.give > 0.5) f.pendingHit = 0;
     if (f.hp <= 0) kill(f);
-    else if (f.kind === 'zombie') f.p.robot.play('No', 0.08, true);
+    else if (interrupt && f.kind === 'zombie') f.p.robot.play('No', 0.08, true);
   };
   const move = (f: Foe, dx: number, dz: number, speed: number, dt: number, around = false) => {
     const len = Math.hypot(dx, dz) || 1;
@@ -659,9 +660,9 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     beam(ax, az, bx, bz, width, damage) {
       let count = 0;
       foes.forEach((f) => {
-        if (!live(f) || segmentGap(f.x, f.z, ax, az, bx, bz) > width + f.rule.radius) return;
+        if (!live(f) || !inBeam(f.x, f.z, ax, az, bx, bz, width + f.rule.radius)) return;
         count++;
-        hurt(f, damage, bx - ax, bz - az, 2, 0.25);
+        hurt(f, damage, bx - ax, bz - az, 2, 0, false);
       });
       return count;
     },
