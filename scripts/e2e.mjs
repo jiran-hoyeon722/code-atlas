@@ -348,6 +348,11 @@ async function main() {
       assert(await page.locator('[data-el=sound-btn]').getAttribute('aria-pressed') === 'false', 'M did not mute the sound');
       await page.keyboard.press('m');
       assert(await page.locator('[data-el=sound-btn]').getAttribute('aria-pressed') === 'true', 'M did not turn the sound back on');
+      await page.keyboard.press('Backquote');
+      await page.waitForSelector('.wk-cheat:not([hidden])', { timeout: 5_000 });
+      await page.keyboard.type('car');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.querySelector('.wk-toast.open')?.textContent?.includes('치트'), null, { timeout: 5_000 });
       await page.keyboard.press('?');
       await page.waitForSelector('.wk-help:not([hidden])', { timeout: 5_000 });
       await shot(page, 'walk-help.png');

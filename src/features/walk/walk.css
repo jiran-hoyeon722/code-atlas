@@ -279,3 +279,6 @@
 .wk-walk .wk-pick .p-go { align-self: center; display: flex; align-items: center; gap: 8px; padding: 9px 20px; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent); color: #0b0d12; font-size: 14px; font-weight: 700; cursor: pointer; }
 .wk-walk .wk-pick .p-go kbd { background: rgba(0, 0, 0, .15); border-color: rgba(0, 0, 0, .2); color: #0b0d12; }
 @media (max-width: 640px) { .wk-walk .wk-pick .p-list { grid-template-columns: repeat(2, 1fr); } .wk-walk .wk-pick .p-list button { min-height: 200px; } }
+.wk-walk .wk-cheat { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); width: 260px; box-sizing: border-box; padding: 9px 14px; color: var(--text); font-size: 14px; outline: none; }
+.wk-walk .wk-cheat:focus { border-color: var(--accent); }
+.wk-walk .wk-cheat[hidden] { display: none; }
