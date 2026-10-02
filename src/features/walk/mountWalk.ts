@@ -33,6 +33,7 @@ import { openPicker } from './walkPicker';
 import type { RideCar } from './walkTraffic';
 import { GUIDE, GUIDE_KEY, guideHtml } from './walkGuide';
 import { SIGNS as WARNINGS, createAtlas, createPilot, packOf, readRepo, tagOf, type PilotCommand, type Point, type Stop } from './walkAuto';
+import { clampToRoof, climbPath, gableLift, overRoof, streetExit, type RoofRect } from './walkRoof';
 import robotUrl from './assets/RobotExpressive.glb?url';
 
 const WALK = 4.2;
@@ -42,6 +43,9 @@ const GRAVITY = 18;
 const JUMP = 6;
 const RADIUS = 0.4;
 const REACH = 3;
+const PITCH_MAX = 1.15;
+const ROOF_PITCH_MAX = 1.48;
+const MELEE_HEIGHT = 2;
 const SIGNS = 20;
 const LAMP_LIGHTS = 6;
 const GRID = 16;
@@ -66,7 +70,7 @@ const AUTO_ICON = icon('<circle cx="12" cy="12" r="8.5" fill="none" stroke="curr
 const TAKEOVER = /^(Key[WASDEFGH]|Arrow\w+|Space|Digit[1-9])$/;
 const VIRUS_ICON = icon('<circle cx="12" cy="12" r="5" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.8 2.8M16.2 16.2L19 19M5 19l2.8-2.8M16.2 7.8L19 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>');
 const HELP = [
-  ['이동', [['W A S D', '걷기'], ['Shift', '달리기'], ['Space', '점프'], ['클릭', '마우스로 시점 돌리기 (Esc 로 풀기)'], ['휠', '카메라 거리']]],
+  ['이동', [['W A S D', '걷기'], ['Shift', '달리기'], ['Space', '점프'], ['R', '옥상 올라가기 · 내려가기'], ['클릭', '마우스로 시점 돌리기 (Esc 로 풀기)'], ['휠', '카메라 거리']]],
   ['전투', [['1 ~ 6', '무기 고르기'], ['F · 클릭', '공격 (기관단총은 누르고 있기)'], ['G', '감정 표현']]],
   ['행동', [['E', '건물 들어가기 · 차 타기 · 바이러스 치료'], ['H', '헬기 타기 (라이벌 4명을 다 잡으면)']]],
   ['바이러스', [['V', '바이러스 모드 시작 · 그만두기 (괴물이 나타나면 못 그만둬요)'], ['쉬움 ~ 신', '난이도 — 쉬움은 근원지 1곳과 바닥 화살표, 어려울수록 근원지가 늘고(신은 5곳) 빨리 번지며 좀비가 세져요'], ['E (근원지 앞)', '백신 주입 — 근원지를 모두 치료하면 클리어'], ['괴물', '도시가 다 감염되면 나타나요. 처치하면 클리어'], ['10분', '시작부터 10분 안에 끝내지 못하면 레포가 무너지고 분석 기록이 지워져요']]],
@@ -97,7 +101,7 @@ const MARKUP = `
         <div class="q-head"><b>첫 걸음</b><span data-el="quest-count"></span><button data-el="quest-close" aria-label="첫 걸음 닫기" title="닫기">×</button></div>
         <ul data-el="quest-list"></ul>
     </section>
-    <div class="tips"><b>WASD</b> 이동 · <b>클릭</b> 시점 · <b>F</b> 공격 · <b>E</b> 행동 · <b>1~6</b> 무기 · <b>?</b> 전체 조작법</div>
+    <div class="tips"><b>WASD</b> 이동 · <b>클릭</b> 시점 · <b>F</b> 공격 · <b>E</b> 행동 · <b>R</b> 옥상 · <b>1~6</b> 무기 · <b>?</b> 전체 조작법</div>
 </div>
 <div class="wk-virus glass" data-el="virus" hidden>
     <div class="v-head">${VIRUS_ICON}<b data-el="v-title">바이러스 확산 중</b><span data-el="v-time" title="남은 시간 — 0이 되면 레포가 무너져요">10:00</span></div>
@@ -507,6 +511,9 @@ const mount: MountViewer = (root, arch, env) => {
     return out;
   };
   const gap = (b: WalkBuilding, x: number, z: number) => Math.hypot(Math.max(0, Math.abs(x - b.x) - b.w / 2), Math.max(0, Math.abs(z - b.z) - b.d / 2));
+  // The building whose roof the player stands on; it never blocks a line of fire from up there.
+  let roof: WalkBuilding | null = null;
+  let climb: { t0: number; dur: number; b: WalkBuilding; up: boolean; from: { x: number; z: number; y: number }; to: { x: number; z: number; y: number } } | null = null;
   const insideBuilding = (p: THREE.Vector3) => {
     for (const b of nearby(p.x, p.z, 1)) if (gap(b, p.x, p.z) < 0.4 && p.y < b.h + 0.5) return true;
     return false;
@@ -528,7 +535,7 @@ const mount: MountViewer = (root, arch, env) => {
     const steps = Math.ceil(Math.hypot(bx - ax, bz - az) / 0.8);
     for (let k = 1; k < steps; k++) {
       const x = ax + ((bx - ax) * k) / steps, z = az + ((bz - az) * k) / steps;
-      for (const b of nearby(x, z, 0.5)) if (gap(b, x, z) < 0.05) return false;
+      for (const b of nearby(x, z, 0.5)) if (b !== roof && gap(b, x, z) < 0.05) return false;
     }
     return true;
   };
@@ -628,6 +635,8 @@ const mount: MountViewer = (root, arch, env) => {
   const knock = new THREE.Vector3();
   let vy = 0;
   let footY = 0;
+  // The floor under the feet: 0 on the street, the roof surface on a roof.
+  let floorY = 0;
   let heading = start ? (start.face > 0 ? Math.PI : 0) : Math.PI;
   let turnRate = 0;
   let yaw = heading + Math.PI;
@@ -1086,6 +1095,76 @@ const mount: MountViewer = (root, arch, env) => {
     }));
     return top;
   };
+  // A tower is walked on its set-back top tier; houses slope with the gable.
+  const topPart = (b: WalkBuilding) => { const list = partsOf.get(b); return list ? list[list.length - 1] : undefined; };
+  const roofRect = (b: WalkBuilding): RoofRect => topPart(b) ?? b;
+  const roofFloor = (b: WalkBuilding, z: number) => {
+    const p = topPart(b);
+    const top = 0.16 + (p ? p.base + p.h : b.h);
+    if (b.kind !== 'house') return top;
+    return top + gableLift(ridge(b), b.d + 0.8, z - b.z) - (virus.levels[indexOf.get(b) ?? -1] ?? 0) * 0.06 * b.h;
+  };
+  const roofTop = (b: WalkBuilding) => 0.16 + b.h + ridge(b);
+  // While dropping off a roof, only walls that still reach above the feet can stop the player.
+  const blockedAbove = (x: number, z: number, y: number, r = RADIUS) => {
+    for (const b of nearby(x, z, r + 1)) if (gap(b, x, z) < r && roofTop(b) > y) return true;
+    return x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ;
+  };
+  const CLIMB_MS = 600;
+  function climbUp(b: WalkBuilding) {
+    const spot = clampToRoof(roofRect(b), pos.x, pos.z, 1);
+    const to = { x: spot.x, z: spot.z, y: roofFloor(b, spot.z) };
+    keys.clear();
+    vel.set(0, 0, 0);
+    knock.set(0, 0, 0);
+    vy = 0;
+    setFocus(null);
+    sound.play('enter');
+    if (reduceMotion) { landOnRoof(b, to); return; }
+    climb = { t0: performance.now(), dur: CLIMB_MS, b, up: true, from: { x: pos.x, z: pos.z, y: footY }, to };
+    updatePrompt();
+  }
+  function landOnRoof(b: WalkBuilding, at: { x: number; z: number; y: number }) {
+    climb = null;
+    roof = b;
+    pos.x = at.x;
+    pos.z = at.z;
+    footY = at.y;
+    heading = Math.atan2(b.x - pos.x, b.z - pos.z) || heading;
+    toast(`${arch.nodes[b.i].name} 옥상 — 마우스로 아래를 내려다보며 쏠 수 있어요 · R 내려가기`, 3200);
+    updatePrompt();
+  }
+  function climbDown() {
+    const b = roof;
+    if (!b) return;
+    const door = frontOf(b);
+    const to = { x: door.x, z: door.z, y: 0 };
+    keys.clear();
+    vel.set(0, 0, 0);
+    knock.set(0, 0, 0);
+    vy = 0;
+    roof = null;
+    if (reduceMotion) { reachStreet(b, to); return; }
+    climb = { t0: performance.now(), dur: CLIMB_MS, b, up: false, from: { x: pos.x, z: pos.z, y: footY }, to };
+    updatePrompt();
+  }
+  function reachStreet(b: WalkBuilding, at: { x: number; z: number }) {
+    teleport(new THREE.Vector3(at.x, 0, at.z));
+    heading = b.face > 0 ? 0 : Math.PI;
+    updatePrompt();
+  }
+  function leaveRoof() {
+    if (!roof && !climb) return;
+    const b = roof ?? climb!.b;
+    reachStreet(b, frontOf(b));
+  }
+  function toggleRoof() {
+    if (auto || mode !== 'walk' || !alive || climb || siege.phase === 'collapsing' || siege.phase === 'over') return;
+    if (roof) { climbDown(); return; }
+    if (footY > 0.5) return;
+    if (!focus) { toast('건물 벽 가까이에서 R 을 누르면 옥상으로 올라가요'); return; }
+    climbUp(focus);
+  }
   // Every heli bullet and bomb lands here, so new kinds of targets only need to be added once.
   function heliHit(x: number, y: number, z: number, radius: number, damage: number, fromX: number, fromZ: number) {
     const foes = horde.damageArea(x, y, z, radius, damage, fromX, fromZ, HELI_BOSS_BONUS);
@@ -1139,6 +1218,7 @@ const mount: MountViewer = (root, arch, env) => {
   }
   function toggleHeli() {
     if (mode === 'walk') {
+      if (roof || climb) { toast('옥상에서는 헬기를 탈 수 없어요 — R 로 내려가세요'); return; }
       const hpos = heli.root.position;
       if (heli.state === 'parked' && Math.hypot(hpos.x - pos.x, hpos.z - pos.z) < 7) {
         heli.board();
@@ -1192,6 +1272,8 @@ const mount: MountViewer = (root, arch, env) => {
     if (auto) html = '';
     else if (mode === 'drive') html = '<b>E</b> 내리기';
     else if (mode === 'ride' && traffic.riding) html = `<b>E</b> 먼저 내리기 — ${name(traffic.riding.t)}(으)로 가는 중`;
+    else if (mode === 'walk' && climb) html = '';
+    else if (mode === 'walk' && roof) html = alive ? `<b>R</b> 내려가기 — ${name(roof.i)} 옥상` : '';
     else if (mode === 'walk' && alive && !detailOpen && !entering) {
       const hpos = heli.root.position;
       if (curing > 0) html = `백신 주입 중… ${Math.round((curing / CURE_TIME) * 100)}% — 자리를 지키세요`;
@@ -1199,8 +1281,8 @@ const mount: MountViewer = (root, arch, env) => {
       else if (heli.state === 'parked' && Math.hypot(hpos.x - pos.x, hpos.z - pos.z) < 7) html = '<b>H</b> 헬기 타기';
       else if (nearVehicle) html = `<b>E</b> 운전 — ${nearVehicle.kind === 'car' ? '자동차' : '오토바이'}`;
       else if (nearCar) html = `<b>E</b> 탑승 — ${name(nearCar.f)} → ${name(nearCar.t)}`;
-      else if (focus && buildingInfected(focus)) html = `바이러스에 잠식된 건물이에요 — ${name(focus.i)} 코드를 볼 수 없어요`;
-      else if (focus) html = `<b>E</b> 들어가기 — ${name(focus.i)}`;
+      else if (focus && buildingInfected(focus)) html = `바이러스에 잠식된 건물이에요 — ${name(focus.i)} 코드를 볼 수 없어요 · <b>R</b> 옥상으로`;
+      else if (focus) html = `<b>E</b> 들어가기 · <b>R</b> 옥상으로 — ${name(focus.i)}`;
     }
     if (html) prompt.innerHTML = html;
     prompt.classList.toggle('open', !!html);
@@ -1461,6 +1543,7 @@ const mount: MountViewer = (root, arch, env) => {
     }
     if (mode === 'fly') { toast('헬기에서 내린 뒤 자동 사냥을 켤 수 있어요'); return; }
     if (mode === 'drive') leaveVehicle(); else if (mode === 'ride') hopOff();
+    leaveRoof();
     if (detailOpen || entering) leave();
     if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
     keys.clear();
@@ -1625,11 +1708,13 @@ const mount: MountViewer = (root, arch, env) => {
     if (!alive) return;
     if (e.code === 'KeyF') { if (!e.repeat) { triggerHeld = true; attack(); } return; }
     if (e.key === '/') { e.preventDefault(); $('q').focus(); return; }
-    if (isE) { interact(); return; }
+    if (e.code === 'KeyR') { if (!e.repeat) toggleRoof(); return; }
+    if (climb) return;
+    if (isE) { if (!roof) interact(); return; }
     if (e.code === 'KeyG') { hero.emote(EMOTES[emoteIndex++ % EMOTES.length]); return; }
     if (e.code === 'Space') {
       e.preventDefault();
-      if (footY <= 0.001) { vy = JUMP; if (mode === 'walk') questDone('jump'); }
+      if (footY <= floorY + 0.001) { vy = JUMP; if (mode === 'walk') questDone('jump'); }
       return;
     }
     keys.add(e.code);
@@ -1663,7 +1748,7 @@ const mount: MountViewer = (root, arch, env) => {
       return;
     }
     yaw -= e.movementX * 0.0032;
-    pitch = Math.min(1.15, Math.max(-0.05, pitch + e.movementY * 0.0026));
+    pitch = Math.min(roof ? ROOF_PITCH_MAX : PITCH_MAX, Math.max(-0.05, pitch + e.movementY * 0.0026));
   });
   listen(renderer.domElement, 'wheel', (e) => {
     e.preventDefault();
@@ -1673,6 +1758,10 @@ const mount: MountViewer = (root, arch, env) => {
 
   const clampToCity = (p: THREE.Vector3) => p.set(Math.min(bounds.maxX - 2, Math.max(bounds.minX + 2, p.x)), 0, Math.min(bounds.maxZ - 2, Math.max(bounds.minZ + 2, p.z)));
   function teleport(to: THREE.Vector3) {
+    roof = null;
+    climb = null;
+    footY = 0;
+    vy = 0;
     pos.copy(clampToCity(to.clone()));
     vel.set(0, 0, 0);
     const want = pos.clone();
@@ -1926,19 +2015,55 @@ const mount: MountViewer = (root, arch, env) => {
     const onFoot = mode === 'walk';
     wish.set(0, 0, 0);
     if (alive && onFoot && autoCmd?.move) wish.set(autoCmd.move[0], 0, autoCmd.move[1]);
-    else if (alive && onFoot) wish.addScaledVector(forward, fz).addScaledVector(right, fx);
+    else if (alive && onFoot && !climb) wish.addScaledVector(forward, fz).addScaledVector(right, fx);
     if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(running ? RUN : WALK);
-    const airborne = footY > 0.001 || vy > 0;
+    const airborne = footY > floorY + 0.001 || vy > 0;
     vel.lerp(wish, Math.min(1, dt * (airborne ? ACCEL * 0.15 : ACCEL) / Math.max(1, vel.distanceTo(wish))));
     if (vel.lengthSq() < 0.0004 && wish.lengthSq() === 0) vel.set(0, 0, 0);
     if (onFoot) knock.multiplyScalar(Math.exp(-dt * (airborne ? 1.5 : 7))); else knock.set(0, 0, 0);
     const stepX = (vel.x + knock.x) * dt, stepZ = (vel.z + knock.z) * dt;
-    if (!blockedWalker(pos.x + stepX, pos.z)) pos.x += stepX; else { vel.x = 0; knock.x = 0; }
-    if (!blockedWalker(pos.x, pos.z + stepZ)) pos.z += stepZ; else { vel.z = 0; knock.z = 0; }
-    vy -= GRAVITY * dt;
-    footY = Math.max(0, footY + vy * dt);
-    const landing = footY === 0 && vy < 0 ? -vy : 0;
-    if (footY === 0 && vy < 0) vy = 0;
+    let landing = 0;
+    if (climb) {
+      const c = climb;
+      const t = Math.min(1, (now - c.t0) / c.dur);
+      const at = climbPath(t, c.from, c.to, c.up);
+      pos.x = at.x;
+      pos.z = at.z;
+      footY = at.y;
+      vy = 0;
+      vel.set(0, 0, 0);
+      knock.set(0, 0, 0);
+      floorY = (c.up ? t >= 0.6 : t < 0.4) ? Math.max(c.from.y, c.to.y) : 0;
+      if (t === 1) { if (c.up) landOnRoof(c.b, c.to); else reachStreet(c.b, c.to); }
+    } else {
+      if (roof) {
+        const r = roofRect(roof);
+        if (vy > 0 || footY > floorY + 0.3) {
+          pos.x += stepX;
+          pos.z += stepZ;
+          if (!overRoof(r, pos.x, pos.z)) { roof = null; updatePrompt(); }
+        } else {
+          const c = clampToRoof(r, pos.x + stepX, pos.z + stepZ, 0.5);
+          if (c.x !== pos.x + stepX) { vel.x = 0; knock.x = 0; }
+          if (c.z !== pos.z + stepZ) { vel.z = 0; knock.z = 0; }
+          pos.x = c.x;
+          pos.z = c.z;
+        }
+      } else {
+        const solid = (x: number, z: number) => (footY > 2 ? blockedAbove(x, z, footY) : blockedWalker(x, z));
+        if (!solid(pos.x + stepX, pos.z)) pos.x += stepX; else { vel.x = 0; knock.x = 0; }
+        if (!solid(pos.x, pos.z + stepZ)) pos.z += stepZ; else { vel.z = 0; knock.z = 0; }
+      }
+      floorY = roof ? roofFloor(roof, pos.z) : 0;
+      vy -= GRAVITY * dt;
+      footY = Math.max(floorY, footY + vy * dt);
+      landing = footY === floorY && vy < 0 ? -vy : 0;
+      if (footY === floorY && vy < 0) vy = 0;
+      // A drop off a roof can end inside a lower building's footprint; step out to its nearest street side.
+      if (!roof && landing > 0)
+        for (const b of nearby(pos.x, pos.z, RADIUS + 1))
+          if (gap(b, pos.x, pos.z) < RADIUS) { const out = streetExit(b, pos.x, pos.z, RADIUS + 0.2); pos.x = out.x; pos.z = out.z; }
+    }
     const speed = Math.hypot(vel.x, vel.z);
     const prev = heading;
     aimHold = Math.max(0, aimHold - dt);
@@ -1954,7 +2079,7 @@ const mount: MountViewer = (root, arch, env) => {
     else if (speed > 0.3) heading = turnToward(heading, Math.atan2(vel.x, vel.z), dt, 10, 12);
     turnRate += ((Math.atan2(Math.sin(heading - prev), Math.cos(heading - prev)) / Math.max(dt, 1e-3)) - turnRate) * Math.min(1, dt * 8);
     const run = Math.max(0, Math.min(1, (speed - WALK) / (RUN - WALK)));
-    hero.animate({ speed, run, airborne: footY > 0.05, turn: turnRate, dt, time });
+    hero.animate({ speed, run, airborne: !!climb || footY - floorY > 0.05, turn: turnRate, dt, time });
     hero.root.position.set(pos.x, footY + 0.16, pos.z);
     if (questOn && onFoot && !auto) {
       if (speed > 1.5) questDone('walk');
@@ -1965,15 +2090,15 @@ const mount: MountViewer = (root, arch, env) => {
         sound.play('land', Math.min(1, landing / 11));
         if (!reduceMotion) {
           squash = Math.max(squash, Math.min(1, landing / 11));
-          puffs.burst(pos.x, 0.15, pos.z, 6 + Math.round(squash * 8), 1.6, 0.4, 0.55);
+          puffs.burst(pos.x, floorY + 0.15, pos.z, 6 + Math.round(squash * 8), 1.6, 0.4, 0.55);
         }
       }
       // A puff behind each running footfall; walking stays clean.
       strideLeft -= speed * dt;
       if (strideLeft <= 0) {
         strideLeft = 1.5;
-        if (footY === 0 && speed > 1) sound.play('step', run > 0.5 ? 1 : 0.6);
-        if (!reduceMotion && run > 0.5 && footY === 0) puffs.burst(pos.x - vel.x * 0.04, 0.12, pos.z - vel.z * 0.04, 3, 0.7, 0.35, 0.45);
+        if (footY === floorY && speed > 1) sound.play('step', run > 0.5 ? 1 : 0.6);
+        if (!reduceMotion && run > 0.5 && footY === floorY) puffs.burst(pos.x - vel.x * 0.04, floorY + 0.12, pos.z - vel.z * 0.04, 3, 0.7, 0.35, 0.45);
       }
     }
     squash = decay(squash, 9, dt);
@@ -1989,6 +2114,8 @@ const mount: MountViewer = (root, arch, env) => {
       const rival = rivalAt(battle.aimTarget(pos, aimHeading, weapon));
       if (foe && (!rival || foe.d < Math.hypot(rival.x - pos.x, rival.z - pos.z))) horde.shoot(pos, aimHeading, weapon, shotEnd);
       else battle.shoot(pos, aimHeading, weapon, shotEnd);
+      // A miss flies level from the muzzle, so a shot from a roof does not dive into the street.
+      if (!foe && !rival) shotEnd.y = muzzle.y;
       const pellets = weapon.id === 'shotgun' ? 6 : 1;
       for (let k = 0; k < pellets; k++) {
         const end = pellets > 1 ? v.copy(shotEnd).add(s.set((Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 1.6)) : shotEnd;
@@ -2007,8 +2134,8 @@ const mount: MountViewer = (root, arch, env) => {
       reticle.rotation.y = time * 2;
       reticle.scale.setScalar(target === foeAim ? Math.max(1, foeAim.r * 1.4) : 1);
     }
-    blob.position.set(pos.x, 0.18, pos.z);
-    blob.scale.setScalar(1 / (1 + footY * 0.6));
+    blob.position.set(pos.x, floorY + 0.18, pos.z);
+    blob.scale.setScalar(1 / (1 + (footY - floorY) * 0.6));
     heli.update(dt, time, flying
       ? { forward: fz, strafe: input(['KeyE'], ['KeyQ']), turn: -fx, lift: input(['Space'], DESCEND), boost: running, yaw: flyYaw }
       : { forward: 0, strafe: 0, turn: 0, lift: 0, boost: false, yaw: 0 }, floorAt);
@@ -2060,9 +2187,10 @@ const mount: MountViewer = (root, arch, env) => {
     punchCooldown -= dt;
     if (punchAt > 0) {
       punchAt -= dt;
-      if (punchAt <= 0) { battle.strike(pos, heading, weapon); horde.strike(pos, heading, weapon); }
+      // Fists and blades do not reach from a roof down to the street.
+      if (punchAt <= 0 && footY < MELEE_HEIGHT) { battle.strike(pos, heading, weapon); horde.strike(pos, heading, weapon); }
     }
-    battle.update(dt, pos, alive && onFoot && !detailOpen && !entering && !auto);
+    battle.update(dt, pos, alive && onFoot && !detailOpen && !entering && !auto, footY);
     if (virus.update(dt)) {
       parts.forEach((p, j) => { aInfect[j] = virus.levels[p.k]; });
       infectAttr.needsUpdate = true;
@@ -2092,6 +2220,7 @@ const mount: MountViewer = (root, arch, env) => {
       toast('시간 초과 — 바이러스가 레포를 무너뜨리고 있어요!', 7000);
     }
     const sinking = siege.phase === 'collapsing' || siege.phase === 'over';
+    if (sinking && roof) { roof = null; updatePrompt(); }
     if (sinking) {
       sinkCity(siege.progress);
       shake = Math.max(shake, 0.3 + siege.progress * 0.4);
@@ -2188,24 +2317,28 @@ const mount: MountViewer = (root, arch, env) => {
         pitch += ((far ? 0.8 : pilot.phase === 'fight' ? 0.42 : 0.3) - pitch) * follow(1.2, frame);
         distance += ((far ? 19 : pilot.phase === 'fight' ? 11 : 8.5) - distance) * follow(1.2, frame);
       }
-      const orbit = (r: number) => camPos.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(r).add(v.set(pos.x, 1.7 + footY * 0.5, pos.z));
-      let reach = distance;
+      if (!roof && pitch > PITCH_MAX) pitch += (PITCH_MAX - pitch) * follow(4, dt);
+      const base = climb ? footY : floorY;
+      const orbit = (r: number) => camPos.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(r).add(v.set(pos.x, 1.7 + base + (footY - base) * 0.5, pos.z));
+      let reach = distance + (roof ? 4 : 0);
       while (reach > 1.5 && insideBuilding(orbit(reach))) reach -= 0.5;
       // Pull in at once so walls never cut the view, but ease back out so the camera does not pump along a wall.
       camReach = reach < camReach ? reach : camReach + (reach - camReach) * follow(3, dt);
       orbit(camReach);
       bob += dt * speed * 2.6;
-      camPos.y = Math.max(0.6, camPos.y) + (reduceMotion ? 0 : Math.sin(bob) * 0.035 * run);
+      camPos.y = Math.max(base + 0.6, camPos.y) + (reduceMotion ? 0 : Math.sin(bob) * 0.035 * run);
       if (exiting) {
         const t = Math.min(1, (now - exiting.t0) / exiting.dur);
         const k = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
         camera.position.lerpVectors(exiting.from, camPos, k);
-        lookAt.lerpVectors(exiting.fromLook, v.set(pos.x, 1.6 + footY * 0.4, pos.z), k);
+        lookAt.lerpVectors(exiting.fromLook, v.set(pos.x, 1.6 + base + (footY - base) * 0.4, pos.z), k);
         $('fade').style.opacity = String((1 - t) * 0.55);
         if (t === 1) exiting = null;
       } else {
         camera.position.lerp(camPos, follow(9, dt));
-        lookAt.lerp(v.set(pos.x, 1.6 + footY * 0.4, pos.z), follow(14, dt));
+        // Tilting down on a roof slides the view out past the parapet, so the street below comes into frame.
+        const ahead = roof ? Math.max(0, pitch - 0.5) * 8 : 0;
+        lookAt.lerp(v.set(pos.x, 1.6 + base + (footY - base) * 0.4, pos.z).addScaledVector(forward, ahead), follow(14, dt));
       }
       camera.lookAt(lookAt);
     }
@@ -2238,9 +2371,10 @@ const mount: MountViewer = (root, arch, env) => {
       let nearGap = 20;
       if (onFoot) for (const b of nearby(pos.x, pos.z, 21)) { const g = gap(b, pos.x, pos.z); if (g < nearGap) { nearGap = g; near = b; } }
       if (mode !== 'ride') traffic.setFocus(near ? near.i : null, pos);
-      nearVehicle = onFoot && alive ? vehicles.nearest(pos.x, pos.z) : null;
-      nearCar = onFoot && alive && !nearVehicle ? traffic.nearest(pos.x, pos.z, 6.5) : null;
-      const ob = virus.state === 'spreading' && siege.phase === 'outbreak' && onFoot && alive ? nearestOrigin() : null;
+      const street = onFoot && !roof && !climb;
+      nearVehicle = street && alive ? vehicles.nearest(pos.x, pos.z) : null;
+      nearCar = street && alive && !nearVehicle ? traffic.nearest(pos.x, pos.z, 6.5) : null;
+      const ob = virus.state === 'spreading' && siege.phase === 'outbreak' && street && alive ? nearestOrigin() : null;
       nearOrigin = ob && gap(ob, pos.x, pos.z) < REACH + 0.5 ? indexOf.get(ob) ?? -1 : -1;
       if ((detailOpen || entering) && buildingInfected(entering?.b ?? focus)) {
         leave();
@@ -2262,7 +2396,8 @@ const mount: MountViewer = (root, arch, env) => {
       }
       renderVirus();
       renderAuto();
-      if (!entering && !detailOpen && onFoot) {
+      if (!street && focus) setFocus(null);
+      if (!entering && !detailOpen && street) {
         let best: WalkBuilding | null = null;
         let bestGap = REACH;
         for (const b of nearby(pos.x, pos.z, REACH + 1)) {
@@ -2274,7 +2409,7 @@ const mount: MountViewer = (root, arch, env) => {
       updatePrompt();
       drawMap();
     }
-    const struck = traffic.update(dt, flying ? heli.root.position : pos, onFoot && alive ? pos : null);
+    const struck = traffic.update(dt, flying ? heli.root.position : pos, onFoot && alive && footY < 1.5 ? pos : null);
     if (struck > 0) {
       hurtPlayer(Math.round(struck * 2 + 4), pos.x - Math.sin(heading), pos.z - Math.cos(heading), 9);
       vy = 4.5;

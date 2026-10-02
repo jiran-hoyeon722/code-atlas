@@ -59,7 +59,8 @@ export interface BattleHooks {
 }
 
 export interface Battle {
-  update(dt: number, player: THREE.Vector3, playerCanBeHit: boolean): void;
+  /** `playerY` is how high the player's feet are; melee cannot reach a player up on a roof. */
+  update(dt: number, player: THREE.Vector3, playerCanBeHit: boolean, playerY?: number): void;
   /** Resolves a melee swing from `at` facing `heading`; returns true when it lands. */
   strike(at: THREE.Vector3, heading: number, weapon: Weapon): boolean;
   /** The rival a shot along `heading` would hit, or -1. */
@@ -99,6 +100,7 @@ export function createBattle(scene: THREE.Scene, url: string, kit: WeaponKit, ho
   const aim = new THREE.Vector3();
   const from = new THREE.Vector3();
   const to = new THREE.Vector3();
+  let playerY = 0;
 
   const pickSpot = (cx: number, cz: number, min: number, max: number) => {
     for (let k = 0; k < 80; k++) {
@@ -223,7 +225,7 @@ export function createBattle(scene: THREE.Scene, url: string, kit: WeaponKit, ho
     r.held.kick();
     const odds = Math.max(0.15, 0.5 - (d / w.range) * 0.35);
     const hit = hooks.random() < odds;
-    to.set(player.x, 1.2, player.z);
+    to.set(player.x, 1.2 + playerY, player.z);
     if (!hit) to.add(from.set((hooks.random() - 0.5) * 2.4, hooks.random() * 0.8, (hooks.random() - 0.5) * 2.4));
     r.held.tip(from);
     hooks.shot(from, to, '#ff8a6a');
@@ -298,7 +300,8 @@ export function createBattle(scene: THREE.Scene, url: string, kit: WeaponKit, ho
       }
       return out.set(at.x + Math.sin(heading) * reach, 1.3, at.z + Math.cos(heading) * reach);
     },
-    update(dt, player, playerCanBeHit) {
+    update(dt, player, playerCanBeHit, feet = 0) {
+      playerY = feet;
       rivals.forEach((r) => {
         if (!r.robot) return;
         r.robot.mixer.update(dt);
@@ -332,7 +335,7 @@ export function createBattle(scene: THREE.Scene, url: string, kit: WeaponKit, ho
         const inReach = r.engaged;
         if (r.pendingHit > 0) {
           r.pendingHit -= dt;
-          if (r.pendingHit <= 0 && playerCanBeHit && d < reach + 0.6) hooks.onPlayerHit(r.weapon.rivalDamage, r.x, r.z);
+          if (r.pendingHit <= 0 && playerCanBeHit && d < reach + 0.6 && playerY < 2) hooks.onPlayerHit(r.weapon.rivalDamage, r.x, r.z);
         }
         if (inReach && gun) {
           turn(r, dx, dz, dt, 10);

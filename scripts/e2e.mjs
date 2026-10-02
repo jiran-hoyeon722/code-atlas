@@ -321,6 +321,16 @@ async function main() {
       await page.keyboard.press('Escape');
     });
 
+    await step('codecity GTA: R climbs onto the roof and back down', async () => {
+      await page.waitForTimeout(800);
+      await page.keyboard.press('r');
+      await page.waitForFunction(() => document.querySelector('.wk-prompt.open')?.textContent?.includes('내려가기'), null, { timeout: 15_000 });
+      await page.waitForTimeout(1200);
+      await shot(page, 'walk-roof.png');
+      await page.keyboard.press('r');
+      await page.waitForFunction(() => document.querySelector('.wk-prompt.open')?.textContent?.includes('옥상으로'), null, { timeout: 15_000 });
+    });
+
     await step('codecity GTA: weapons, virus outbreak, help', async () => {
       await page.waitForTimeout(800);
       await page.keyboard.press('4');
