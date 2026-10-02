@@ -118,7 +118,8 @@ export interface HordeHooks {
   /** A free spot between `min` and `max` from (x, z), or null. */
   spot(x: number, z: number, min: number, max: number): { x: number; z: number } | null;
   onPlayerHit(damage: number, fromX: number, fromZ: number, push: number, from: FoeKind): void;
-  onKill(kind: FoeKind, tag?: string): void;
+  /** (x, z) is where the foe fell. */
+  onKill(kind: FoeKind, tag: string | undefined, x: number, z: number): void;
   onBossDown(): void;
   /** The giant's slam hit the ground at (x, z). */
   onQuake(x: number, z: number): void;
@@ -347,7 +348,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     f.p.robot.play('Death', 0.12);
     if (f.tag) f.tag.sprite.visible = false;
     motes.burst(f.x, height(f) * 0.5, f.z, f.kind === 'boss' ? 160 : f.kind === 'elite' ? 40 : 14, f.kind === 'boss' ? 16 : 4, 3, 1.2);
-    hooks.onKill(f.kind, f.hunt);
+    hooks.onKill(f.kind, f.hunt, f.x, f.z);
     if (f.kind === 'boss') hooks.onBossDown();
   };
   // `interrupt` false: a flame or beam tick only flashes the foe, otherwise ticks every 0.12 s would cancel every attack.
