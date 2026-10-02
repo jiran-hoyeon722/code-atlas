@@ -78,6 +78,8 @@ export interface Battle {
   /** Who holds what, available before the models finish loading. */
   roster(): { name: string; weapon: Weapon; tint: string; look: string | null }[];
   positions(): { x: number; z: number; down: boolean; tint: string; hp: number; name: string; weapon: Weapon }[];
+  /** Whether a standing rival is within `r` of (x, z); allocation-free for per-substep hit tests. */
+  touches(x: number, z: number, r: number): boolean;
   readonly caught: number;
   dispose(): void;
 }
@@ -254,6 +256,10 @@ export function createBattle(scene: THREE.Scene, url: string, kit: WeaponKit, ho
       });
     },
     positions: () => rivals.filter((r) => r.robot).map((r) => ({ x: r.x, z: r.z, down: r.down, tint: r.tint, hp: r.hp, name: r.name, weapon: r.weapon })),
+    touches(x, z, radius) {
+      for (const r of rivals) if (r.robot && !r.down && Math.hypot(r.x - x, r.z - z) < radius) return true;
+      return false;
+    },
     ram(x, z, radius, dx, dz, speed) {
       if (speed < 4) return 0;
       let count = 0;

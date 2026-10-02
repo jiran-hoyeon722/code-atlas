@@ -2,18 +2,21 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Character } from './walkCharacters';
 
-let cached: { url: string; promise: Promise<GLTF> } | null = null;
+let cached: { url: string; promise: Promise<GLTF>; failedAt?: number } | null = null;
+/** After a failed load, spawns reuse the rejection this long instead of each asking the network again. */
+const RETRY_AFTER = 10_000;
 
 export function loadRobot(url: string): Promise<GLTF> {
-  if (cached?.url !== url) {
-    cached = {
+  if (cached?.url !== url || (cached.failedAt !== undefined && Date.now() - cached.failedAt > RETRY_AFTER)) {
+    const entry: { url: string; promise: Promise<GLTF>; failedAt?: number } = {
       url,
       promise: Promise.all([
         import('three/examples/jsm/loaders/GLTFLoader.js'),
       ]).then(([{ GLTFLoader }]) => new GLTFLoader().loadAsync(url)),
     };
-    // A failed load must not stick: the next mount retries instead of reusing the rejection.
-    cached.promise.catch(() => { if (cached?.url === url) cached = null; });
+    cached = entry;
+    // A failed load must not stick for good: after a pause the next request (or mount) retries.
+    entry.promise.catch(() => { entry.failedAt = Date.now(); });
   }
   return cached.promise;
 }

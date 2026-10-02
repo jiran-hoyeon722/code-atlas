@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { spawnRobot, type Robot } from './walkRobot';
-import { decay, nextGait, separation, turnToward, within, type Gait } from './walkMotion';
+import { apart, decay, nextGait, separationInto, turnToward, within, type Gait } from './walkMotion';
 import { damageAt, segmentGap, splash, type Weapon } from './walkWeapons';
 import type { Motes } from './walkFx';
 
@@ -32,6 +32,19 @@ const GONE = 2.6;
 const DESPAWN = 110;
 /** A chaser left this far behind is brought back near the player instead of trudging across the city. */
 export const RECALL = 140;
+/** Seconds before the same foe can be recalled again. */
+export const RECALL_COOLDOWN = 8;
+/** Seconds before trying again when there was no free spot to recall a foe to. */
+export const RECALL_RETRY = 1.5;
+/** A chaser that has moved less than STUCK_MOVE in STUCK_FOR seconds is wedged somewhere and gets recalled too. */
+export const STUCK_FOR = 6;
+const STUCK_MOVE = 1.5;
+/** Stuck foes this close are just held up by the crowd round the player, not wedged. */
+const STUCK_NEAR = 25;
+/** Foes this far off animate every third frame. */
+const FAR_ANIM = 70;
+/** How many robots `warm` loads per frame, so a big warm-up does not clone them all in one hitch. */
+const WARM_PER_FRAME = 4;
 const SLAM_EVERY = 6.5;
 const SLAM_RADIUS = 22;
 const SLAM_SPEED = 20;
@@ -53,11 +66,14 @@ export const approach = (distance: number, stop: number, speed: number, dt: numb
 export const seesPlayer = (kind: FoeKind, d: number, chase: boolean) => (chase && kind !== 'boss') || d < FOES[kind].sight;
 
 /** What happens to a far-off foe: zombies wander off and vanish, unless chasing, when stragglers are recalled near the player. */
-export function straggler(kind: FoeKind, d: number, chase: boolean): 'keep' | 'release' | 'recall' {
+export function straggler(kind: FoeKind, d: number, chase: boolean, stuck = false): 'keep' | 'release' | 'recall' {
   if (kind === 'boss') return 'keep';
-  if (chase) return d > RECALL ? 'recall' : 'keep';
+  if (chase) return d > RECALL || stuck ? 'recall' : 'keep';
   return kind === 'zombie' && d > DESPAWN ? 'release' : 'keep';
 }
+
+/** Whether a foe due for recall goes now: never while the player flies (it would only fall behind again), and not before its wait runs out. */
+export const recallNow = (wait: number, flying: boolean) => !flying && wait <= 0;
 
 const STEER = [0, 1, -1, 2, -2].map((k) => (k * Math.PI) / 4);
 
@@ -103,7 +119,7 @@ export interface HordeHooks {
   onQuake(x: number, z: number): void;
 }
 
-export interface HordePlayer { x: number; z: number; y: number }
+export interface HordePlayer { x: number; z: number; y: number; flying?: boolean }
 
 export interface Horde {
   /** Starts loading robots so spawns later do not wait on the model. */
@@ -129,13 +145,15 @@ export interface Horde {
   /** Every zombie and elite drops dead (cure) or vanishes in a puff (the giant forming). */
   clear(how: 'die' | 'poof'): void;
   positions(): { kind: FoeKind; x: number; z: number; tag?: string }[];
+  /** Whether a live foe's body comes within `pad` of (x, z); allocation-free for per-substep hit tests. */
+  touches(x: number, z: number, pad: number): boolean;
   readonly zombies: number;
   readonly elites: number;
   readonly boss: { hp: number; max: number; forming: boolean; alive: boolean; x: number; z: number } | null;
   dispose(): void;
 }
 
-type Pooled = { robot: Robot; mats: THREE.MeshStandardMaterial[]; eyes: THREE.Group; colors: THREE.Color[] };
+type Pooled = { robot: Robot; mats: THREE.MeshStandardMaterial[]; meshes: THREE.Mesh[]; eyes: THREE.Group; colors: THREE.Color[] };
 type Tag = { canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; sprite: THREE.Sprite; hp: number };
 type Foe = {
   kind: FoeKind; rule: FoeRule; p: Pooled; root: THREE.Group;
@@ -143,6 +161,7 @@ type Foe = {
   gait: Gait; engaged: boolean; cooldown: number; pendingHit: number; stun: number; vx: number; vz: number; flash: number;
   tag: Tag | null; growFor: number; slam: number; orb: number; minion: number; slamAt: number; orbAt: number;
   max: number; speedMul: number; damageMul: number; label: string | null; hunt?: string; glow: THREE.Color; side: 1 | -1;
+  anim: number; skip: number; recallIn: number; stuckX: number; stuckZ: number; stuckT: number;
 };
 type Wave = { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; x: number; z: number; r: number; hit: boolean; on: boolean };
 type Orb = { mesh: THREE.Mesh; x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number };
@@ -164,6 +183,9 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
   const foes: Foe[] = [];
   let giant: FoeStyle = {};
   let chase = false;
+  let warmTo = 0;
+  const active: Foe[] = [];
+  const push: [number, number] = [0, 0];
   const eyeGeo = keep(new THREE.SphereGeometry(0.045, 8, 6));
   const eyeMat = keep(new THREE.MeshBasicMaterial({ color: new THREE.Color('#b6ff4a').multiplyScalar(4) }));
   const v = new THREE.Vector3();
@@ -199,12 +221,14 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
       loading--;
       if (disposed) { robot.dispose(); return; }
       const mats: THREE.MeshStandardMaterial[] = [];
+      const meshes: THREE.Mesh[] = [];
       robot.root.traverse((o) => {
         const mesh = o as THREE.Mesh;
         if (!mesh.isMesh) return;
+        meshes.push(mesh);
         (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach((m) => { if ((m as THREE.MeshStandardMaterial).emissive) mats.push(m as THREE.MeshStandardMaterial); });
       });
-      const p = { robot, mats, eyes: addEyes(robot), colors: mats.map((m) => m.color.clone()) };
+      const p = { robot, mats, meshes, eyes: addEyes(robot), colors: mats.map((m) => m.color.clone()) };
       all.push(p);
       idle.push(p);
     }).catch(() => { loading--; });
@@ -284,6 +308,8 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     root.scale.setScalar(rule.scale);
     root.add(p.robot.root);
     p.robot.root.rotation.x = HUNCH[kind];
+    // A crowd of shadow casters is thousands of extra draw calls; only the giant keeps its shadow.
+    p.meshes.forEach((m) => { m.castShadow = kind === 'boss'; });
     const glow = style.color ? new THREE.Color(style.color) : EMISSIVE[kind];
     p.mats.forEach((m, k) => {
       m.emissive.copy(glow);
@@ -302,6 +328,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
       gait: 'Idle', engaged: false, cooldown: 0.6, pendingHit: 0, stun: 0, vx: 0, vz: 0, flash: 0,
       tag: kind === 'elite' || style.label ? tags.pop() ?? makeTag() : null, growFor: 0, slam: SLAM_EVERY * 0.5, orb: ORB_EVERY, minion: MINION_EVERY * 0.6, slamAt: 0, orbAt: 0,
       max: style.hp ?? rule.hp, speedMul: style.speed ?? 1, damageMul: style.damage ?? 1, label: style.label ?? null, hunt: style.tag, glow, side: Math.random() < 0.5 ? 1 : -1,
+      anim: 0, skip: Math.floor(Math.random() * 3), recallIn: 0, stuckX: x, stuckZ: z, stuckT: 0,
     };
     f.hp = f.max;
     if (f.tag) f.tag.hp = -1;
@@ -353,18 +380,25 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     if (!hooks.blocked(f.x, f.z + sz, r)) f.z += sz;
   };
   const separate = (player: HordePlayer) => {
-    const active = foes.filter((f) => f.state === 'live');
-    active.forEach((f, k) => {
-      const [px, pz] = separation(f.x, f.z, player.x, player.z, f.rule.radius + 0.5, f.heading + Math.PI);
-      nudge(f, px, pz);
+    active.length = 0;
+    for (const f of foes) if (f.state === 'live') active.push(f);
+    for (let k = 0; k < active.length; k++) {
+      const f = active[k];
+      if (!apart(f.x, f.z, player.x, player.z, f.rule.radius + 0.5)) {
+        separationInto(push, f.x, f.z, player.x, player.z, f.rule.radius + 0.5, f.heading + Math.PI);
+        nudge(f, push[0], push[1]);
+      }
       for (let j = k + 1; j < active.length; j++) {
         const o = active[j];
-        const [sx, sz] = separation(f.x, f.z, o.x, o.z, f.rule.radius + o.rule.radius, k * 2.4);
-        const wf = o.rule.radius / (f.rule.radius + o.rule.radius);
+        const min = f.rule.radius + o.rule.radius;
+        if (apart(f.x, f.z, o.x, o.z, min)) continue;
+        separationInto(push, f.x, f.z, o.x, o.z, min, k * 2.4);
+        const sx = push[0], sz = push[1];
+        const wf = o.rule.radius / min;
         nudge(f, sx * wf, sz * wf);
         nudge(o, -sx * (1 - wf), -sz * (1 - wf));
       }
-    });
+    }
   };
   const angleTo = (at: THREE.Vector3, heading: number, x: number, z: number) => {
     const target = Math.atan2(x - at.x, z - at.z);
@@ -457,7 +491,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
       return f ? { hp: f.hp, max: f.max, forming: f.growFor > 0, alive: f.state !== 'dead', x: f.x, z: f.z } : null;
     },
     warm(count) {
-      for (let k = all.length + loading; k < Math.min(count, POOL); k++) load();
+      warmTo = Math.max(warmTo, Math.min(count, POOL));
     },
     spawn: spawnAt,
     setChase(on) { chase = on; },
@@ -471,6 +505,10 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
       return true;
     },
     positions: () => foes.filter((f) => f.state !== 'dead').map((f) => ({ kind: f.kind, x: f.x, z: f.z, tag: f.hunt })),
+    touches(x, z, pad) {
+      for (const f of foes) if (f.state !== 'dead' && Math.hypot(f.x - x, f.z - z) < f.rule.radius + pad) return true;
+      return false;
+    },
     clear(how) {
       [...foes].forEach((f) => {
         if (f.kind === 'boss' || f.state === 'dead') return;
@@ -480,9 +518,16 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
       });
     },
     update(dt, time, player, canHit) {
+      for (let k = 0; k < WARM_PER_FRAME && all.length + loading < warmTo; k++) load();
       [...foes].forEach((f) => {
         const robot = f.p.robot;
-        robot.mixer.update(f.kind === 'boss' ? dt * 0.7 : dt);
+        f.anim += dt;
+        // The crowd far off is a few pixels tall, so it animates every third frame with the time it skipped.
+        if (f.kind === 'boss' || ++f.skip >= 3 || Math.hypot(player.x - f.x, player.z - f.z) <= FAR_ANIM) {
+          robot.mixer.update(f.kind === 'boss' ? f.anim * 0.7 : f.anim);
+          f.anim = 0;
+          f.skip = 0;
+        }
         f.cooldown -= dt;
         f.flash = Math.max(0, f.flash - dt);
         const glow = f.kind === 'boss' ? (f.growFor > 0 ? 2.5 : 0.45 + 0.25 * Math.sin(time * 4)) : 1;
@@ -497,7 +542,8 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
         const dx = player.x - f.x, dz = player.z - f.z;
         const d = Math.hypot(dx, dz);
         const hunting = chase && !f.hunt;
-        const far = straggler(f.kind, d, hunting);
+        f.recallIn -= dt;
+        const far = straggler(f.kind, d, hunting, f.stuckT >= STUCK_FOR && d > STUCK_NEAR);
         if (f.kind === 'boss' && f.growFor > 0) {
           f.t += dt;
           f.root.scale.setScalar(f.rule.scale * bossGrow(f));
@@ -509,12 +555,12 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
         } else if (far === 'release') {
           release(f);
           return;
-        } else if (far === 'recall') {
+        } else if (far === 'recall' && recallNow(f.recallIn, !!player.flying)) {
           const at = hooks.spot(player.x, player.z, 40, 60);
           if (at) {
-            Object.assign(f, { x: at.x, z: at.z, state: 'rise', t: 0, engaged: false, pendingHit: 0 });
+            Object.assign(f, { x: at.x, z: at.z, state: 'rise', t: 0, engaged: false, pendingHit: 0, recallIn: RECALL_COOLDOWN, stuckX: at.x, stuckZ: at.z, stuckT: 0 });
             motes.burst(at.x, 0.2, at.z, f.kind === 'elite' ? 30 : 12, f.kind === 'elite' ? 5 : 2.5, 2, 0.9);
-          }
+          } else f.recallIn = RECALL_RETRY;
         } else if (f.stun > 0) {
           f.stun -= dt;
           nudge(f, f.vx * dt, f.vz * dt);
@@ -528,6 +574,8 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
           const sees = seesPlayer(f.kind, d, hunting);
           // A crowd keeps the back row from reaching the player, so the swing starts a step early instead of shoving forever.
           f.engaged = sees && within(f.engaged, d, reach + 0.8, reach + 1.5);
+          if (!hunting || f.engaged || Math.hypot(f.x - f.stuckX, f.z - f.stuckZ) > STUCK_MOVE) { f.stuckX = f.x; f.stuckZ = f.z; f.stuckT = 0; }
+          else f.stuckT += dt;
           if (f.pendingHit > 0) {
             f.pendingHit -= dt;
             // Nothing on the street can climb, so a swing never reaches a player up on a roof.

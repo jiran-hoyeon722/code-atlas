@@ -24,12 +24,37 @@ export const decay = (v: number, rate: number, dt: number) => v * Math.exp(-rate
 
 /** How far (a) must move to sit at least `min` from (b); `fallback` is the direction when both share a spot. */
 export function separation(ax: number, az: number, bx: number, bz: number, min: number, fallback: number): [number, number] {
+  return separationInto([0, 0], ax, az, bx, bz, min, fallback);
+}
+
+/** `separation` written into `out`, so a crowd can run it for every pair without allocating. */
+export function separationInto(out: [number, number], ax: number, az: number, bx: number, bz: number, min: number, fallback: number): [number, number] {
   const dx = ax - bx, dz = az - bz;
   const d = Math.hypot(dx, dz);
-  if (d >= min) return [0, 0];
-  if (d < 1e-4) return [Math.sin(fallback) * min, Math.cos(fallback) * min];
-  const k = (min - d) / d;
-  return [dx * k, dz * k];
+  if (d >= min) { out[0] = 0; out[1] = 0; }
+  else if (d < 1e-4) { out[0] = Math.sin(fallback) * min; out[1] = Math.cos(fallback) * min; }
+  else { const k = (min - d) / d; out[0] = dx * k; out[1] = dz * k; }
+  return out;
+}
+
+/** Whether (a) and (b) are certainly at least `min` apart, without a square root; a cheap reject before `separation`. */
+export const apart = (ax: number, az: number, bx: number, bz: number, min: number) => {
+  const dx = ax - bx, dz = az - bz;
+  // A hair of slack so a pair right on the edge still goes through the exact check.
+  return dx * dx + dz * dz > min * min * (1 + 1e-9);
+};
+
+/**
+ * How far along a line a beam gets before the first wall, probing whole `step`s: the result is the first step whose
+ * farthest interior sample (as a 0.8 m `clearLine` from the origin would place it) is solid, else `range`. One probe
+ * per step instead of re-walking the whole line each time; same answer for walls thicker than a sample gap.
+ */
+export function reachAlong(range: number, solid: (d: number) => boolean, step = 0.75, spacing = 0.8): number {
+  for (let t = step; t <= range; t += step) {
+    const n = Math.ceil(t / spacing);
+    if (n > 1 && solid((t * (n - 1)) / n)) return t;
+  }
+  return range;
 }
 
 /** Share of the gap to close this frame; unlike `dt * rate` it feels the same at 60 Hz and 144 Hz. */
