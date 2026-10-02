@@ -83,7 +83,8 @@ const TEMPLATE = `
 <div class="cg-legend glass">
     <h2>역할 (클릭해서 켜고 끄기) <button type="button" data-el="all">전체 켜기</button></h2>
     <div data-el="roles"></div>
-    <div class="hint">점 크기 = fan-in(나를 쓰는 파일 수) · 위층일수록 진입점, 아래층일수록 기반 · 드래그 회전, 스크롤 확대</div>
+    <div class="hint">점 크기 = fan-in(나를 쓰는 파일 수) · 위층일수록 진입점, 아래층일수록 기반</div>
+    <div class="hint">드래그 회전 · 휠 확대 · 우클릭 드래그 이동</div>
 </div>
 <aside class="cg-panel glass"><button type="button" class="close" data-el="close">닫기</button><div data-el="panel-body"></div></aside>`;
 
@@ -145,6 +146,7 @@ export const mountGraph: MountViewer = (root, arch, env) => {
   };
 
   const Graph = new ForceGraph3D(canvas, { controlType: 'orbit' })
+    .showNavInfo(false)
     .width(canvas.clientWidth || wrap.clientWidth || 800)
     .height(canvas.clientHeight || wrap.clientHeight || 600)
     .backgroundColor(getComputedStyle(wrap).getPropertyValue('--bg').trim())
