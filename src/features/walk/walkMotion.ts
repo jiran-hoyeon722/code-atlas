@@ -31,3 +31,19 @@ export function separation(ax: number, az: number, bx: number, bz: number, min: 
   const k = (min - d) / d;
   return [dx * k, dz * k];
 }
+
+/** Share of the gap to close this frame; unlike `dt * rate` it feels the same at 60 Hz and 144 Hz. */
+export const follow = (rate: number, dt: number) => 1 - Math.exp(-rate * dt);
+
+// Sums of sines at unrelated frequencies: smooth like noise, but cheap and repeatable.
+const wobble = (t: number, a: number, b: number, c: number) => (Math.sin(t * a) + Math.sin(t * b + 1.7) * 0.6 + Math.sin(t * c + 4.1) * 0.3) / 1.9;
+
+/** Camera offset for a shake of `amount` (0–1). Squared so small hits stay subtle and big ones land hard. */
+export function shakeOffset(time: number, amount: number) {
+  const k = Math.min(1, Math.max(0, amount)) ** 2;
+  return {
+    x: wobble(time, 17, 26, 39) * 0.45 * k,
+    y: wobble(time, 19, 29, 43) * 0.3 * k,
+    roll: wobble(time, 13, 22, 35) * 0.05 * k,
+  };
+}

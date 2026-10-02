@@ -25,7 +25,8 @@ import { createBeacon, createGuide, createMarkers, createMotes, createSparks, ty
 import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type WeaponId } from './walkWeapons';
 import { DIFFICULTIES, DIFFICULTY, FORM_TIME, createSiege, createVirus, isDifficulty, isInfected, pickOrigin, pickSpawnSite, type Difficulty } from './walkVirus';
 import { HELI_BOSS_BONUS, createHorde } from './walkHorde';
-import { turnToward } from './walkMotion';
+import { decay, follow, shakeOffset, turnToward } from './walkMotion';
+import { QUEST, QUEST_KEY, createQuest, type QuestId } from './walkQuest';
 import { characterById, dealCharacters, type Character } from './walkCharacters';
 import { openPicker } from './walkPicker';
 import type { RideCar } from './walkTraffic';
@@ -89,6 +90,10 @@ const MARKUP = `
     <button class="auto-btn" data-el="auto-btn">${AUTO_ICON}<span data-el="auto-label">자동 사냥 시작</span><kbd>O</kbd></button>
     <button class="virus-btn" data-el="virus-btn">${VIRUS_ICON}<span data-el="virus-label">바이러스 모드 시작</span><kbd>V</kbd></button>
     <div class="field"><span class="lbl">바이러스 난이도</span><div class="v-diff" data-el="v-diff" role="radiogroup" aria-label="바이러스 난이도">${DIFFICULTIES.map((d) => `<button role="radio" aria-checked="false" data-diff="${d}" title="${DIFF_HINT[d]}">${DIFFICULTY[d].label}</button>`).join('')}</div></div>
+    <section class="quest" data-el="quest" aria-label="첫 걸음" hidden>
+        <div class="q-head"><b>첫 걸음</b><span data-el="quest-count"></span><button data-el="quest-close" aria-label="첫 걸음 닫기" title="닫기">×</button></div>
+        <ul data-el="quest-list"></ul>
+    </section>
     <div class="tips"><b>WASD</b> 이동 · <b>클릭</b> 시점 · <b>F</b> 공격 · <b>E</b> 행동 · <b>1~6</b> 무기 · <b>?</b> 전체 조작법</div>
 </div>
 <div class="wk-virus glass" data-el="virus" hidden>
@@ -726,7 +731,7 @@ const mount: MountViewer = (root, arch, env) => {
     renderBattle();
     toast(`${c.name} 캐릭터로 출발! 라이벌 ${RIVALS.length}명이 도시 어딘가에 있어요`);
     (document.activeElement as HTMLElement | null)?.blur();
-    if (!guideSeen) showGuide(0);
+    if (!guideSeen) showGuide(0); else showQuest();
   });
   cleanups.push(closePicker);
 
@@ -804,6 +809,9 @@ const mount: MountViewer = (root, arch, env) => {
   const guide = createGuide(scene);
   const energy = createMotes(scene, 900, new THREE.Color('#5dff8f').multiplyScalar(2.2), 0.35, true);
   const dust = createMotes(scene, 700, new THREE.Color('#8a8778'), 1.6, false);
+  const puffs = createMotes(scene, 160, new THREE.Color('#b9b6aa'), 0.32, false);
+  let squash = 0;
+  let strideLeft = 0;
   const openSpot = (x: number, z: number, min: number, max: number, r: number) => {
     const turn0 = Math.random() * Math.PI * 2;
     for (let d = min; d <= max; d += 1.5)
@@ -1186,6 +1194,7 @@ const mount: MountViewer = (root, arch, env) => {
   }
   async function openDetail(b: WalkBuilding) {
     const n = arch.nodes[b.i];
+    if (!auto) questDone('enter');
     detailOpen = true;
     root.classList.add('inside');
     $('d-name').textContent = n.name;
@@ -1240,6 +1249,7 @@ const mount: MountViewer = (root, arch, env) => {
     spotted.splice(0).forEach((el) => el.classList.remove('g-spot', 'g-lift'));
     if (step < 0) {
       try { localStorage.setItem(GUIDE_KEY, '1'); } catch { /* storage may be blocked */ }
+      showQuest();
       return;
     }
     keys.clear();
@@ -1273,6 +1283,35 @@ const mount: MountViewer = (root, arch, env) => {
   listen($('guide-open'), 'click', () => { setHelp(false); showGuide(0); });
   let guideSeen = false;
   try { guideSeen = !!localStorage.getItem(GUIDE_KEY); } catch { guideSeen = false; }
+
+  // ---- first steps: a checklist learnt by doing, shown once until every task is done ----
+  const quest = createQuest();
+  let questOn = false;
+  const renderQuest = () => {
+    $('quest-count').textContent = `${quest.count} / ${QUEST.length}`;
+    $('quest-list').innerHTML = QUEST.map(({ id, text }) =>
+      `<li class="${quest.has(id) ? 'done' : ''}"><i aria-hidden="true"></i><span>${guideHtml(text, esc).replace(/<b>/g, '<kbd>').replace(/<\/b>/g, '</kbd>')}</span></li>`).join('');
+  };
+  const closeQuest = (finished: boolean) => {
+    questOn = false;
+    $('quest').hidden = true;
+    try { localStorage.setItem(QUEST_KEY, '1'); } catch { /* storage may be blocked */ }
+    if (finished) toast('첫 걸음 완료! 이제 라이벌을 찾아 나서 보세요');
+  };
+  function showQuest() {
+    let done = false;
+    try { done = !!localStorage.getItem(QUEST_KEY); } catch { done = true; }
+    if (done || questOn) return;
+    questOn = true;
+    renderQuest();
+    $('quest').hidden = false;
+  }
+  const questDone = (id: QuestId) => {
+    if (!questOn || !quest.mark(id)) return;
+    renderQuest();
+    if (quest.finished) window.setTimeout(() => { if (questOn) closeQuest(true); }, 900);
+  };
+  listen($('quest-close'), 'click', () => closeQuest(false));
 
   // ---- auto hunt: expeditions out from a root file along the files that use it; virus mode stays off meanwhile ----
   const repo = readRepo(arch);
@@ -1499,7 +1538,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (e.code === 'KeyG') { hero.emote(EMOTES[emoteIndex++ % EMOTES.length]); return; }
     if (e.code === 'Space') {
       e.preventDefault();
-      if (footY <= 0.001) vy = JUMP;
+      if (footY <= 0.001) { vy = JUMP; if (mode === 'walk') questDone('jump'); }
       return;
     }
     keys.add(e.code);
@@ -1775,6 +1814,7 @@ const mount: MountViewer = (root, arch, env) => {
   const right = new THREE.Vector3();
   const wish = new THREE.Vector3();
   const doorPoint = new THREE.Vector3();
+  const shakeOff = new THREE.Vector3();
   renderer.setAnimationLoop((now) => {
     const frame = Math.min(0.05, Math.max(0, (now - last) / 1000));
     // The pilot's cards and reading time run on the wall clock, so a slow machine does not stretch them.
@@ -1806,6 +1846,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (!blockedWalker(pos.x, pos.z + stepZ)) pos.z += stepZ; else { vel.z = 0; knock.z = 0; }
     vy -= GRAVITY * dt;
     footY = Math.max(0, footY + vy * dt);
+    const landing = footY === 0 && vy < 0 ? -vy : 0;
     if (footY === 0 && vy < 0) vy = 0;
     const speed = Math.hypot(vel.x, vel.z);
     const prev = heading;
@@ -1824,6 +1865,24 @@ const mount: MountViewer = (root, arch, env) => {
     const run = Math.max(0, Math.min(1, (speed - WALK) / (RUN - WALK)));
     hero.animate({ speed, run, airborne: footY > 0.05, turn: turnRate, dt, time });
     hero.root.position.set(pos.x, footY + 0.16, pos.z);
+    if (questOn && onFoot && !auto) {
+      if (speed > 1.5) questDone('walk');
+      if (run > 0.6) questDone('run');
+    }
+    if (onFoot && alive && !reduceMotion) {
+      if (landing > 4) {
+        squash = Math.max(squash, Math.min(1, landing / 11));
+        puffs.burst(pos.x, 0.15, pos.z, 6 + Math.round(squash * 8), 1.6, 0.4, 0.55);
+      }
+      // A puff behind each running footfall; walking stays clean.
+      strideLeft -= speed * dt;
+      if (strideLeft <= 0) {
+        strideLeft = 1.5;
+        if (run > 0.5 && footY === 0) puffs.burst(pos.x - vel.x * 0.04, 0.12, pos.z - vel.z * 0.04, 3, 0.7, 0.35, 0.45);
+      }
+    }
+    squash = decay(squash, 9, dt);
+    hero.root.scale.set(1 + squash * 0.08, 1 - squash * 0.16, 1 + squash * 0.08);
     hero.root.rotation.y = heading;
     const gun = weapon.kind === 'gun';
     heroHeld.follow(hero.rig, gun && (aimHold > 0 || triggerHeld) ? aimVec.set(Math.sin(aimHold > 0 ? aimHeading : heading), 0, Math.cos(aimHold > 0 ? aimHeading : heading)) : null, hero.root.visible && onFoot && alive);
@@ -1946,6 +2005,7 @@ const mount: MountViewer = (root, arch, env) => {
     beacon.update(time, dt);
     energy.update(dt);
     dust.update(dt);
+    puffs.update(dt);
     guideClock -= dt;
     if (guideClock <= 0) {
       guideClock = 0.5;
@@ -1969,6 +2029,9 @@ const mount: MountViewer = (root, arch, env) => {
     hurt = Math.max(0, hurt - dt * 1.6);
     $('hurt').style.opacity = String(hurt * 0.85);
 
+    // Last frame's shake must come off first, or the follow lerp would chase it and the jitter would pile up.
+    camera.position.sub(shakeOff);
+    shakeOff.set(0, 0, 0);
     if (entering) {
       const b = entering.b;
       doorPoint.set(b.x, 1.9, b.z + b.face * (b.d / 2));
@@ -1985,21 +2048,21 @@ const mount: MountViewer = (root, arch, env) => {
       const h = drivenNow && mode === 'drive' ? drivenNow.heading : Math.atan2(ridden!.dx, ridden!.dz);
       const spd = drivenNow && mode === 'drive' ? Math.abs(drivenNow.speed) : ridden!.speed;
       const want = h + Math.PI;
-      yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * Math.min(1, dt * 3);
+      yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * follow(3, dt);
       const back = (drivenNow?.kind === 'bike' && mode === 'drive' ? 6 : 9) + spd * 0.08;
       let reach = back;
       do {
         camPos.set(Math.sin(yaw) * Math.cos(0.24), Math.sin(0.24), Math.cos(yaw) * Math.cos(0.24)).multiplyScalar(reach).add(v.set(pos.x, 1.7, pos.z));
         reach -= 0.5;
       } while (reach > 2 && insideBuilding(camPos));
-      camera.position.lerp(camPos, Math.min(1, dt * 6));
-      lookAt.lerp(v.set(pos.x, 1.3, pos.z), Math.min(1, dt * 12));
+      camera.position.lerp(camPos, follow(6, dt));
+      lookAt.lerp(v.set(pos.x, 1.3, pos.z), follow(12, dt));
       camera.lookAt(lookAt);
     } else if (flying) {
       $('fade').style.opacity = '0';
       const hpos = heli.root.position;
       const want = heli.heading + Math.PI;
-      yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * Math.min(1, dt * 3);
+      yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * follow(3, dt);
       // Rising with the aim and looking down with altitude keeps the heli, its aim point and the bomb drop point in one frame.
       const elev = 0.3 + aimPitch * 0.35;
       let reach = 17 + heli.speed * 0.15;
@@ -2007,9 +2070,9 @@ const mount: MountViewer = (root, arch, env) => {
         camPos.set(Math.sin(yaw) * Math.cos(elev), Math.sin(elev), Math.cos(yaw) * Math.cos(elev)).multiplyScalar(reach).add(v.set(hpos.x, hpos.y + 2.5, hpos.z));
         reach -= 1;
       } while (reach > 6 && insideBuilding(camPos));
-      camera.position.lerp(camPos, Math.min(1, dt * 5));
+      camera.position.lerp(camPos, follow(5, dt));
       const ahead = Math.min(0.25, 15 / Math.max(1, heliArms.aim.distanceTo(hpos)));
-      lookAt.lerp(v.set(hpos.x, hpos.y + 2 - heli.altitude * 0.45, hpos.z).lerp(heliArms.aim, ahead), Math.min(1, dt * 8));
+      lookAt.lerp(v.set(hpos.x, hpos.y + 2 - heli.altitude * 0.45, hpos.z).lerp(heliArms.aim, ahead), follow(8, dt));
       camera.lookAt(lookAt);
     } else {
       $('fade').style.opacity = '0';
@@ -2017,30 +2080,32 @@ const mount: MountViewer = (root, arch, env) => {
         // Director: trail behind on the move, rise over long trips, swing round a falling pack.
         const far = pilot.remaining > 60;
         const want = (autoFace ?? heading) + Math.PI + (pilot.slowmo > 0 ? 0.9 : 0);
-        yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * Math.min(1, frame * (pilot.slowmo > 0 ? 2.5 : 1.6));
-        pitch += ((far ? 0.8 : pilot.phase === 'fight' ? 0.42 : 0.3) - pitch) * Math.min(1, frame * 1.2);
-        distance += ((far ? 19 : pilot.phase === 'fight' ? 11 : 8.5) - distance) * Math.min(1, frame * 1.2);
+        yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * follow(pilot.slowmo > 0 ? 2.5 : 1.6, frame);
+        pitch += ((far ? 0.8 : pilot.phase === 'fight' ? 0.42 : 0.3) - pitch) * follow(1.2, frame);
+        distance += ((far ? 19 : pilot.phase === 'fight' ? 11 : 8.5) - distance) * follow(1.2, frame);
       }
       const orbit = (r: number) => camPos.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(r).add(v.set(pos.x, 1.7 + footY * 0.5, pos.z));
       let reach = distance;
       while (reach > 1.5 && insideBuilding(orbit(reach))) reach -= 0.5;
       // Pull in at once so walls never cut the view, but ease back out so the camera does not pump along a wall.
-      camReach = reach < camReach ? reach : camReach + (reach - camReach) * Math.min(1, dt * 3);
+      camReach = reach < camReach ? reach : camReach + (reach - camReach) * follow(3, dt);
       orbit(camReach);
       bob += dt * speed * 2.6;
       camPos.y = Math.max(0.6, camPos.y) + (reduceMotion ? 0 : Math.sin(bob) * 0.035 * run);
-      camera.position.lerp(camPos, Math.min(1, dt * 9));
-      lookAt.lerp(v.set(pos.x, 1.6 + footY * 0.4, pos.z), Math.min(1, dt * 14));
+      camera.position.lerp(camPos, follow(9, dt));
+      lookAt.lerp(v.set(pos.x, 1.6 + footY * 0.4, pos.z), follow(14, dt));
       camera.lookAt(lookAt);
     }
     if (shake > 0.001 && !reduceMotion) {
-      camera.position.x += (Math.random() - 0.5) * shake * 0.6;
-      camera.position.y += (Math.random() - 0.5) * shake * 0.4;
-      shake = Math.max(0, shake - dt * 2.5);
+      const s = shakeOffset(time, shake);
+      shakeOff.set(s.x, s.y, 0).applyQuaternion(camera.quaternion);
+      camera.position.add(shakeOff);
+      camera.rotateZ(s.roll);
     }
+    shake = Math.max(0, shake - frame * 1.6);
     const targetFov = flying ? 62 + (heli.speed / 52) * 14 : mode === 'drive' && drivenNow ? 60 + (Math.abs(drivenNow.speed) / 40) * 14 : 58 + run * 10;
     if (Math.abs(targetFov - fov) > 0.01) {
-      fov += (targetFov - fov) * Math.min(1, dt * 4);
+      fov += (targetFov - fov) * follow(4, dt);
       camera.fov = fov;
       camera.updateProjectionMatrix();
     }
@@ -2123,6 +2188,7 @@ const mount: MountViewer = (root, arch, env) => {
     guide.dispose();
     energy.dispose();
     dust.dispose();
+    puffs.dispose();
     heroHeld.dispose();
     kit.dispose();
     tracers.dispose();

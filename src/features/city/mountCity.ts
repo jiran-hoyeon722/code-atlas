@@ -13,6 +13,7 @@ import { ROAD, layoutCity } from './layout';
 import { createSelectionReporter } from './selection';
 import { MAX_HEIGHT, SMALL_CITY, homeView } from './homeView';
 import { type BlastResult, blastPercent, blastRadius } from './blast';
+import { TOUR_KEY, cityTour, type TourStep } from './cityTour';
 
 const KIND_LABEL: Record<string, string> = {
   inject: '생성자 주입', type: '타입 힌트', 'static-call': '정적 호출', new: 'new 생성', const: '상수·enum',
@@ -50,7 +51,7 @@ interface CityNode extends ArchNode {
 }
 
 const MARKUP = `
-<div class="cc-top glass">
+<div class="cc-top glass" data-el="top">
     <h1 data-el="title">의존성 도시</h1>
     <div class="meta" data-el="meta"></div>
     <div class="search">
@@ -83,10 +84,10 @@ const MARKUP = `
         <a href="#" data-goto="graph">3D 그래프 ↗</a>
         <button data-el="home">처음 시점 (Home)</button>
     </div>
-    <p class="controls">드래그 회전 · 휠 확대 · 우클릭 드래그 이동</p>
+    <p class="controls"><span>드래그 회전 · 휠 확대 · 우클릭 드래그 이동</span><button data-el="tour-open">둘러보기</button></p>
 </div>
 
-<div class="cc-legend glass">
+<div class="cc-legend glass" data-el="legend">
     <h2>구역 = 역할 (클릭해서 켜고 끄기) <span><button data-el="all">전체 켜기</button><button data-el="fold" aria-expanded="true" aria-controls="cc-legend-body">접기</button></span></h2>
     <div id="cc-legend-body" data-el="legend-body">
     <div data-el="roles"></div>
@@ -105,6 +106,17 @@ const MARKUP = `
 </section>
 
 <aside class="cc-panel glass" data-el="panel"><button class="close" data-el="close">닫기</button><div data-el="panel-body"></div></aside>
+<section class="cc-tour glass" data-el="tour" role="dialog" aria-label="도시 둘러보기" hidden>
+    <div class="t-step" data-el="t-step"></div>
+    <h2 data-el="t-title"></h2>
+    <p data-el="t-body"></p>
+    <div class="t-foot">
+        <div class="t-dots" data-el="t-dots"></div>
+        <button data-el="t-skip">건너뛰기</button>
+        <button data-el="t-prev">이전</button>
+        <button class="primary" data-el="t-next">다음</button>
+    </div>
+</section>
 <div class="cc-tip" data-el="tip"></div>
 <div class="sr-only" aria-live="polite" data-el="live"></div>`;
 
@@ -737,6 +749,50 @@ export const mountCity: MountViewer = (root, arch, env) => {
   });
   listen($('home'), 'click', flyHome);
 
+  // ---- first-visit tour: whole city → entry file → most-used file → tools ----
+  const entry = nodes.filter((n) => n.layer === 0 && n.fanOut > 0).sort((a, b) => b.fanOut - a.fanOut)[0];
+  const hub = nodes.reduce<CityNode | null>((best, n) => (n.fanIn > 0 && (!best || n.fanIn > best.fanIn) ? n : best), null);
+  const tour: TourStep[] = cityTour({
+    name: arch.name,
+    files: nodes.length,
+    layers: rows.map((r) => arch.layers[r.li].label),
+    entry: entry ? { i: entry.i, name: entry.name, count: entry.fanOut } : null,
+    hub: hub ? { i: hub.i, name: hub.name, count: hub.fanIn } : null,
+  });
+  let tourStep = -1;
+  const spotlit = () => root.querySelectorAll('.cc-spot').forEach((el) => el.classList.remove('cc-spot'));
+  function showTour(k: number) {
+    if (k < 0 || k >= tour.length) return;
+    const first = tourStep < 0;
+    tourStep = k;
+    const step = tour[k];
+    $('t-step').textContent = `${k + 1} / ${tour.length}`;
+    $('t-title').textContent = step.title;
+    $('t-body').innerHTML = esc(step.body).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    $('t-dots').innerHTML = tour.map((_, j) => `<i class="${j === k ? 'on' : ''}"></i>`).join('');
+    $<HTMLButtonElement>('t-prev').disabled = k === 0;
+    $('t-next').textContent = k === tour.length - 1 ? '시작하기' : '다음';
+    spotlit();
+    step.spot.forEach((name) => $(name).classList.add('cc-spot'));
+    if (step.focus !== null) select(nodes[step.focus], true);
+    else if (state.selected || !first) { select(null); flyHome(); }
+    $('tour').hidden = false;
+    $('t-next').focus({ preventScroll: true });
+  }
+  function endTour() {
+    if (tourStep < 0) return;
+    const wasFocused = tour[tourStep].focus !== null;
+    tourStep = -1;
+    $('tour').hidden = true;
+    spotlit();
+    if (wasFocused) { select(null); flyHome(); }
+    try { localStorage.setItem(TOUR_KEY, '1'); } catch { /* storage may be blocked */ }
+  }
+  listen($('t-next'), 'click', () => (tourStep === tour.length - 1 ? endTour() : showTour(tourStep + 1)));
+  listen($('t-prev'), 'click', () => showTour(tourStep - 1));
+  listen($('t-skip'), 'click', endTour);
+  listen($('tour-open'), 'click', () => showTour(0));
+
   $('roles').innerHTML = arch.layers.map((layer, li) => {
     const roles = arch.roles.map((r, i) => ({ r, i })).filter(({ r, i }) => r.layer === li && counts[i] > 0);
     return roles.length ? `
@@ -826,6 +882,11 @@ export const mountCity: MountViewer = (root, arch, env) => {
     if (typingElsewhere(focused)) return;
     if (e.key === '/' && focused !== input) { e.preventDefault(); input.focus(); }
     if (e.key === 'Home' && focused !== input) { e.preventDefault(); flyHome(); }
+    if (tourStep >= 0 && focused !== input) {
+      if (e.key === 'Escape') { endTour(); return; }
+      if (e.key === 'ArrowRight') { showTour(tourStep + 1); return; }
+      if (e.key === 'ArrowLeft') { showTour(tourStep - 1); return; }
+    }
     if (e.key === 'Escape' && focused !== input) {
       if (codeOpen()) closeCode(); else select(null);
     }
@@ -849,6 +910,10 @@ export const mountCity: MountViewer = (root, arch, env) => {
       if (env.selection.blast) setBlast(true);
       if (env.selection.code) void openCode(linked.i);
     });
+  } else if (nodes.length) {
+    let seen = true;
+    try { seen = !!localStorage.getItem(TOUR_KEY); } catch { /* storage blocked: do not nag on every visit */ }
+    if (!seen) showTour(0);
   }
 
   let last = performance.now();

@@ -224,6 +224,23 @@ async function main() {
       await shot(page, 'city.png');
     });
 
+    await step('city: first-visit tour flies through the city, then stays closed', async () => {
+      await page.waitForSelector('[data-el=tour]:not([hidden])', { timeout: 10_000 });
+      await shot(page, 'city-tour-1.png');
+      await page.click('[data-el=t-next]');
+      await page.waitForSelector('[data-el=panel].open');
+      await page.waitForTimeout(1100);
+      await shot(page, 'city-tour-2.png');
+      const steps = Number((await page.locator('[data-el=t-step]').textContent()).split('/')[1]);
+      for (let k = 2; k < steps; k++) await page.click('[data-el=t-next]');
+      await page.waitForTimeout(1100);
+      await shot(page, 'city-tour-last.png');
+      assert((await page.locator('[data-el=t-next]').textContent()) === '시작하기', 'last tour step should offer 시작하기');
+      await page.click('[data-el=t-next]');
+      assert(await page.locator('[data-el=tour]').isHidden(), 'tour did not close');
+      assert(await page.evaluate(() => localStorage.getItem('code-atlas.city.tour-seen') === '1'), 'tour was not remembered');
+    });
+
     await step('city: search (/) → code view shows fixture source', async () => {
       await page.locator('.ca-shell-mount canvas').first().click({ position: { x: 5, y: 5 } }).catch(() => {});
       await page.keyboard.press('/');
@@ -271,7 +288,20 @@ async function main() {
       assert((await page.locator('[data-el=g-next]').textContent()) === '시작하기', 'guide does not end on its fifth step');
       await page.click('[data-el=g-next]');
       await page.waitForSelector('.wk-guide[hidden]', { state: 'attached', timeout: 5_000 });
-      await page.waitForTimeout(1000);
+      await page.waitForSelector('[data-el=quest]:not([hidden])', { timeout: 5_000 });
+      // Back away from the door the walk starts at, so the run is not cut short by the wall.
+      await page.keyboard.down('Shift');
+      await page.keyboard.down('KeyS');
+      // Software-rendered frames are slow and each one advances at most 0.05 s of game time, so give the run a while.
+      await page.waitForFunction(() => document.querySelectorAll('[data-el=quest-list] li.done').length >= 2, null, { timeout: 15_000 }).catch(() => {});
+      await page.keyboard.press('Space');
+      await page.waitForTimeout(700);
+      await page.keyboard.up('KeyS');
+      await page.keyboard.up('Shift');
+      const ticked = await page.locator('[data-el=quest-list] li').evaluateAll((els) => els.map((el) => `${el.className === 'done' ? '✓' : '✗'} ${el.textContent}`));
+      assert(ticked.filter((t) => t.startsWith('✓')).length === 3, `walking, running and jumping should tick 3 first-steps tasks: ${ticked.join(' | ')}`);
+      await shot(page, 'walk-quest.png');
+      await page.waitForTimeout(500);
       await page.keyboard.press('/');
       await page.keyboard.type('userService');
       await page.keyboard.press('Enter');
@@ -281,6 +311,7 @@ async function main() {
       await page.waitForFunction(() => document.querySelector('[data-el=d-src]')?.textContent?.includes('export const fetchUsers'), null, { timeout: 20_000 });
       const name = await page.locator('[data-el=d-name]').textContent();
       assert(name.startsWith('userService'), `walk detail shows another file: "${name}"`);
+      await page.waitForSelector('[data-el=quest]', { state: 'hidden', timeout: 5_000 });
       await page.waitForTimeout(600);
       await shot(page, 'walk-code.png');
       await page.keyboard.press('Escape');
@@ -417,7 +448,7 @@ async function main() {
       await page.waitForSelector('[data-testid=folder-input]');
       const r = await openFolder(page, MIXED, null);
       assert(r.seen, 'loading screen never appeared for mixed-mini');
-      assert(await page.locator('[role=dialog]').count() === 0, 'a dialog is open over the mixed city');
+      assert(await page.locator('[role=dialog]:visible').count() === 0, 'a dialog is open over the mixed city');
       const meta = await page.locator('.ca-shell-brand span').textContent();
       assert(meta.startsWith('Python + Go · '), `expected "Python + Go" in the top bar, got "${meta}"`);
       await page.waitForTimeout(1500);
