@@ -20,6 +20,9 @@
 .wk-walk .wk-hud .hud-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .wk-walk .wk-hud h1 { margin: 0; font-size: 16px; letter-spacing: .01em; }
 .wk-walk .wk-hud .repo { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 230px; }
+.wk-walk .wk-hud .hud-btns { flex: none; display: flex; gap: 6px; }
+.wk-walk .wk-hud [data-el=sound-btn] { display: grid; place-items: center; }
+.wk-walk .wk-hud [data-el=sound-btn][aria-pressed=false] { color: var(--muted); }
 .wk-walk .wk-hud .help-btn { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border); background: rgba(255, 255, 255, .05); color: var(--text); font-weight: 700; cursor: pointer; }
 .wk-walk .wk-hud input { width: 100%; box-sizing: border-box; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: rgba(255, 255, 255, .05); color: var(--text); }
 .wk-walk .wk-hud .field { display: flex; flex-direction: column; gap: 5px; }

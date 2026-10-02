@@ -27,6 +27,7 @@ import { DIFFICULTIES, DIFFICULTY, FORM_TIME, createSiege, createVirus, isDiffic
 import { HELI_BOSS_BONUS, createHorde } from './walkHorde';
 import { decay, follow, shakeOffset, turnToward } from './walkMotion';
 import { QUEST, QUEST_KEY, createQuest, type QuestId } from './walkQuest';
+import { SOUND_KEY, createSound } from './walkSound';
 import { characterById, dealCharacters, type Character } from './walkCharacters';
 import { openPicker } from './walkPicker';
 import type { RideCar } from './walkTraffic';
@@ -71,7 +72,7 @@ const HELP = [
   ['바이러스', [['V', '바이러스 모드 시작 · 그만두기 (괴물이 나타나면 못 그만둬요)'], ['하 · 중 · 상', '난이도 — 하는 바닥 화살표 안내, 상은 빠른 확산과 좀비 떼'], ['E (근원지 앞)', '백신 주입 — 도시가 다 감염되기 전에'], ['괴물', '다 감염되면 나타나요. 시간 안에 못 잡으면 레포가 무너지고 분석 기록이 지워져요']]],
   ['헬기', [['W S', '앞으로 · 뒤로'], ['A D · 마우스', '방향 돌리기'], ['Q E', '옆으로 이동'], ['Space · C (Ctrl · X)', '올라가기 · 내려가기'], ['Shift', '가속'], ['F · 클릭', '기관총 (누르고 있기)'], ['G · 우클릭', '폭탄 떨어뜨리기'], ['마우스 위아래', '조준점 가깝게 · 멀리'], ['H', '천천히 내려가 착륙 (Space 로 취소)']]],
   ['자동 사냥', [['O', '자동 사냥 켜기 · 끄기 — 많이 쓰이는 뿌리 파일에서 출발해, 그 파일을 쓰는 코드를 따라가며 배워요'], ['몬스터', '그 파일에 위험 신호(순환 참조 · 역방향 의존 · 복잡한 함수 등)가 있을 때만 나타나요'], ['이동 · 행동 키', '누르면 바로 직접 조종으로 돌아와요'], ['드래그 · 휠', '잠깐 시점 돌리기 (자동 사냥은 계속돼요)']]],
-  ['화면', [['/', '파일 이름으로 순간 이동'], ['T', '날씨 바꾸기'], ['V', '바이러스 모드'], ['O', '자동 사냥'], ['?', '이 도움말 · 게임 가이드']]],
+  ['화면', [['/', '파일 이름으로 순간 이동'], ['T', '날씨 바꾸기'], ['M', '소리 켜기 · 끄기'], ['V', '바이러스 모드'], ['O', '자동 사냥'], ['?', '이 도움말 · 게임 가이드']]],
 ] as const;
 
 const DIFF_HINT: Record<Difficulty, string> = {
@@ -84,7 +85,7 @@ const GUIDE_NOTE = ' 바닥의 형광 화살표를 따라가세요.';
 
 const MARKUP = `
 <div class="wk-hud glass">
-    <div class="hud-head"><div><h1>코드시티GTA</h1><div class="repo" data-el="repo"></div></div><button class="help-btn" data-el="help-btn" aria-label="조작법 보기" title="조작법 (?)">?</button></div>
+    <div class="hud-head"><div><h1>코드시티GTA</h1><div class="repo" data-el="repo"></div></div><span class="hud-btns"><button class="help-btn" data-el="sound-btn" aria-pressed="true" aria-label="소리" title="소리 켜기 · 끄기 (M)"></button><button class="help-btn" data-el="help-btn" aria-label="조작법 보기" title="조작법 (?)">?</button></span></div>
     <input data-el="q" type="search" placeholder="파일 이름으로 순간 이동 ( / )" autocomplete="off">
     <div class="field"><span class="lbl">날씨</span><div class="weather" data-el="themes" role="radiogroup" aria-label="날씨"></div></div>
     <button class="auto-btn" data-el="auto-btn">${AUTO_ICON}<span data-el="auto-label">자동 사냥 시작</span><kbd>O</kbd></button>
@@ -676,10 +677,30 @@ const mount: MountViewer = (root, arch, env) => {
   const sparks = createSparks(scene);
   const markers = createMarkers(scene);
   const blockedWalker = (x: number, z: number, r = RADIUS) => blocked(x, z, r) || vehicles.occupied(x, z, r);
+  let soundStored: string | null = null;
+  try { soundStored = localStorage.getItem(SOUND_KEY); } catch { /* storage may be blocked */ }
+  const sound = createSound(soundStored);
+  const SPEAKER = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>';
+  const renderSound = () => {
+    const b = $('sound-btn');
+    b.innerHTML = SPEAKER + (sound.muted ? '<path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' : '<path d="M16 8.5a5 5 0 010 7M18.5 6a8.5 8.5 0 010 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>');
+    b.setAttribute('aria-pressed', String(!sound.muted));
+  };
+  const toggleSound = () => {
+    sound.setMuted(!sound.muted);
+    try { localStorage.setItem(SOUND_KEY, sound.muted ? 'off' : 'on'); } catch { /* storage may be blocked */ }
+    renderSound();
+    toast(sound.muted ? '소리를 껐어요 — M 으로 다시 켜요' : '소리를 켰어요');
+  };
+  renderSound();
+  listen($('sound-btn'), 'click', (e) => { sound.unlock(); toggleSound(); (e.currentTarget as HTMLElement).blur(); });
+  listen(window, 'keydown', () => sound.unlock());
+  listen(root, 'pointerdown', () => sound.unlock());
   let shake = 0;
   function hurtPlayer(damage: number, fx: number, fz: number, push = 7) {
     if (!alive || auto) return;
     hp -= damage;
+    sound.play('hurt', Math.min(1, 0.4 + damage / 30));
     hurt = 1;
     shake = Math.max(shake, Math.min(1, damage / 30));
     const dx = pos.x - fx, dz = pos.z - fz;
@@ -770,6 +791,7 @@ const mount: MountViewer = (root, arch, env) => {
     punchCooldown = weapon.cooldown;
     heroHeld.kick();
     if (weapon.kind === 'melee') {
+      sound.play('swing');
       hero.emote('Punch');
       punchAt = 0.22;
       return;
@@ -1016,7 +1038,11 @@ const mount: MountViewer = (root, arch, env) => {
   const heliArms = createHeliArms(scene, heli, {
     surfaceAt,
     hit: heliHit,
-    blast: (x, y, z) => { shake = Math.max(shake, shakeAt(camera.position.distanceTo(v.set(x, y, z)))); },
+    blast: (x, y, z) => {
+      const near = shakeAt(camera.position.distanceTo(v.set(x, y, z)));
+      shake = Math.max(shake, near);
+      sound.play('boom', 0.25 + near);
+    },
     sparks,
     tracers,
   });
@@ -1188,6 +1214,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
     heading = b.face > 0 ? Math.PI : 0;
     $('prompt').classList.remove('open');
+    sound.play('enter');
     if (reduceMotion) { void openDetail(b); return; }
     entering = { t0: performance.now(), dur: 900, b, from: camera.position.clone(), fromLook: lookAt.clone() };
     root.classList.add('entering');
@@ -1312,7 +1339,10 @@ const mount: MountViewer = (root, arch, env) => {
   const questDone = (id: QuestId) => {
     if (!questOn || !quest.mark(id)) return;
     renderQuest();
-    if (quest.finished) window.setTimeout(() => { if (questOn) closeQuest(true); }, 900);
+    if (quest.finished) {
+      sound.play('ding');
+      window.setTimeout(() => { if (questOn) closeQuest(true); }, 900);
+    }
   };
   listen($('quest-close'), 'click', () => closeQuest(false));
 
@@ -1514,6 +1544,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (detailOpen || entering) return;
     if (e.key === '?') { setHelp(true); return; }
     const isE = e.key === 'e' || e.key === 'E' || e.key === 'ㄷ';
+    if (e.code === 'KeyM') { toggleSound(); return; }
     if (e.code === 'KeyT') { applyTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]); return; }
     if (e.code === 'KeyV') { toggleVirus(); return; }
     if (e.code === 'KeyH' && alive && (mode === 'walk' || mode === 'fly')) { toggleHeli(); return; }
@@ -1872,16 +1903,20 @@ const mount: MountViewer = (root, arch, env) => {
       if (speed > 1.5) questDone('walk');
       if (run > 0.6) questDone('run');
     }
-    if (onFoot && alive && !reduceMotion) {
+    if (onFoot && alive) {
       if (landing > 4) {
-        squash = Math.max(squash, Math.min(1, landing / 11));
-        puffs.burst(pos.x, 0.15, pos.z, 6 + Math.round(squash * 8), 1.6, 0.4, 0.55);
+        sound.play('land', Math.min(1, landing / 11));
+        if (!reduceMotion) {
+          squash = Math.max(squash, Math.min(1, landing / 11));
+          puffs.burst(pos.x, 0.15, pos.z, 6 + Math.round(squash * 8), 1.6, 0.4, 0.55);
+        }
       }
       // A puff behind each running footfall; walking stays clean.
       strideLeft -= speed * dt;
       if (strideLeft <= 0) {
         strideLeft = 1.5;
-        if (run > 0.5 && footY === 0) puffs.burst(pos.x - vel.x * 0.04, 0.12, pos.z - vel.z * 0.04, 3, 0.7, 0.35, 0.45);
+        if (footY === 0 && speed > 1) sound.play('step', run > 0.5 ? 1 : 0.6);
+        if (!reduceMotion && run > 0.5 && footY === 0) puffs.burst(pos.x - vel.x * 0.04, 0.12, pos.z - vel.z * 0.04, 3, 0.7, 0.35, 0.45);
       }
     }
     squash = decay(squash, 9, dt);
@@ -1891,6 +1926,7 @@ const mount: MountViewer = (root, arch, env) => {
     heroHeld.follow(hero.rig, gun && (aimHold > 0 || triggerHeld) ? aimVec.set(Math.sin(aimHold > 0 ? aimHeading : heading), 0, Math.cos(aimHold > 0 ? aimHeading : heading)) : null, hero.root.visible && onFoot && alive);
     if (pendingShot) {
       pendingShot = false;
+      sound.play(weapon.id === 'shotgun' ? 'shotgun' : 'shot');
       heroHeld.tip(muzzle);
       const foe = horde.aimTarget(pos, aimHeading, weapon);
       const rival = rivalAt(battle.aimTarget(pos, aimHeading, weapon));
@@ -2202,6 +2238,7 @@ const mount: MountViewer = (root, arch, env) => {
     energy.dispose();
     dust.dispose();
     puffs.dispose();
+    sound.dispose();
     heroHeld.dispose();
     kit.dispose();
     tracers.dispose();
