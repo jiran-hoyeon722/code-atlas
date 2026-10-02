@@ -1,8 +1,8 @@
 import { expect, test } from 'vitest';
 import {
-  COLLAPSE_TIME, DIFFICULTIES, DIFFICULTY, FORM_TIME, TIME_LIMIT, INFECTED_AT, createSiege, createVirus, isDifficulty, isInfected, pickSpawnSite, storedDifficulty, type SiegeWorld, type VirusSite,
+  BOSS_MIN_TIME, COLLAPSE_TIME, DIFFICULTIES, DIFFICULTY, FORM_TIME, TIME_LIMIT, INFECTED_AT, createSiege, createVirus, isDifficulty, isInfected, pickSpawnSite, storedDifficulty, type SiegeWorld, type VirusSite,
 } from '../../src/features/walk/walkVirus';
-import { FOES, RECALL, approach, recallNow, seesPlayer, shamble, steer, straggler } from '../../src/features/walk/walkHorde';
+import { FOES, RECALL, THROW, approach, eliteThrows, recallNow, seesPlayer, shamble, steer, straggler } from '../../src/features/walk/walkHorde';
 import { alongPath } from '../../src/features/walk/walkFx';
 
 const calm: SiegeWorld = { allInfected: false, bossDown: false, zombies: 0, elites: 0 };
@@ -138,11 +138,27 @@ test('the 10-minute clock collapses the repo whatever phase it runs out in', () 
   expect(run(forming, 3, { ...calm, allInfected: true })).toEqual(['collapse']);
 
   const boss = createSiege();
-  boss.start(DIFFICULTY.normal, FORM_TIME + 5);
+  boss.start(DIFFICULTY.normal, BOSS_MIN_TIME + FORM_TIME + 5);
   const world = { ...calm, allInfected: true };
   expect(run(boss, FORM_TIME + 1, world)).toEqual(['form', 'boss']);
-  expect(boss.timeLeft).toBeLessThan(5);
-  expect(run(boss, 5, world)).toEqual(['collapse']);
+  expect(boss.timeLeft).toBeGreaterThan(BOSS_MIN_TIME);
+  expect(run(boss, BOSS_MIN_TIME + 5, world)).toEqual(['collapse']);
+});
+
+test('a late giant still gets three minutes, an early one keeps the clock it has', () => {
+  const late = createSiege();
+  late.start(DIFFICULTY.easy, FORM_TIME + 5);
+  const world = { ...calm, allInfected: true };
+  expect(run(late, FORM_TIME + 1, world)).toEqual(['form', 'boss', 'overtime']);
+  expect(late.timeLeft).toBeGreaterThan(BOSS_MIN_TIME - 1);
+  expect(run(late, BOSS_MIN_TIME - 2, world)).toEqual([]);
+  expect(late.phase).toBe('boss');
+  expect(run(late, 3, world)).toEqual(['collapse']);
+
+  const early = createSiege();
+  early.start(DIFFICULTY.god);
+  expect(run(early, FORM_TIME + 1, world)).toEqual(['form', 'boss']);
+  expect(early.timeLeft).toBeGreaterThan(TIME_LIMIT - FORM_TIME - 2);
 });
 
 test('killing the giant on the last frame still wins', () => {
@@ -231,4 +247,15 @@ test('a blocked chaser turns 45° then 90°, its own side first, and gives up on
   const wide = (ux: number, uz: number) => uz < 0.1 && ux < 0;
   near(steer(0, 5, 1, wide), -1, 0);
   expect(steer(0, 5, 1, () => false)).toBeNull();
+});
+
+test('elites throw only when the player is out of reach — up on a roof or too far to hit — and within throwing range', () => {
+  const reach = FOES.elite.radius + FOES.elite.reach + 1.7;
+  expect(eliteThrows(2, 0, reach)).toBe(false);
+  expect(eliteThrows(2, 6, reach)).toBe(true);
+  expect(eliteThrows(reach + 1, 0, reach)).toBe(true);
+  expect(eliteThrows(THROW.range, 0, reach)).toBe(true);
+  expect(eliteThrows(THROW.range + 1, 0, reach)).toBe(false);
+  expect(eliteThrows(THROW.range + 1, 8, reach)).toBe(false);
+  expect(THROW.damage).toBeLessThan(FOES.elite.damage);
 });

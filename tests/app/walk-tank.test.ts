@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { DIFFICULTIES, DIFFICULTY } from '../../src/features/walk/walkVirus';
-import { SHELL, TANK, aimTurret, createTankQuest, driveTank, tankQuestText } from '../../src/features/walk/walkTank';
+import { SHELL, TANK, aimTurret, createTankQuest, driveTank, tankDamage, tankQuestText } from '../../src/features/walk/walkTank';
 
 test('the tank quest runs only on 지옥 and 신, with 40 and 60 kills', () => {
   expect(DIFFICULTIES.filter((d) => DIFFICULTY[d].tank)).toEqual(['hell', 'god']);
@@ -70,4 +70,23 @@ test('the turret follows the look direction the short way round, at a limited ra
 test('a tank shell hits hard over a wide area', () => {
   expect(SHELL).toEqual({ damage: 25, radius: 8 });
   expect(TANK.reload).toBe(1.2);
+});
+
+test('the tank armour takes a fraction of zombie and elite hits, the giant in full, and a wreck stays gone', () => {
+  expect(TANK.hp).toBe(400);
+  expect(tankDamage(20, 'zombie')).toBeCloseTo(20 * TANK.minorTake);
+  expect(tankDamage(20, 'elite')).toBeCloseTo(20 * TANK.minorTake);
+  expect(tankDamage(20, 'boss')).toBe(20);
+  expect(TANK.minorTake).toBeLessThan(1);
+  const q = createTankQuest();
+  q.start(DIFFICULTY.hell);
+  q.wreck();
+  expect(q.wrecked).toBe(false);
+  for (let k = 0; k < 40; k++) q.kill();
+  q.wreck();
+  expect(q.wrecked).toBe(true);
+  expect(tankQuestText(q)).toContain('파괴');
+  expect(q.kill()).toBe(false);
+  q.start(DIFFICULTY.hell);
+  expect(q.wrecked).toBe(false);
 });

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { DifficultyRule } from './walkVirus';
+import type { FoeKind } from './walkHorde';
 
 export const TANK = {
   top: 8,
@@ -18,11 +19,18 @@ export const TANK = {
   /** Seconds before the same run-over can hurt elites again. */
   crushEvery: 0.6,
   reach: 4.6,
+  /** Armour; the crew inside is never hurt, and at 0 the tank is gone for the rest of the outbreak. */
+  hp: 400,
+  /** Share of a zombie's or elite's hit the armour takes; the giant's slams and orbs land in full. */
+  minorTake: 0.35,
   radius: 1.75,
   half: 1.9,
 } as const;
 
 export const SHELL = { damage: 25, radius: 8 } as const;
+
+/** What a hit meant for the player costs the tank's armour instead. */
+export const tankDamage = (damage: number, from: FoeKind) => (from === 'boss' ? damage : damage * TANK.minorTake);
 
 export interface TankQuest {
   /** Arms the quest for a new outbreak; tiers without a tank leave it off. */
@@ -34,22 +42,29 @@ export interface TankQuest {
   readonly count: number;
   readonly goal: number;
   readonly done: boolean;
+  /** The tank was destroyed; it does not come back this outbreak. */
+  readonly wrecked: boolean;
+  wreck(): void;
 }
 
 export function createTankQuest(): TankQuest {
   let goal = 0;
   let count = 0;
   let done = false;
+  let wrecked = false;
   return {
     start(rule) {
       goal = rule.tank ? rule.tankKills : 0;
       count = 0;
-      done = false;
+      done = wrecked = false;
     },
     stop() {
       goal = 0;
       count = 0;
-      done = false;
+      done = wrecked = false;
+    },
+    wreck() {
+      if (done) wrecked = true;
     },
     kill() {
       if (!goal || done) return false;
@@ -61,11 +76,12 @@ export function createTankQuest(): TankQuest {
     get count() { return Math.min(count, goal); },
     get goal() { return goal; },
     get done() { return done; },
+    get wrecked() { return wrecked; },
   };
 }
 
-export const tankQuestText = (q: Pick<TankQuest, 'count' | 'goal' | 'done'>) =>
-  q.done ? '탱크 퀘스트 완료 — 표시된 탱크에 E 로 탑승' : `탱크 퀘스트: 바이러스 ${q.count} / ${q.goal} 처치`;
+export const tankQuestText = (q: Pick<TankQuest, 'count' | 'goal' | 'done' | 'wrecked'>) =>
+  q.wrecked ? '탱크가 파괴됐어요 — 이번 확산에는 다시 오지 않아요' : q.done ? '탱크 퀘스트 완료 — 표시된 탱크에 E 로 탑승' : `탱크 퀘스트: 바이러스 ${q.count} / ${q.goal} 처치`;
 
 export interface TankMotion { x: number; z: number; heading: number; speed: number }
 export interface TankDrive { throttle: number; turn: number }
@@ -117,6 +133,10 @@ export interface Tank {
   readonly charge: number;
   /** Still falling in from the sky. */
   readonly dropping: boolean;
+  /** Armour left, 0 → TANK.hp. */
+  readonly hp: number;
+  /** Takes `amount` off the armour; true on the hit that destroys it. */
+  damage(amount: number): boolean;
   /** True when the hull fits at that pose. */
   fits(x: number, z: number, heading: number): boolean;
   /** Drops the tank in from the sky at (x, z). */
@@ -222,6 +242,7 @@ export function createTank(scene: THREE.Scene, blocked: (x: number, z: number, r
   let flashFor = 0;
   let drop = 0;
   let spin = 0;
+  let hp: number = TANK.hp;
 
   const axis = (x: number, z: number, h: number, k: number): [number, number] => [x + Math.sin(h) * TANK.half * k, z + Math.cos(h) * TANK.half * k];
   const fits = (x: number, z: number, h: number) => [-1, 0, 1].every((k) => {
@@ -248,6 +269,12 @@ export function createTank(scene: THREE.Scene, blocked: (x: number, z: number, r
     get turretYaw() { return turretYaw; },
     get charge() { return 1 - cool / TANK.reload; },
     get dropping() { return drop > 0; },
+    get hp() { return hp; },
+    damage(amount) {
+      if (!present || hp <= 0 || amount <= 0) return false;
+      hp = Math.max(0, hp - amount);
+      return hp <= 0;
+    },
     fits,
     spawn(x, z, heading) {
       Object.assign(m, { x, z, heading, speed: 0 });
@@ -255,6 +282,7 @@ export function createTank(scene: THREE.Scene, blocked: (x: number, z: number, r
       present = true;
       driven = false;
       cool = recoil = flashFor = 0;
+      hp = TANK.hp;
       drop = DROP;
       root.visible = marker.visible = true;
       place();

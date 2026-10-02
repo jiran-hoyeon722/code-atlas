@@ -191,6 +191,8 @@ export interface DifficultyRule {
 
 /** Seconds the whole mode may take, from the outbreak to the giant's death, before the repo collapses. */
 export const TIME_LIMIT = 600;
+/** However late the giant forms, the player gets at least this long to fight it. */
+export const BOSS_MIN_TIME = 180;
 
 export const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard', 'hell', 'god'];
 export const DIFFICULTY: Record<Difficulty, DifficultyRule> = {
@@ -223,7 +225,8 @@ export function pickSpawnSite(sites: VirusSite[], levels: ArrayLike<number>, pla
 }
 
 export type SiegePhase = 'off' | 'outbreak' | 'forming' | 'boss' | 'collapsing' | 'over';
-export type SiegeEvent = 'zombie' | 'elite' | 'form' | 'boss' | 'won' | 'collapse' | 'collapsed';
+/** 'overtime' follows 'boss' when the clock was topped up to BOSS_MIN_TIME. */
+export type SiegeEvent = 'zombie' | 'elite' | 'form' | 'boss' | 'overtime' | 'won' | 'collapse' | 'collapsed';
 /** Seconds the giant takes to form once the whole city is infected. */
 export const FORM_TIME = 4.5;
 /** Seconds the city takes to sink when the time limit runs out. */
@@ -291,7 +294,11 @@ export function createSiege(): Siege {
         if (eliteClock >= rule.eliteEvery && w.elites < rule.eliteCap) { eliteClock = 0; out.push('elite'); }
       } else if (phase === 'forming') {
         t += dt;
-        if (t >= FORM_TIME) { phase = 'boss'; out.push('boss'); }
+        if (t >= FORM_TIME) {
+          phase = 'boss';
+          out.push('boss');
+          if (timeLeft < BOSS_MIN_TIME) { timeLeft = BOSS_MIN_TIME; out.push('overtime'); }
+        }
       } else if (phase === 'collapsing') {
         t += dt;
         if (t >= COLLAPSE_TIME) { phase = 'over'; out.push('collapsed'); }

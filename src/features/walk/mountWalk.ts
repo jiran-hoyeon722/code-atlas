@@ -26,9 +26,9 @@ import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type 
 import { RARITY_COLOR, autoWeapon, createInventory, createLootField, lootCount, placeLoot, rarityOf, type Point as LootPoint } from './walkLoot';
 import { createPickups, createShots } from './walkArsenal';
 import { DIFFICULTIES, DIFFICULTY, FORM_TIME, MAX_ORIGINS, createSiege, createVirus, isDifficulty, isInfected, pickOrigins, pickSpawnSite, storedDifficulty, type Difficulty } from './walkVirus';
-import { FOES, createHorde } from './walkHorde';
+import { FOES, createHorde, type FoeKind } from './walkHorde';
 import { decay, follow, reachAlong as reachAlongLine, shakeOffset, turnToward } from './walkMotion';
-import { SHELL, TANK, createTank, createTankQuest, tankQuestText } from './walkTank';
+import { SHELL, TANK, createTank, createTankQuest, tankDamage, tankQuestText } from './walkTank';
 import { QUEST, QUEST_KEY, createQuest, type QuestId } from './walkQuest';
 import { SOUND_KEY, createSound } from './walkSound';
 import { characterById, dealCharacters, type Character } from './walkCharacters';
@@ -151,6 +151,7 @@ const MARKUP = `
     <div class="hh-hint" data-el="hh-hint"></div>
 </div>
 <div class="wk-tank glass" data-el="tank-hud" aria-label="탱크">
+    <div class="th-armor" title="탱크 장갑 — 0이 되면 탱크가 부서지고 밖으로 튕겨 나와요"><span>장갑 <b data-el="th-hp-num"></b></span><i><b data-el="th-hp"></b></i></div>
     <div class="hh-slot" data-el="th-gun">${TANK_ICON}<span>포격</span><kbd>F</kbd><i><b data-el="th-bar"></b></i></div>
     <div class="th-keys"><b>탱크</b><span><kbd>W</kbd><kbd>S</kbd> 이동 · <kbd>A</kbd><kbd>D</kbd> 회전 · 마우스 포탑 · <kbd>F</kbd> 포격 · <kbd>E</kbd> 내리기</span></div>
 </div>
@@ -723,9 +724,10 @@ const mount: MountViewer = (root, arch, env) => {
   listen(window, 'keydown', () => sound.unlock());
   listen(root, 'pointerdown', () => sound.unlock());
   let shake = 0;
-  function hurtPlayer(damage: number, fx: number, fz: number, push = 7) {
-    // The tank is indestructible, and whoever sits in it with it.
-    if (!alive || auto || mode === 'tank') return;
+  function hurtPlayer(damage: number, fx: number, fz: number, push = 7, from?: FoeKind) {
+    if (!alive || auto) return;
+    // The armour soaks every hit; whoever sits inside is never hurt.
+    if (mode === 'tank') { if (from) hitTank(tankDamage(damage, from)); return; }
     hp -= damage;
     sound.play('hurt', Math.min(1, 0.4 + damage / 30));
     hurt = 1;
@@ -921,7 +923,7 @@ const mount: MountViewer = (root, arch, env) => {
     blocked: blockedWalker,
     clear: clearLine,
     spot: (x, z, min, max) => openSpot(x, z, min, max, 0.6),
-    onPlayerHit: (damage, fx, fz, push) => hurtPlayer(damage, fx, fz, push),
+    onPlayerHit: (damage, fx, fz, push, from) => hurtPlayer(damage, fx, fz, push, from),
     onKill: (kind, tag) => {
       if (tag) { pilot.onKill(tag); return; }
       kills++;
@@ -1072,7 +1074,7 @@ const mount: MountViewer = (root, arch, env) => {
     if (tankQuest.active) {
       $('v-tank-text').textContent = tankQuestText(tankQuest);
       $('v-tank-bar').style.width = `${(tankQuest.count / tankQuest.goal) * 100}%`;
-      $('v-tank').classList.toggle('done', tankQuest.done);
+      $('v-tank').classList.toggle('done', tankQuest.done && !tankQuest.wrecked);
     }
     const note = VIRUS_NOTE + (rule().guide ? GUIDE_NOTE : '');
     if ($('v-note').dataset.note !== note) { $('v-note').dataset.note = note; $('v-note').innerHTML = note; }
@@ -1443,17 +1445,18 @@ const mount: MountViewer = (root, arch, env) => {
     updatePrompt();
   }
   // ---- tank: the 지옥 · 신 quest reward, one per outbreak, gone when the outbreak ends ----
-  function tankSpot() {
-    for (let r = 10; r <= 46; r += 2)
+  function tankSpot(min = 10, max = 46, clearOfCars = true) {
+    for (let r = min; r <= max; r += 2)
       for (let a = 0; a < Math.PI * 2; a += Math.PI / 10) {
         const x = pos.x + Math.cos(a) * r, z = pos.z + Math.sin(a) * r;
         if (x < bounds.minX + 4 || x > bounds.maxX - 4 || z < bounds.minZ + 4 || z > bounds.maxZ - 4) continue;
-        for (const h of [Math.PI / 2, 0]) if (tank.fits(x, z, h) && !vehicles.occupied(x, z, TANK.half + TANK.radius)) return { x, z, h };
+        for (const h of [Math.PI / 2, 0]) if (tank.fits(x, z, h) && !(clearOfCars && vehicles.occupied(x, z, TANK.half + TANK.radius))) return { x, z, h };
       }
     return null;
   }
   function tankArrives() {
-    const at = tankSpot() ?? (() => { const p = freeSpotNear(pos.x, pos.z, 10, 40); return { x: p.x, z: p.z, h: 0 }; })();
+    // Never drop it on the player: look farther out, and only as a last resort settle for a spot it may need to drive out of.
+    const at = tankSpot() ?? tankSpot(46, Math.max(80, span), false) ?? (() => { const p = freeSpotNear(pos.x, pos.z, 30, 80); return { x: p.x, z: p.z, h: 0 }; })();
     tank.spawn(at.x, at.z, at.h);
     sound.play('ding');
     toast('탱크가 도착했어요! 표시된 곳에서 E 로 탑승', 5000);
@@ -1500,8 +1503,35 @@ const mount: MountViewer = (root, arch, env) => {
     sparks.burst(muzzle.x, muzzle.y, muzzle.z, 24);
     puffs.burst(muzzle.x, muzzle.y, muzzle.z, 16, 3, 0.8, 0.9);
   }
-  const tankHud = { bar: -1 };
+  function hitTank(amount: number) {
+    if (!tank.damage(amount)) {
+      sparks.burst(tank.x, 1.6, tank.z, 6);
+      shake = Math.max(shake, Math.min(0.4, amount / 40));
+      return;
+    }
+    const x = tank.x, z = tank.z;
+    leaveTank();
+    tank.hide();
+    nearTank = false;
+    tankQuest.wreck();
+    sound.play('boom', 1);
+    shake = Math.max(shake, 1);
+    sparks.burst(x, 1.4, z, 90);
+    flames.burst(x, 1.2, z, 120, 5, 4, 1.2);
+    puffs.burst(x, 1, z, 50, 6, 1.5, 1.6);
+    hurt = 1;
+    toast('탱크가 부서졌어요! 밖으로 튕겨 나왔어요 — 이번 확산에는 탱크가 다시 오지 않아요', 5000);
+    renderVirus();
+  }
+  const tankHud = { bar: -1, hp: -1 };
   function renderTankHud() {
+    const armor = Math.ceil(tank.hp);
+    if (armor !== tankHud.hp) {
+      tankHud.hp = armor;
+      $('th-hp-num').textContent = String(armor);
+      $('th-hp').style.width = `${(armor / TANK.hp) * 100}%`;
+      $('tank-hud').classList.toggle('low', armor < TANK.hp * 0.3);
+    }
     const bar = Math.round(tank.charge * 100);
     if (bar === tankHud.bar) return;
     tankHud.bar = bar;
@@ -2407,7 +2437,7 @@ const mount: MountViewer = (root, arch, env) => {
         const dirx = Math.sin(tank.heading) * Math.sign(tank.speed), dirz = Math.cos(tank.heading) * Math.sign(tank.speed);
         tank.front(tankFront);
         const heavy = crushCool > 0 ? 0 : TANK.crushElite;
-        const hit = horde.crush(tankFront.x, tankFront.z, TANK.radius + 0.3, heavy, dirx, dirz) + horde.crush(tank.x, tank.z, TANK.radius, heavy, dirx, dirz);
+        const hit = horde.crush([[tankFront.x, tankFront.z, TANK.radius + 0.3], [tank.x, tank.z, TANK.radius]], heavy, dirx, dirz);
         if (hit) {
           if (heavy) crushCool = TANK.crushEvery;
           shake = Math.max(shake, 0.12);
@@ -2443,7 +2473,7 @@ const mount: MountViewer = (root, arch, env) => {
       infectAttr.needsUpdate = true;
       tintInfected(virus.levels);
     }
-    horde.update(dt, time, { x: pos.x, z: pos.z, y: flying ? heli.root.position.y : footY, flying }, alive && onFoot && !detailOpen && !entering);
+    horde.update(dt, time, { x: pos.x, z: pos.z, y: flying ? heli.root.position.y : footY, flying }, alive && (onFoot || mode === 'tank') && !detailOpen && !entering);
     const allInfected = virus.infected === layout.buildings.length && virus.levels.every((l) => l >= 1);
     const events = virus.state === 'spreading' ? siege.update(dt, { allInfected, bossDown, zombies: horde.zombies, elites: horde.elites }) : [];
     spawnFoes(events);
@@ -2454,12 +2484,13 @@ const mount: MountViewer = (root, arch, env) => {
       toast('도시가 모두 감염됐어요! 근원지에서 초대형 바이러스가 깨어나요', 5000);
       formBoss();
     } else if (siege.phase === 'forming' && !bossFormed) formBoss();
-    if (events.includes('boss')) toast(`초대형 바이러스 등장! 남은 ${clock(Math.ceil(siege.timeLeft))} 안에 처치하지 않으면 레포가 붕괴돼요`, 5000);
+    if (events.includes('overtime')) toast('초대형 바이러스 등장 — 시간을 3분으로 늘렸어요. 3분 안에 처치하세요', 5000);
+    else if (events.includes('boss')) toast(`초대형 바이러스 등장! 남은 ${clock(Math.ceil(siege.timeLeft))} 안에 처치하지 않으면 레포가 붕괴돼요`, 5000);
     if (events.includes('won')) endVirus(true, true);
     if (events.includes('collapse')) {
       tankQuest.stop();
       removeTank();
-      horde.clear('poof');
+      horde.clear('poof', true);
       curing = 0;
       guide.setPath(null);
       hideSources();

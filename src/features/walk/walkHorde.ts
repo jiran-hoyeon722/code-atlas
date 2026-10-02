@@ -51,6 +51,8 @@ const SLAM_SPEED = 20;
 const ORB_EVERY = 2.8;
 const ORB_SPEED = 17;
 const ORB_DAMAGE = 12;
+/** Elites lob a slow orb at a player they cannot reach: up on a roof, or out of arm's length. */
+export const THROW = { every: 3.5, range: 22, damage: 8, speed: 11, gravity: 9.8 } as const;
 const MINION_EVERY = 11;
 const MINIONS = 3;
 const MINION_CAP = 9;
@@ -88,6 +90,9 @@ export function steer(dx: number, dz: number, side: 1 | -1, free: (ux: number, u
   return null;
 }
 
+/** Whether an elite that sees the player throws instead of only closing in: too high or too far to hit, yet within throwing range. */
+export const eliteThrows = (d: number, playerY: number, hitReach: number) => d <= THROW.range && (playerY >= 2 || d > hitReach);
+
 /** Shamblers never break into a run, whatever speed they end up at. */
 export const shamble = (prev: Gait, speed: number): Gait => (nextGait(prev, speed) === 'Idle' ? 'Idle' : 'Walking');
 
@@ -112,7 +117,7 @@ export interface HordeHooks {
   clear(ax: number, az: number, bx: number, bz: number): boolean;
   /** A free spot between `min` and `max` from (x, z), or null. */
   spot(x: number, z: number, min: number, max: number): { x: number; z: number } | null;
-  onPlayerHit(damage: number, fromX: number, fromZ: number, push: number): void;
+  onPlayerHit(damage: number, fromX: number, fromZ: number, push: number, from: FoeKind): void;
   onKill(kind: FoeKind, tag?: string): void;
   onBossDown(): void;
   /** The giant's slam hit the ground at (x, z). */
@@ -136,14 +141,14 @@ export interface Horde {
   /** Fires at the best foe in the cone; returns true and the hit point in `out` when it hits. */
   shoot(at: THREE.Vector3, heading: number, weapon: Weapon, out: THREE.Vector3): boolean;
   ram(x: number, z: number, r: number, dx: number, dz: number, speed: number): number;
-  /** Run over by something heavy: zombies within `r` die outright, elites lose `heavy` hp, the giant is not hurt. */
-  crush(x: number, z: number, r: number, heavy: number, dx: number, dz: number): number;
+  /** Run over by something heavy: zombies inside any [x, z, r] circle die outright, elites lose `heavy` hp once however many circles cover them, the giant is not hurt. */
+  crush(circles: readonly (readonly [number, number, number])[], heavy: number, dx: number, dz: number): number;
   /** Area damage from a hit at height `y`; `bossBonus` multiplies what the giant takes. */
   damageArea(x: number, y: number, z: number, radius: number, damage: number, fromX: number, fromZ: number, bossBonus?: number): number;
   /** Hurts every foe the segment (ax, az)–(bx, bz) passes within `width` of, e.g. a laser that goes through a crowd; returns how many. */
   beam(ax: number, az: number, bx: number, bz: number, width: number, damage: number): number;
-  /** Every zombie and elite drops dead (cure) or vanishes in a puff (the giant forming). */
-  clear(how: 'die' | 'poof'): void;
+  /** Every zombie and elite drops dead (cure) or vanishes in a puff (the giant forming); `boss` takes the giant and its shots too. */
+  clear(how: 'die' | 'poof', boss?: boolean): void;
   positions(): { kind: FoeKind; x: number; z: number; tag?: string }[];
   /** Whether a live foe's body comes within `pad` of (x, z); allocation-free for per-substep hit tests. */
   touches(x: number, z: number, pad: number): boolean;
@@ -159,12 +164,12 @@ type Foe = {
   kind: FoeKind; rule: FoeRule; p: Pooled; root: THREE.Group;
   x: number; z: number; heading: number; hp: number; state: 'rise' | 'live' | 'dead'; t: number;
   gait: Gait; engaged: boolean; cooldown: number; pendingHit: number; stun: number; vx: number; vz: number; flash: number;
-  tag: Tag | null; growFor: number; slam: number; orb: number; minion: number; slamAt: number; orbAt: number;
+  tag: Tag | null; growFor: number; slam: number; orb: number; minion: number; slamAt: number; orbAt: number; throwIn: number;
   max: number; speedMul: number; damageMul: number; label: string | null; hunt?: string; glow: THREE.Color; side: 1 | -1;
   anim: number; skip: number; recallIn: number; stuckX: number; stuckZ: number; stuckT: number;
 };
 type Wave = { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; x: number; z: number; r: number; hit: boolean; on: boolean };
-type Orb = { mesh: THREE.Mesh; x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number };
+type Orb = { mesh: THREE.Mesh; x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; g: number; damage: number; from: FoeKind };
 
 const EMISSIVE: Record<FoeKind, THREE.Color> = {
   zombie: new THREE.Color('#0c3a0e'),
@@ -280,11 +285,11 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
   });
   const orbGeo = keep(new THREE.IcosahedronGeometry(0.55, 1));
   const orbMat = keep(new THREE.MeshBasicMaterial({ color: new THREE.Color('#7dff6a').multiplyScalar(3) }));
-  const orbs: Orb[] = Array.from({ length: 6 }, () => {
+  const orbs: Orb[] = Array.from({ length: 12 }, () => {
     const mesh = new THREE.Mesh(orbGeo, orbMat);
     mesh.visible = false;
     scene.add(mesh);
-    return { mesh, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0 };
+    return { mesh, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0, g: 0, damage: 0, from: 'boss' as FoeKind };
   });
 
   const height = (f: Foe) => ROBOT_H * f.rule.scale * (f.kind === 'boss' ? bossGrow(f) : 1);
@@ -326,7 +331,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
     const f: Foe = {
       kind, rule, p, root, x, z, heading: Math.random() * Math.PI * 2, hp: rule.hp, state: 'rise', t: 0,
       gait: 'Idle', engaged: false, cooldown: 0.6, pendingHit: 0, stun: 0, vx: 0, vz: 0, flash: 0,
-      tag: kind === 'elite' || style.label ? tags.pop() ?? makeTag() : null, growFor: 0, slam: SLAM_EVERY * 0.5, orb: ORB_EVERY, minion: MINION_EVERY * 0.6, slamAt: 0, orbAt: 0,
+      tag: kind === 'elite' || style.label ? tags.pop() ?? makeTag() : null, growFor: 0, slam: SLAM_EVERY * 0.5, orb: ORB_EVERY, minion: MINION_EVERY * 0.6, slamAt: 0, orbAt: 0, throwIn: THROW.every * 0.6,
       max: style.hp ?? rule.hp, speedMul: style.speed ?? 1, damageMul: style.damage ?? 1, label: style.label ?? null, hunt: style.tag, glow, side: Math.random() < 0.5 ? 1 : -1,
       anim: 0, skip: Math.floor(Math.random() * 3), recallIn: 0, stuckX: x, stuckZ: z, stuckT: 0,
     };
@@ -463,7 +468,7 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
         if (o) {
           const y0 = height(f) * 0.75;
           v.set(player.x - f.x, 1.2 + player.y - y0, player.z - f.z).normalize().multiplyScalar(ORB_SPEED);
-          Object.assign(o, { x: f.x + Math.sin(f.heading) * 2, y: y0, z: f.z + Math.cos(f.heading) * 2, vx: v.x, vy: v.y, vz: v.z, life: 4 });
+          Object.assign(o, { x: f.x + Math.sin(f.heading) * 2, y: y0, z: f.z + Math.cos(f.heading) * 2, vx: v.x, vy: v.y, vz: v.z, life: 4, g: 0, damage: ORB_DAMAGE * (giant.damage ?? 1), from: 'boss' });
         }
       }
     }
@@ -475,6 +480,21 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
         if (at) spawnAt('zombie', at.x, at.z, giant);
       }
     }
+  }
+
+  // A ballistic arc timed to land where the player stands now, so it clears the roof edge and can be dodged.
+  function lob(f: Foe, player: HordePlayer) {
+    const o = orbs.find((x) => x.life <= 0);
+    if (!o) return false;
+    const y0 = height(f) * 0.8;
+    const tx = player.x - f.x, tz = player.z - f.z;
+    const t = Math.min(2.6, Math.max(1.1, Math.hypot(tx, tz) / THROW.speed));
+    const dy = player.y + 1.1 - y0;
+    Object.assign(o, {
+      x: f.x, y: y0, z: f.z, vx: tx / t, vy: (dy + 0.5 * THROW.gravity * t * t) / t, vz: tz / t, g: THROW.gravity,
+      life: t + (player.y >= 2 ? 0.12 : 1), damage: THROW.damage * f.damageMul, from: 'elite',
+    });
+    return true;
   }
 
   function spawnAt(kind: 'zombie' | 'elite', x: number, z: number, style?: FoeStyle) {
@@ -510,9 +530,13 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
       for (const f of foes) if (f.state !== 'dead' && Math.hypot(f.x - x, f.z - z) < f.rule.radius + pad) return true;
       return false;
     },
-    clear(how) {
+    clear(how, boss = false) {
+      if (boss) {
+        orbs.forEach((o) => { o.life = 0; o.mesh.visible = false; });
+        waves.forEach((w) => { w.on = false; w.mesh.visible = false; });
+      }
       [...foes].forEach((f) => {
-        if (f.kind === 'boss' || f.state === 'dead') return;
+        if ((f.kind === 'boss' && !boss) || f.state === 'dead') return;
         if (how === 'die') { kill(f); return; }
         motes.burst(f.x, height(f) * 0.5, f.z, f.kind === 'elite' ? 40 : 16, 5, 3, 1);
         release(f);
@@ -580,7 +604,14 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
           if (f.pendingHit > 0) {
             f.pendingHit -= dt;
             // Nothing on the street can climb, so a swing never reaches a player up on a roof.
-            if (f.pendingHit <= 0 && canHit && d < reach + 1.7 && player.y < 2) hooks.onPlayerHit(f.rule.damage * f.damageMul, f.x, f.z, f.kind === 'elite' ? 12 : 6);
+            if (f.pendingHit <= 0 && canHit && d < reach + 1.7 && player.y < 2) hooks.onPlayerHit(f.rule.damage * f.damageMul, f.x, f.z, f.kind === 'elite' ? 12 : 6, f.kind);
+          }
+          if (f.kind === 'elite' && !f.hunt) {
+            f.throwIn -= dt * f.speedMul;
+            if (f.throwIn <= 0 && sees && canHit && eliteThrows(d, player.y, reach + 1.7) && (player.y >= 2 || hooks.clear(f.x, f.z, player.x, player.z)) && lob(f, player)) {
+              f.throwIn = THROW.every;
+              robot.play('Punch', 0.1, true);
+            }
           }
           if (f.engaged) {
             turn(f, dx, dz, dt, 10);
@@ -623,19 +654,20 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
         const d = Math.hypot(player.x - w.x, player.z - w.z);
         if (!w.hit && canHit && Math.abs(d - w.r) < 1.6 && player.y < 0.6) {
           w.hit = true;
-          hooks.onPlayerHit(FOES.boss.damage * (giant.damage ?? 1), w.x, w.z, 14);
+          hooks.onPlayerHit(FOES.boss.damage * (giant.damage ?? 1), w.x, w.z, 14, 'boss');
         }
         if (w.r >= SLAM_RADIUS) w.on = false;
       });
       orbs.forEach((o) => {
         if (o.life <= 0) { o.mesh.visible = false; return; }
         o.life -= dt;
+        o.vy -= o.g * dt;
         o.x += o.vx * dt; o.y += o.vy * dt; o.z += o.vz * dt;
         o.mesh.visible = true;
         o.mesh.position.set(o.x, o.y, o.z);
         o.mesh.rotation.y = time * 6;
         if (canHit && Math.hypot(o.x - player.x, o.y - (player.y + 1.1), o.z - player.z) < 1.3) {
-          hooks.onPlayerHit(ORB_DAMAGE * (giant.damage ?? 1), o.x - o.vx, o.z - o.vz, 8);
+          hooks.onPlayerHit(o.damage, o.x - o.vx, o.z - o.vz, 8, o.from);
           o.life = 0;
         }
         if (o.y < 0.2 || o.life <= 0) {
@@ -683,10 +715,10 @@ export function createHorde(scene: THREE.Scene, url: string, motes: Motes, hooks
       });
       return count;
     },
-    crush(x, z, r, heavy, dx, dz) {
+    crush(circles, heavy, dx, dz) {
       let count = 0;
       foes.forEach((f) => {
-        if (!live(f) || f.kind === 'boss' || Math.hypot(f.x - x, f.z - z) > r + f.rule.radius) return;
+        if (!live(f) || f.kind === 'boss' || !circles.some(([x, z, r]) => Math.hypot(f.x - x, f.z - z) <= r + f.rule.radius)) return;
         const damage = f.kind === 'zombie' ? f.hp : heavy;
         if (damage <= 0) return;
         count++;
