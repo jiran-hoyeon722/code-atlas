@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { RARITY, RARITY_ODDS, RESPAWN_MAX, RESPAWN_MIN, autoWeapon, createInventory, createLootField, lootCount, placeLoot, rollLoot, type Point } from '../../src/features/walk/walkLoot';
+import { RARITY, RARITY_ODDS, RESPAWN_MAX, RESPAWN_MIN, autoWeapon, createInventory, createLootField, finderAngle, lootCount, nearestDrop, placeLoot, rollLoot, type Point } from '../../src/features/walk/walkLoot';
 import { RIVAL_WEAPONS, WEAPONS, dealWeapons, inBeam, segmentGap, weaponById } from '../../src/features/walk/walkWeapons';
 
 const seeded = (seed: number) => () => {
@@ -67,10 +67,24 @@ test('melee and the pistol are common, the rocket launcher very rare', () => {
   expect(RARITY.pistol).toBe('common');
 });
 
-test('roughly one pickup per five buildings, between 8 and 40', () => {
-  expect(lootCount(10)).toBe(8);
-  expect(lootCount(100)).toBe(20);
-  expect(lootCount(1000)).toBe(40);
+test('roughly one pickup per three buildings, between 10 and 80', () => {
+  expect(lootCount(10)).toBe(10);
+  expect(lootCount(90)).toBe(30);
+  expect(lootCount(1000)).toBe(80);
+});
+
+test('the finder points at the nearest live drop relative to where the camera looks', () => {
+  const field = createLootField([[0, -10], [3, 0], [50, 50]], seeded(2), () => null);
+  field.drops[1].live = false;
+  expect(nearestDrop(field.drops, 0, 0)).toBe(field.drops[0]);
+  field.drops.forEach((d) => { d.live = false; });
+  expect(nearestDrop(field.drops, 0, 0)).toBeNull();
+  expect(finderAngle(0, -10, 0)).toBeCloseTo(0);
+  expect(finderAngle(10, 0, 0)).toBeCloseTo(Math.PI / 2);
+  expect(finderAngle(-10, 0, 0)).toBeCloseTo(-Math.PI / 2);
+  expect(Math.abs(finderAngle(0, 10, 0))).toBeCloseTo(Math.PI);
+  expect(finderAngle(-10, 0, Math.PI / 2)).toBeCloseTo(0);
+  expect(finderAngle(0, -10, Math.PI / 2)).toBeCloseTo(Math.PI / 2);
 });
 
 test('placement avoids blocked ground and keeps pickups apart', () => {
@@ -83,7 +97,7 @@ test('placement avoids blocked ground and keeps pickups apart', () => {
   spots.forEach(([x, z]) => expect(Math.hypot(x, z)).toBeGreaterThanOrEqual(6));
 });
 
-test('walking over a drop picks it up, and it comes back elsewhere after 45-60 s', () => {
+test('walking over a drop picks it up, and it comes back elsewhere after 30-40 s', () => {
   const field = createLootField([[0, 0], [50, 0]], seeded(1), () => [100, 100]);
   expect(field.update(0.1, 30, 30).picked).toEqual([]);
   const { picked } = field.update(0.1, 0.5, 0.5);

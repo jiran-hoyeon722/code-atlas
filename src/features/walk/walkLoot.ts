@@ -25,11 +25,11 @@ export function rollLoot(random: () => number): WeaponId {
   return pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))];
 }
 
-/** About one pickup per five buildings, never fewer than 8 nor more than 40. */
-export const lootCount = (buildings: number) => Math.max(8, Math.min(40, Math.round(buildings / 5)));
+/** About one pickup per three buildings, never fewer than 10 nor more than 80. */
+export const lootCount = (buildings: number) => Math.max(10, Math.min(80, Math.round(buildings / 3)));
 
-export const RESPAWN_MIN = 45;
-export const RESPAWN_MAX = 60;
+export const RESPAWN_MIN = 30;
+export const RESPAWN_MAX = 40;
 const SPACING = 6;
 const TRIES = 14;
 
@@ -114,7 +114,7 @@ export interface LootField {
 
 export const PICKUP_REACH = 1.6;
 
-/** Taken drops come back after 45–60 s somewhere else, from `place`, so the city never runs dry. */
+/** Taken drops come back after 30–40 s somewhere else, from `place`, so the city never runs dry. */
 export function createLootField(spots: Point[], random: () => number, place: (taken: Point[]) => Point | null): LootField {
   const drops: LootDrop[] = spots.map(([x, z]) => ({ x, z, id: rollLoot(random), live: true, wait: 0 }));
   return {
@@ -142,4 +142,23 @@ export function createLootField(spots: Point[], random: () => number, place: (ta
       return { picked, back };
     },
   };
+}
+
+/** The live drop closest to (x, z), or null when every drop is taken. */
+export function nearestDrop(drops: readonly LootDrop[], x: number, z: number): LootDrop | null {
+  let best: LootDrop | null = null;
+  let bestGap = Infinity;
+  for (const d of drops) {
+    if (!d.live) continue;
+    const g = Math.hypot(d.x - x, d.z - z);
+    if (g < bestGap) { bestGap = g; best = d; }
+  }
+  return best;
+}
+
+/** Screen angle (radians, clockwise from straight up) of the world offset (dx, dz) for a camera looking along (-sin yaw, -cos yaw). */
+export function finderAngle(dx: number, dz: number, yaw: number): number {
+  const ahead = -dx * Math.sin(yaw) - dz * Math.cos(yaw);
+  const side = dx * Math.cos(yaw) - dz * Math.sin(yaw);
+  return Math.atan2(side, ahead);
 }

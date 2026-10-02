@@ -23,7 +23,7 @@ import { createVehicles, type Vehicle } from './walkVehicles';
 import { THEMES, type Theme } from './walkThemes';
 import { createBeacon, createGuide, createMarkers, createMotes, createSparks, type PathPoint } from './walkFx';
 import { WEAPONS, createTracers, createWeaponKit, weaponById, type Weapon, type WeaponId } from './walkWeapons';
-import { RARITY_COLOR, autoWeapon, createInventory, createLootField, lootCount, placeLoot, rarityOf, type Point as LootPoint } from './walkLoot';
+import { RARITY_COLOR, autoWeapon, createInventory, createLootField, finderAngle, lootCount, nearestDrop, placeLoot, rarityOf, type Point as LootPoint } from './walkLoot';
 import { createPickups, createShots } from './walkArsenal';
 import { DIFFICULTIES, DIFFICULTY, FORM_TIME, MAX_ORIGINS, createSiege, createVirus, isDifficulty, isInfected, pickOrigins, pickSpawnSite, storedDifficulty, type Difficulty } from './walkVirus';
 import { FOES, createHorde, type FoeKind } from './walkHorde';
@@ -76,7 +76,7 @@ const LOCK_ICON = icon('<rect x="6" y="11" width="12" height="9" rx="2" fill="cu
 const VIRUS_ICON = icon('<circle cx="12" cy="12" r="5" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.8 2.8M16.2 16.2L19 19M5 19l2.8-2.8M16.2 7.8L19 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>');
 const HELP = [
   ['이동', [['W A S D', '걷기'], ['Shift', '달리기'], ['Space', '점프'], ['R', '옥상 올라가기 · 내려가기'], ['클릭', '마우스로 시점 돌리기 (Esc 로 풀기)'], ['휠', '카메라 거리']]],
-  ['전투', [['1 ~ 9 · 0', '무기 고르기 (가진 무기만)'], ['F · 클릭', '공격 (기관단총 · 화염방사기는 누르고 있기)'], ['무기 줍기', '처음엔 주먹뿐 — 무기는 도시에서 주워요. 길가와 건물 문 앞의 빛나는 무기 위를 지나가면 돼요'], ['탄약', '같은 무기를 또 주우면 채워져요. 다 쓰면 주먹으로 돌아가요'], ['G', '감정 표현']]],
+  ['전투', [['1 ~ 9 · 0', '무기 고르기 (가진 무기만)'], ['F · 클릭', '공격 (기관단총 · 화염방사기는 누르고 있기)'], ['무기 줍기', '처음엔 주먹뿐 — 무기는 도시에서 주워요. 하늘로 솟은 빛기둥(색 = 희귀도, 주황은 전설) 아래 무기 위를 지나가면 돼요. 화면 아래 표시가 가장 가까운 무기 쪽과 거리를 알려줘요'], ['탄약', '같은 무기를 또 주우면 채워져요. 다 쓰면 주먹으로 돌아가요'], ['G', '감정 표현']]],
   ['행동', [['E', '건물 들어가기 · 차 · 탱크 타기 · 바이러스 치료'], ['H', '헬기 타기 (라이벌 4명을 다 잡으면)']]],
   ['바이러스', [['V', '바이러스 모드 시작 · 그만두기 (괴물이 나타나면 못 그만둬요)'], ['쉬움 ~ 신', '난이도 — 쉬움은 근원지 1곳과 바닥 화살표, 어려울수록 근원지가 늘고(신은 5곳) 빨리 번지며 좀비가 세져요'], ['E (근원지 앞)', '백신 주입 — 근원지를 모두 치료하면 클리어'], ['탱크 퀘스트', '지옥 · 신에서만 — 바이러스를 지옥 40 · 신 60마리 처치하면 가까운 길에 탱크가 와요 (한 번만)'], ['괴물', '도시가 다 감염되면 나타나요. 처치하면 클리어'], ['10분', '시작부터 10분 안에 끝내지 못하면 레포가 무너지고 분석 기록이 지워져요']]],
   ['헬기', [['W S', '앞으로 · 뒤로'], ['A D · 마우스', '방향 돌리기'], ['Q E', '옆으로 이동'], ['Space · C (Ctrl · X)', '올라가기 · 내려가기'], ['Shift', '가속'], ['F · 클릭', '기관총 (누르고 있기)'], ['G · 우클릭', '폭탄 떨어뜨리기'], ['마우스 위아래', '조준점 가깝게 · 멀리'], ['H', '천천히 내려가 착륙 (Space 로 취소)']]],
@@ -170,6 +170,7 @@ const MARKUP = `
 </div>
 <canvas class="wk-map glass" data-el="map" width="200" height="200" title="클릭하면 그 위치로 이동"></canvas>
 <div class="wk-prompt glass" data-el="prompt"></div>
+<div class="wk-finder glass" data-el="finder" hidden><i data-el="finder-arrow">↑</i><span data-el="finder-text"></span></div>
 <div class="wk-fade" data-el="fade"></div>
 <div class="wk-hurt" data-el="hurt"></div>
 <div class="wk-battle glass"><div class="hp"><i data-el="hp"></i></div><div class="rivals" data-el="rivals"></div></div>
@@ -2127,7 +2128,12 @@ const mount: MountViewer = (root, arch, env) => {
       if (!d.live) return;
       const [x, y] = toMap(d.x, d.z);
       mapCtx.fillStyle = RARITY_COLOR[rarityOf(d.id)];
-      mapCtx.fillRect(x - 1.5, y - 1.5, 3, 3);
+      mapCtx.strokeStyle = '#0b0d12';
+      mapCtx.lineWidth = 1.5;
+      mapCtx.beginPath();
+      mapCtx.arc(x, y, 3.2, 0, Math.PI * 2);
+      mapCtx.fill();
+      mapCtx.stroke();
     });
     battle.positions().forEach((r) => {
       const [x, y] = toMap(r.x, r.z);
@@ -2247,6 +2253,15 @@ const mount: MountViewer = (root, arch, env) => {
   updateLampLights(pos.x, pos.z);
 
   let disposed = false;
+  const finder = $('finder');
+  function renderFinder() {
+    const d = mode === 'walk' && alive && !auto && !detailOpen && !entering ? nearestDrop(loot.drops, pos.x, pos.z) : null;
+    finder.hidden = !d;
+    if (!d) return;
+    finder.style.setProperty('--c', RARITY_COLOR[rarityOf(d.id)]);
+    $('finder-arrow').style.transform = `rotate(${finderAngle(d.x - pos.x, d.z - pos.z, yaw).toFixed(3)}rad)`;
+    $('finder-text').textContent = `${weaponById(d.id).name} ${Math.round(Math.hypot(d.x - pos.x, d.z - pos.z))}m`;
+  }
   let last = performance.now();
   let slowClock = 0;
   let guideClock = 0;
@@ -2719,6 +2734,7 @@ const mount: MountViewer = (root, arch, env) => {
         if (best !== focus) setFocus(best);
       }
       updatePrompt();
+      renderFinder();
       drawMap();
     }
     const struck = traffic.update(dt, flying ? heli.root.position : pos, onFoot && alive && footY < 1.5 ? pos : null);
